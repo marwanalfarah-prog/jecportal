@@ -15,7 +15,7 @@ function StatCard({ label, value, icon: Icon }) {
   )
 }
 
-function HtmlBarChart({ data, colors, barHeight = 24, gap = 8, fontSize = 13, labelWidth = 160 }) {
+function HtmlBarChart({ data, colors, barHeight = 24, gap = 8, fontSize = 13, labelWidth = 160, animate = false }) {
   if (!data?.length) return null
   const max = Math.max(...data.map(d => d.value))
   return (
@@ -32,10 +32,12 @@ function HtmlBarChart({ data, colors, barHeight = 24, gap = 8, fontSize = 13, la
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
             <div style={{
               height: barHeight,
-              width: `${(item.value / max) * 100}%`,
+              width: animate ? `${(item.value / max) * 100}%` : '0%',
               background: colors[i % colors.length],
               borderRadius: '0 4px 4px 0',
               minWidth: 2,
+              transition: 'width 900ms ease-out',
+              transitionDelay: `${i * 35}ms`,
             }} />
             <span style={{ fontSize: fontSize - 1, color: '#6b7280', whiteSpace: 'nowrap' }}>
               {item.value.toLocaleString('ar-EG')}
@@ -54,6 +56,7 @@ export default function Dashboard() {
   const [ygData, setYg]         = useState([])
   const [ageData, setAge]       = useState([])
   const [loading, setLoading]   = useState(true)
+  const [animateCharts, setAnimateCharts] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -61,6 +64,7 @@ export default function Dashboard() {
     ]).then(([s, g, ge, y, a]) => {
       setStats(s); setGovData(g); setGender(ge); setYg(y); setAge(a)
       setLoading(false)
+      requestAnimationFrame(() => setAnimateCharts(true))
     })
   }, [])
 
@@ -81,7 +85,7 @@ export default function Dashboard() {
         <div className="card">
           <div className="card-header"><span className="card-title">الأعضاء حسب المحافظة</span></div>
           <div className="card-body">
-            <HtmlBarChart data={govData} colors={COLORS} labelWidth={160} />
+            <HtmlBarChart data={govData} colors={COLORS} labelWidth={160} animate={animateCharts} />
           </div>
         </div>
 
@@ -91,6 +95,10 @@ export default function Dashboard() {
             <ResponsiveContainer width="100%" height={280}>
               <PieChart>
                 <Pie data={genderData} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius={100}
+                  isAnimationActive={animateCharts}
+                  animationBegin={150}
+                  animationDuration={900}
+                  animationEasing="ease-out"
                   label={({ label, percent }) => `${label} ${(percent * 100).toFixed(0)}%`}>
                   {genderData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
@@ -110,7 +118,7 @@ export default function Dashboard() {
             </span>
           </div>
           <div className="card-body" style={{ maxHeight: 480, overflowY: 'auto', paddingLeft: 4 }}>
-            <HtmlBarChart data={ygData} colors={Array(ygData.length).fill('#c9963c')} labelWidth={230} fontSize={12} barHeight={22} gap={6} />
+            <HtmlBarChart data={ygData} colors={Array(ygData.length).fill('#c9963c')} labelWidth={230} fontSize={12} barHeight={22} gap={6} animate={animateCharts} />
           </div>
         </div>
 
@@ -119,7 +127,11 @@ export default function Dashboard() {
           <div className="card-body chart-container">
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
-                <Pie data={ageData} dataKey="value" nameKey="label" cx="50%" cy="50%" innerRadius={50} outerRadius={90}>
+                <Pie data={ageData} dataKey="value" nameKey="label" cx="50%" cy="50%" innerRadius={50} outerRadius={90}
+                  isAnimationActive={animateCharts}
+                  animationBegin={220}
+                  animationDuration={950}
+                  animationEasing="ease-out">
                   {ageData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
                 <Tooltip formatter={(v) => v.toLocaleString('ar-EG')} />

@@ -74,7 +74,7 @@ export default function UserManagement({ toast }) {
 
   const load = () => {
     setLoading(true)
-    api.listUsers().then(d => { setUsers(d.users || []); setLoading(false) })
+    api.listUsersBasic().then(d => { setUsers(d.users || []); setLoading(false) })
       .catch(() => setLoading(false))
   }
 
