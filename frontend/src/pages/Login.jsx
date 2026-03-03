@@ -49,14 +49,11 @@ export default function Login({ onLogin }) {
           background: 'linear-gradient(135deg, #0f2744, #2d5986)',
           padding: '36px 32px 28px', textAlign: 'center',
         }}>
-          <div style={{
-            width: 64, height: 64, borderRadius: '50%',
-            background: 'rgba(255,255,255,0.12)', border: '2px solid rgba(201,150,60,0.6)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 16px',
-          }}>
-            <Lock size={28} color="#c9963c"/>
-          </div>
+          <img
+            src="/api/logo"
+            alt="JEC Logo"
+            style={{ width: 72, height: 72, objectFit: 'contain', margin: '0 auto 16px', display: 'block' }}
+          />
           <h1 style={{
             fontFamily: 'var(--font-head)', fontSize: '1.6rem', fontWeight: 900,
             color: 'white', letterSpacing: '-0.5px', marginBottom: 4,

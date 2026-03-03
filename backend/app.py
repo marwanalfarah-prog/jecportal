@@ -1,4 +1,6 @@
-from flask import Flask
+import os
+
+from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
 
 from core import state as S
@@ -25,6 +27,16 @@ register_unregistered_routes(app)
 register_auth_routes(app)
 register_promotions_routes(app)
 register_questionnaires_notifications_routes(app)
+
+
+@app.get("/api/logo")
+def get_logo():
+    logos_dir = os.path.join(S.PHOTOS_ROOT_DIR, "logos")
+    logo_name = "JECJordanLogo.png"
+    logo_path = os.path.join(logos_dir, logo_name)
+    if not os.path.exists(logo_path):
+        return jsonify({"error": "logo not found"}), 404
+    return send_from_directory(logos_dir, logo_name)
 
 
 if __name__ == "__main__":

@@ -358,8 +358,11 @@ export default function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <h1>JEC</h1>
-          <span>نظام إدارة الأعضاء</span>
+          <img src="/api/logo" alt="JEC Logo" className="sidebar-logo-image" />
+          <div className="sidebar-logo-text">
+            <h1>JEC</h1>
+            <span>نظام إدارة الأعضاء</span>
+          </div>
         </div>
 
         <nav className="sidebar-nav">
