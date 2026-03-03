@@ -1,0 +1,63 @@
+{
+  "nodes": [
+    {
+      "id": "n1772434831422_1",
+      "inCouncil": true,
+      "inGroup": false,
+      "personId": 1498,
+      "role": "المسؤول العام",
+      "x": 262,
+      "y": 130
+    },
+    {
+      "id": "n1772434863542_3",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 33,
+      "role": "مسؤول فئتيّ الجامعيّة والعاملة",
+      "x": 80,
+      "y": 273.5
+    },
+    {
+      "id": "n1772434886975_4",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 1219,
+      "role": "مسؤول فئة الثانوي",
+      "x": 262,
+      "y": 273.5
+    },
+    {
+      "id": "n1772434897749_5",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 1657,
+      "role": "مسؤول فئة الإعدادي",
+      "x": 444,
+      "y": 273.5
+    }
+  ],
+  "edges": [
+    {
+      "auto": true,
+      "from": "n1772434831422_1",
+      "id": "auto_n1772434831422_1_n1772434863542_3_hierarchy",
+      "to": "n1772434863542_3",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1772434831422_1",
+      "id": "auto_n1772434831422_1_n1772434886975_4_hierarchy",
+      "to": "n1772434886975_4",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1772434831422_1",
+      "id": "auto_n1772434831422_1_n1772434897749_5_hierarchy",
+      "to": "n1772434897749_5",
+      "type": "hierarchy"
+    }
+  ]
+}
