@@ -10,6 +10,9 @@ from core.routes_promotions import register_promotions_routes
 from core.routes_questionnaires_notifications import register_questionnaires_notifications_routes
 from core.routes_registered import register_registered_routes
 from core.routes_unregistered import register_unregistered_routes
+from core.routes_config import register_config_routes
+from core.routes_youth_groups import register_youth_group_routes
+from core.routes_parishes import register_churches_routes
 
 
 app = Flask(__name__)
@@ -27,15 +30,22 @@ register_unregistered_routes(app)
 register_auth_routes(app)
 register_promotions_routes(app)
 register_questionnaires_notifications_routes(app)
+register_config_routes(app)
+register_youth_group_routes(app)
+register_churches_routes(app)
 
 
 @app.get("/api/logo")
 def get_logo():
     logos_dir = os.path.join(S.PHOTOS_ROOT_DIR, "logos")
     logo_name = "JECJordanLogo.png"
-    logo_path = os.path.join(logos_dir, logo_name)
-    if not os.path.exists(logo_path):
-        return jsonify({"error": "logo not found"}), 404
+    return send_from_directory(logos_dir, logo_name)
+
+
+@app.get("/api/logo/lpj")
+def get_lpj_logo():
+    logos_dir = os.path.join(S.PHOTOS_ROOT_DIR, "logos")
+    logo_name = "LPJLogo.png"
     return send_from_directory(logos_dir, logo_name)
 
 

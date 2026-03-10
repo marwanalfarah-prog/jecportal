@@ -12,17 +12,51 @@ from core import state as S
 ORG_TREES_DIR = S.db.org_trees_dir
 os.makedirs(ORG_TREES_DIR, exist_ok=True)
 
+GS_GROUP_ID = "GS"
+GS_GROUP_ALIASES = {
+    GS_GROUP_ID,
+    "__AMANAH_AMMA__",
+    "AMANAH_AMMA",
+    "GENERAL_SECRETARIAT",
+    "الأمانة العامة",
+}
+GS_GROUP_ALIAS_SAFE_KEYS = {S.safe_youth_group_key(v) for v in GS_GROUP_ALIASES}
+
+
+def _canonical_group_ref(group_ref: str | None) -> str | None:
+    ref = str(group_ref or "").strip()
+    if not ref:
+        return None
+    if ref in GS_GROUP_ALIASES:
+        return GS_GROUP_ID
+    if S.safe_youth_group_key(ref) in GS_GROUP_ALIAS_SAFE_KEYS:
+        return GS_GROUP_ID
+    return ref
+
 
 def _group_dir(group_name: str) -> str:
-    return S.db.group_dir(group_name)
+    group_ref = _canonical_group_ref(group_name) or group_name
+    group_id = S.youth_group_id(group_ref) or group_ref
+    return S.db.group_dir(group_id)
 
 
 def _index_path(group_name: str) -> str:
-    return S.db.index_path(group_name)
+    group_ref = _canonical_group_ref(group_name) or group_name
+    group_id = S.youth_group_id(group_ref) or group_ref
+    return S.db.index_path(group_id)
 
 
 def _period_path(group_name: str, period_id: str) -> str:
-    return S.db.period_path(group_name, period_id)
+    group_ref = _canonical_group_ref(group_name) or group_name
+    group_id = S.youth_group_id(group_ref) or group_ref
+    return S.db.period_path(group_id, period_id)
+
+
+def _resolve_group_id(group_ref: str) -> str:
+    canonical = _canonical_group_ref(group_ref) or group_ref
+    if canonical == GS_GROUP_ID:
+        return GS_GROUP_ID
+    return S.youth_group_id(canonical, create=True) or canonical
 
 
 def _period_label(period: dict) -> str:
@@ -66,20 +100,22 @@ def _find_period(periods: list, period_id: str):
 
 
 def _load_index(group_name: str) -> list:
-    path = _index_path(group_name)
+    group_id = _resolve_group_id(group_name)
+    path = _index_path(group_id)
     if not os.path.exists(path):
-        legacy_path = S.db.legacy_group_path(group_name)
+        legacy_path = S.db.legacy_group_path(group_id)
         if os.path.exists(legacy_path):
-            return _migrate_legacy(group_name, legacy_path)
+            return _migrate_legacy(group_id, legacy_path)
         return []
     periods = S.db.load_json_file(path, [])
     return [_period_for_storage(p) for p in (periods or []) if isinstance(p, dict) and p.get("id")]
 
 
 def _save_index(group_name: str, periods: list):
-    d = _group_dir(group_name)
+    group_id = _resolve_group_id(group_name)
+    d = _group_dir(group_id)
     os.makedirs(d, exist_ok=True)
-    S.db.save_json_file(_index_path(group_name), periods)
+    S.db.save_json_file(_index_path(group_id), periods)
 
 
 def _migrate_legacy(group_name: str, legacy_path: str) -> list:
@@ -94,16 +130,17 @@ def _migrate_legacy(group_name: str, legacy_path: str) -> list:
         "from_date": None,
         "to_date": None,
     }
-    os.makedirs(_group_dir(group_name), exist_ok=True)
+    group_id = _resolve_group_id(group_name)
+    os.makedirs(_group_dir(group_id), exist_ok=True)
     normalized = _normalize_tree_payload(data.get("nodes", []), data.get("edges", []))
     tree_data = {
         **data,
         "nodes": normalized["nodes"],
         "edges": normalized["edges"],
     }
-    S.db.save_json_file(_period_path(group_name, period_id), tree_data)
+    S.db.save_json_file(_period_path(group_id, period_id), tree_data)
     periods = [period]
-    _save_index(group_name, periods)
+    _save_index(group_id, periods)
     try:
         os.remove(legacy_path)
     except Exception:
@@ -267,10 +304,32 @@ def _migrate_all_org_tree_files():
     try:
         if not os.path.exists(ORG_TREES_DIR):
             return
+        known_group_ids = {opt["value"] for opt in S.youth_group_options()}
+        safe_to_group_id = {
+            S.safe_youth_group_key(opt["label"]): opt["value"]
+            for opt in S.youth_group_options()
+        }
+
         for group_dir in os.scandir(ORG_TREES_DIR):
             if not group_dir.is_dir():
                 continue
-            for entry in os.scandir(group_dir.path):
+            current_name = group_dir.name
+            canonical = _canonical_group_ref(current_name)
+            if canonical == GS_GROUP_ID:
+                target_group_id = GS_GROUP_ID
+            else:
+                target_group_id = current_name if current_name in known_group_ids else safe_to_group_id.get(current_name)
+            active_dir_path = group_dir.path
+            if target_group_id and target_group_id != current_name:
+                target_path = os.path.join(ORG_TREES_DIR, target_group_id)
+                if not os.path.exists(target_path):
+                    try:
+                        os.rename(group_dir.path, target_path)
+                        active_dir_path = target_path
+                    except Exception:
+                        active_dir_path = group_dir.path
+
+            for entry in os.scandir(active_dir_path):
                 if not entry.is_file() or not entry.name.endswith('.json'):
                     continue
                 try:
@@ -298,23 +357,61 @@ def _migrate_all_org_tree_files():
 def register_org_tree_routes(app):
     @app.patch("/api/unregistered/<uid>/archive")
     def archive_unregistered(uid):
+        body = request.json or {}
+        youth_group_id = str(body.get("youth_group_id") or "").strip()
+        if not youth_group_id:
+            return jsonify({"error": "youth_group_id is required"}), 400
+
         with S.unreg_lock:
             persons_df = S.unreg_store.get("persons", pd.DataFrame())
             idx = persons_df[persons_df["person_id"].astype(str) == str(uid)].index
             if idx.empty:
                 return jsonify({"error": "not found"}), 404
-            S.unreg_store["persons"].at[idx[0], "archived"] = True
+
+            pyg = S.unreg_store.get("person_youth_group", pd.DataFrame())
+            if pyg.empty or "person_id" not in pyg.columns or S.YOUTH_GROUP_ID_COL not in pyg.columns:
+                return jsonify({"error": "membership not found"}), 404
+
+            mask = (
+                (pyg["person_id"].astype(str) == str(uid))
+                & (pyg[S.YOUTH_GROUP_ID_COL].astype(str) == youth_group_id)
+            )
+            if not mask.any():
+                return jsonify({"error": "membership not found"}), 404
+
+            if "archived" not in S.unreg_store["person_youth_group"].columns:
+                S.unreg_store["person_youth_group"]["archived"] = False
+            S.unreg_store["person_youth_group"].loc[mask, "archived"] = True
             S._save_unreg_store()
         return jsonify({"ok": True})
 
     @app.patch("/api/unregistered/<uid>/unarchive")
     def unarchive_unregistered(uid):
+        body = request.json or {}
+        youth_group_id = str(body.get("youth_group_id") or "").strip()
+        if not youth_group_id:
+            return jsonify({"error": "youth_group_id is required"}), 400
+
         with S.unreg_lock:
             persons_df = S.unreg_store.get("persons", pd.DataFrame())
             idx = persons_df[persons_df["person_id"].astype(str) == str(uid)].index
             if idx.empty:
                 return jsonify({"error": "not found"}), 404
-            S.unreg_store["persons"].at[idx[0], "archived"] = False
+
+            pyg = S.unreg_store.get("person_youth_group", pd.DataFrame())
+            if pyg.empty or "person_id" not in pyg.columns or S.YOUTH_GROUP_ID_COL not in pyg.columns:
+                return jsonify({"error": "membership not found"}), 404
+
+            mask = (
+                (pyg["person_id"].astype(str) == str(uid))
+                & (pyg[S.YOUTH_GROUP_ID_COL].astype(str) == youth_group_id)
+            )
+            if not mask.any():
+                return jsonify({"error": "membership not found"}), 404
+
+            if "archived" not in S.unreg_store["person_youth_group"].columns:
+                S.unreg_store["person_youth_group"]["archived"] = False
+            S.unreg_store["person_youth_group"].loc[mask, "archived"] = False
             S._save_unreg_store()
         return jsonify({"ok": True})
 

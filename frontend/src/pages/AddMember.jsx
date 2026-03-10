@@ -146,8 +146,11 @@ function SearchSelect({ value, onChange, options, placeholder = 'اختر…', a
     return () => document.removeEventListener('mousedown', h)
   }, [])
 
-  const known    = options.includes(value)
-  const filtered = options.filter(o => o.toLowerCase().includes(query.toLowerCase()))
+  const getOptVal = (o) => (typeof o === 'object' ? o.value : o)
+  const getOptLbl = (o) => (typeof o === 'object' ? (o.label || o.value) : o)
+  const known    = options.some(o => getOptVal(o) === value)
+  const currentLabel = options.find(o => getOptVal(o) === value)
+  const filtered = options.filter(o => getOptLbl(o).toLowerCase().includes(query.toLowerCase()))
   const pick     = v => { onChange(v); setOpen(false); setQuery(''); setCust(false) }
 
   // free-text mode (unknown value or custom triggered)
@@ -170,7 +173,7 @@ function SearchSelect({ value, onChange, options, placeholder = 'اختر…', a
       <button type="button" className="am-select-trigger"
         onClick={() => { setOpen(o => !o); setQuery('') }}>
         <span className={'am-select-value' + (!value ? ' am-placeholder' : '')}>
-          {value || placeholder}
+          {(currentLabel ? getOptLbl(currentLabel) : value) || placeholder}
         </span>
         <ChevronLeft size={15} className={'am-chevron' + (open ? ' am-open' : '')} />
       </button>
@@ -183,10 +186,10 @@ function SearchSelect({ value, onChange, options, placeholder = 'اختر…', a
           <div className="am-dropdown-list">
             {filtered.length === 0
               ? <div className="am-dropdown-empty">لا توجد نتائج</div>
-              : filtered.map(o => (
-                  <button key={o} type="button"
-                    className={'am-dropdown-item' + (value === o ? ' am-selected' : '')}
-                    onClick={() => pick(o)}>{o}</button>
+                  : filtered.map(o => (
+                    <button key={String(getOptVal(o))} type="button"
+                  className={'am-dropdown-item' + (value === getOptVal(o) ? ' am-selected' : '')}
+                  onClick={() => pick(getOptVal(o))}>{getOptLbl(o)}</button>
                 ))
             }
             {allowOther && (
@@ -215,36 +218,17 @@ function YearSelect({ value, onChange, fromYear = 1960, placeholder = 'اختر 
   )
 }
 
-/** Birth-date picker — stores as "Jun 15" */
-function BirthDatePicker({ value, onChange }) {
-  const parse = v => {
-    if (!v) return { m: '', d: '' }
-    const s = String(v)
-    const iso = s.match(/^\d{4}-(\d{1,2})-(\d{1,2})/)
-    if (iso) return { m: String(parseInt(iso[1])), d: String(parseInt(iso[2])) }
-    const pts = s.trim().split(/\s+/)
-    if (pts.length >= 2) {
-      const mi = MONTHS_DATA.findIndex(x => x.en.toLowerCase() === pts[0].toLowerCase())
-      if (mi >= 0) return { m: String(mi + 1), d: String(parseInt(pts[1]) || '') }
-    }
-    return { m: '', d: '' }
-  }
-  const init = parse(value)
-  const [month, setMonth] = useState(init.m)
-  const [day,   setDay]   = useState(init.d)
-  useEffect(() => { const p = parse(value); setMonth(p.m); setDay(p.d) }, [value])
-
-  const emit = (m, d) => {
-    if (!m || !d) { onChange(''); return }
-    onChange(`${MONTHS_DATA[parseInt(m, 10) - 1].en} ${d}`)
-  }
-  const daysInMonth = month ? new Date(2000, parseInt(month, 10), 0).getDate() : 31
+/** Birth-date picker — stores as (birth_day, birth_month[number]) */
+function BirthDatePicker({ day, month, onDayChange, onMonthChange }) {
+  const currentMonth = month ? String(month) : ''
+  const currentDay = day ? String(day) : ''
+  const daysInMonth = currentMonth ? new Date(2000, parseInt(currentMonth, 10), 0).getDate() : 31
 
   return (
     <div style={{ display: 'flex', gap: 10 }}>
       <div style={{ flex: 1 }}>
-        <select className="form-control" value={month}
-          onChange={e => { setMonth(e.target.value); emit(e.target.value, day) }}>
+        <select className="form-control" value={currentMonth}
+          onChange={e => onMonthChange(e.target.value)}>
           <option value="">الشهر</option>
           {MONTHS_DATA.map(m => (
             <option key={m.num} value={String(m.num)}>{m.ar} - {m.num}</option>
@@ -252,8 +236,8 @@ function BirthDatePicker({ value, onChange }) {
         </select>
       </div>
       <div style={{ width: 110 }}>
-        <select className="form-control" value={day}
-          onChange={e => { setDay(e.target.value); emit(month, e.target.value) }}>
+        <select className="form-control" value={currentDay}
+          onChange={e => onDayChange(e.target.value)}>
           <option value="">اليوم</option>
           {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(d => (
             <option key={d} value={String(d)}>{d}</option>
@@ -408,7 +392,7 @@ function StepBar({ steps, current }) {
 const BLANK = {
   // step 0
   first_name: '', second_name: '', third_name: '', last_name: '',
-  gender: '', birth_year: '', birth_date: '',
+  gender: '', birth_year: '', birth_day: '', birth_month: '',
   nationalities: [], mobile: '', governorate: '',
   // step 1
   youth_groups: [{ youth_group: '', join_year: '', age_group: '' }],
@@ -445,7 +429,15 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
   }, [prefillName])
 
   const set    = (k, v)  => setForm(f => ({ ...f, [k]: v }))
-  const dynOpt = k       => (filters[k] || []).map(x => x.value).filter(Boolean)
+  const dynOpt = k       => {
+    const src = filters[k] || []
+    if (k === 'youth_group') {
+      return src
+        .map(x => ({ value: x.value, label: api.formatYouthGroupLabel(x.label || x.value) }))
+        .filter(x => x.value)
+    }
+    return src.map(x => x.value).filter(Boolean)
+  }
 
   const primaryAgeGroup = form.youth_groups[0]?.age_group || ''
   const isSchool = YOUTH_SCHOOL_GROUPS.includes(primaryAgeGroup)
@@ -474,7 +466,7 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
       else if (!arabicOnly.test(form.last_name.trim()))         e.last_name   = 'يُسمح بالأحرف العربيّة فقط'
       if (!form.gender)                                      e.gender      = 'هذا الحقل مطلوب'
       if (!form.birth_year)                                  e.birth_year  = 'هذا الحقل مطلوب'
-      if (!form.birth_date)                                  e.birth_date  = 'هذا الحقل مطلوب'
+      if (!form.birth_day || !form.birth_month)              e.birth_day   = 'هذا الحقل مطلوب'
       if (form.nationalities.length === 0)                   e.nationality = 'هذا الحقل مطلوب'
       if (!form.mobile.trim()) {
         e.mobile = 'هذا الحقل مطلوب'
@@ -539,7 +531,7 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
         : [...form.hobbies_adult,  ...(form.hobbies_adult_other.trim()  ? [form.hobbies_adult_other.trim()]  : [])]
 
       const responsibilities = (form.has_resp === 'حاليًّا' || form.has_resp === 'سابقًا')
-        ? form.youth_groups.map(g => ({ youth_group_name: g.youth_group, responsibility: form.resp_text, time: form.has_resp })).filter(r => r.youth_group_name)
+        ? form.youth_groups.map(g => ({ youth_group_id: g.youth_group, responsibility: form.resp_text, time: form.has_resp })).filter(r => r.youth_group_id)
         : []
 
       const body = {
@@ -548,14 +540,15 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
           third_name:  normalizeAr(form.third_name) || null, last_name: normalizeAr(form.last_name) || null,
           gender:      form.gender || null,
           governorate: form.governorate || null,
-          birth_year:  form.birth_year || null,
-          birth_date:  form.birth_date || null,
+          birth_year:  form.birth_year ? parseInt(form.birth_year, 10) : null,
+          birth_day:   form.birth_day ? parseInt(form.birth_day, 10) : null,
+          birth_month: form.birth_month ? parseInt(form.birth_month, 10) : null,
         },
         nationality:        form.nationalities.map(n => ({ nationality: n })),
         mobile_numbers:     form.mobile.trim() ? [{ mobile_number: form.mobile.trim() }] : [],
         schools:            school ? [{ school }] : [],
         person_youth_group: form.youth_groups.filter(g => g.youth_group).map(g => ({
-          youth_group_name: g.youth_group,
+          youth_group_id:   g.youth_group,
           youth_join_year:  g.join_year || null,
           age_group:        g.age_group || null,
         })),
@@ -652,9 +645,14 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
               <YearSelect value={form.birth_year} onChange={v => set('birth_year', v)} />
             </Field>
 
-            <Field label="تاريخ الميلاد" required error={errors.birth_date}
+            <Field label="تاريخ الميلاد" required error={errors.birth_day}
               hint="يرجى الانتباه أن ترتيب خانات اليوم والشهر قد تختلف حسب نوع الموبايل">
-              <BirthDatePicker value={form.birth_date} onChange={v => set('birth_date', v)} />
+              <BirthDatePicker
+                day={form.birth_day}
+                month={form.birth_month}
+                onDayChange={v => set('birth_day', v)}
+                onMonthChange={v => set('birth_month', v)}
+              />
             </Field>
 
             <Field label="الجنسية" required error={errors.nationality}>

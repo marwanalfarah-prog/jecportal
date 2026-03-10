@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import {
   GitBranch, Search, X, Plus, Save, Trash2, UserPlus,
   Camera, AlertCircle, Link, Link2Off, ArrowRight, Sparkles, CheckCircle, ExternalLink,
@@ -18,12 +18,84 @@ function normalizeArabic(t) {
   if (!t) return ''
   return String(t).replace(/\s+/g,' ').trim().split(' ').map(normalizeWord).join(' ')
 }
-function nameMatchesQuery(parts, qWords) {
-  if (!qWords.length) return true
-  if (qWords.every(q => parts.some(p => p.includes(q)))) return true
+
+function normalizeNameVariations(raw) {
+  const out = {}
+  if (!raw) return out
+
+  const entries = []
+  if (Array.isArray(raw)) {
+    for (const row of raw) {
+      if (!row || typeof row !== 'object') continue
+      entries.push([row.name, row.variations])
+    }
+  } else if (typeof raw === 'object') {
+    for (const [base, variations] of Object.entries(raw)) entries.push([base, variations])
+  }
+
+  for (const [baseRaw, variationsRaw] of entries) {
+    const base = normalizeArabic(baseRaw)
+    if (!base) continue
+    const source = Array.isArray(variationsRaw) ? variationsRaw : (typeof variationsRaw === 'string' ? [variationsRaw] : [])
+    const values = [...new Set(source.map(v => normalizeArabic(v)).filter(v => v && v !== base))]
+    out[base] = values
+  }
+
+  return out
+}
+
+function buildNameAliasLookup(variationMap) {
+  const map = new Map()
+  const ensure = (word) => {
+    if (!map.has(word)) map.set(word, new Set([word]))
+    return map.get(word)
+  }
+
+  for (const [base, vars] of Object.entries(variationMap || {})) {
+    if (!base) continue
+    const baseSet = ensure(base)
+    for (const v of vars || []) {
+      if (!v) continue
+      baseSet.add(v)
+      const vSet = ensure(v)
+      vSet.add(base)
+      for (const sibling of vars || []) {
+        if (sibling) vSet.add(sibling)
+      }
+    }
+  }
+
+  return map
+}
+
+function expandQueryWords(words, aliasLookup) {
+  return words.map((w) => {
+    const expanded = new Set([w])
+
+    const exact = aliasLookup.get(w)
+    if (exact && exact.size) {
+      exact.forEach(v => expanded.add(v))
+    }
+
+    for (const [key, values] of aliasLookup.entries()) {
+      if (!key || !values?.size) continue
+      if (key.includes(w) || w.includes(key)) {
+        values.forEach(v => expanded.add(v))
+      }
+    }
+
+    return [...expanded]
+  })
+}
+
+function nameMatchesQuery(parts, qWordGroups) {
+  if (!qWordGroups.length) return true
+  const partMatches = (part, alternatives) => alternatives.some(alt => part.includes(alt))
+
+  if (qWordGroups.every(group => parts.some(p => partMatches(p, group)))) return true
   let pi=0,qi=0
-  while(pi<parts.length&&qi<qWords.length){if(parts[pi].includes(qWords[qi]))qi++;pi++}
-  return qi===qWords.length
+  while(pi<parts.length&&qi<qWordGroups.length){if(partMatches(parts[pi],qWordGroups[qi]))qi++;pi++}
+  return qi===qWordGroups.length
 }
 
 // ── ID gen ────────────────────────────────────────────────────────────────────
@@ -36,7 +108,7 @@ const NODE_MAX_W  = 220
 const NODE_BASE_H = 100
 const NODE_EXTRA_H = 15
 const H_GAP  = 22
-const V_GAP  = 36
+const V_GAP  = 84
 
 function estimateTextW(text, fontSize, bold = false) {
   if (!text) return 0
@@ -96,6 +168,11 @@ function nodeDisplayName(node) {
     return `${node.laqab.trim()} ${namePart}`.trim()
   }
   return namePart || shortName(node.name || '')
+}
+
+function firstNameInitial(value) {
+  const firstToken = String(value ?? '').trim().split(/\s+/).find(Boolean)
+  return firstToken?.[0] || '؟'
 }
 
 function today() { return new Date().toISOString().slice(0, 10) }
@@ -686,7 +763,7 @@ function GSRolePicker({ role, currentReportsToHeadId, allNodes, onChange }) {
                       <div style={{ width:30, height:30, borderRadius:'50%', background:'var(--navy)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, overflow:'hidden' }}>
                         {head.photo
                           ? <img src={head.photo} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
-                          : <span style={{ color:'white', fontSize:'0.65rem', fontWeight:700 }}>{displayName.split(' ').map(w=>w[0]).slice(0,2).join('')}</span>
+                          : <span style={{ color:'white', fontSize:'0.65rem', fontWeight:700 }}>{firstNameInitial(head.baseName || head.name || displayName)}</span>
                         }
                       </div>
                       <div style={{ flex:1, minWidth:0 }}>
@@ -989,7 +1066,10 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
   const [personType, setPersonType] = useState(node.personType || 'علماني')
   const [laqab, setLaqab]       = useState(node.laqab || '')
   const [baseName, setBaseName] = useState(node.baseName || node.name || '')
+  const [nameVariations, setNameVariations] = useState({})
   const fileRef = useRef(null)
+
+  const nameAliasLookup = useMemo(() => buildNameAliasLookup(nameVariations), [nameVariations])
 
   useEffect(() => { setPhotoErr(false) }, [node.photo])
 
@@ -1000,6 +1080,18 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
     }
   }, [laqab, baseName, personType]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    let cancelled = false
+    api.getConfig()
+      .then((cfg) => {
+        if (!cancelled) setNameVariations(normalizeNameVariations(cfg?.config?.name_variations || {}))
+      })
+      .catch(() => {
+        if (!cancelled) setNameVariations({})
+      })
+    return () => { cancelled = true }
+  }, [])
+
   const switchType = (type) => { setPersonType(type); if (type === 'علماني') setLaqab('') }
 
   const reportsToIds   = allEdges.filter(e => e.type === 'hierarchy' && e.to === node.id).map(e => e.from)
@@ -1009,13 +1101,14 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
     setNameQ(q)
     if (!q.trim()) { setRes([]); return }
     const qWords = normalizeArabic(q).split(/\s+/).filter(Boolean)
+    const qWordGroups = expandQueryWords(qWords, nameAliasLookup)
     const regResults = allPersons.filter(p => {
       const parts = [p.first_name, p.second_name, p.third_name, p.last_name].filter(Boolean).map(normalizeArabic)
-      return nameMatchesQuery(parts, qWords)
+      return nameMatchesQuery(parts, qWordGroups)
     }).slice(0, 6).map(p => ({ ...p, _source: 'registered' }))
     const unregResults = (allUnregistered || []).filter(u => {
       const parts = [u.first_name, u.second_name, u.third_name, u.last_name].filter(Boolean).map(normalizeArabic)
-      return nameMatchesQuery(parts, qWords)
+      return nameMatchesQuery(parts, qWordGroups)
     }).slice(0, 4).map(u => ({ ...u, _source: 'unregistered' }))
     setRes([...regResults, ...unregResults])
   }
@@ -1055,20 +1148,20 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
   const hasPhoto = node.photo && !photoErr
 
   return (
-    <div style={{ position:'absolute', top:16, left:16, zIndex:400, background:'white', borderRadius:'var(--radius-lg)', boxShadow:'var(--shadow-lg)', border:'1px solid var(--gray-200)', width:320, overflow:'hidden', animation:'slideUp 0.18s ease' }}>
+    <div style={{ position:'absolute', top:16, left:16, bottom:16, zIndex:400, background:'white', borderRadius:'var(--radius-lg)', boxShadow:'var(--shadow-lg)', border:'1px solid var(--gray-200)', width:320, overflow:'hidden', animation:'slideUp 0.18s ease', display:'flex', flexDirection:'column' }}>
       <div style={{ background:'var(--navy)', padding:'14px 18px', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
         <span style={{ color:'white', fontFamily:'var(--font-head)', fontWeight:700, fontSize:'0.95rem' }}>تعديل العقدة</span>
         <button onClick={onClose} style={{ background:'none', border:'none', color:'rgba(255,255,255,0.6)', cursor:'pointer' }}><X size={18}/></button>
       </div>
 
-      <div style={{ padding:18, maxHeight:'calc(100vh - 200px)', overflowY:'auto' }}>
+      <div style={{ padding:18, overflowY:'auto', flex:1, minHeight:0 }}>
         {reportsToNodes.length > 0 && (
           <div style={{ background:'#eef4ff', border:'1px solid #c3d9ff', borderRadius:'var(--radius-md)', padding:'9px 12px', marginBottom:14, fontSize:'0.82rem', color:'#1a3a5c', display:'flex', flexDirection:'column', gap:4 }}>
             <span style={{ fontWeight:700, color:'var(--navy)', fontSize:'0.78rem', marginBottom:2 }}>يرفع تقاريره إلى:</span>
             {reportsToNodes.map(rn => (
               <div key={rn.id} style={{ display:'flex', alignItems:'center', gap:7 }}>
                 <div style={{ width:26, height:26, borderRadius:'50%', background:'var(--navy)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.65rem', fontWeight:700, color:'white', flexShrink:0 }}>
-                  {(rn.name||'؟').split(' ').map(w=>w[0]).slice(0,2).join('')}
+                  {firstNameInitial(rn.baseName || rn.name)}
                 </div>
                 <div>
                   <div style={{ fontWeight:600 }}>{rn.name||'بدون اسم'}</div>
@@ -1082,7 +1175,7 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
         {/* Avatar */}
         <div style={{ display:'flex', gap:14, alignItems:'flex-start', marginBottom:16 }}>
           <div style={{ width:58, height:58, borderRadius:'50%', background:node.unregistered?'#fef3cd':'var(--navy)', flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', cursor:'pointer', position:'relative', border:node.unregistered?'2px dashed #e8b55a':'none' }} onClick={()=>fileRef.current?.click()}>
-            {hasPhoto ? <img src={node.photo} alt="" onError={()=>setPhotoErr(true)} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ color:node.unregistered?'#c9963c':'white', fontSize:'1.2rem', fontWeight:700 }}>{node.name?.split(' ').map(w=>w[0]).slice(0,2).join('')||'؟'}</span>}
+            {hasPhoto ? <img src={node.photo} alt="" onError={()=>setPhotoErr(true)} style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ color:node.unregistered?'#c9963c':'white', fontSize:'1.2rem', fontWeight:700 }}>{firstNameInitial(node.baseName || node.name)}</span>}
             <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,0.4)', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', opacity:0, transition:'0.15s' }} className="photo-hover-ov"><Camera size={16} color="white"/></div>
             <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={handlePhotoUpload}/>
           </div>
@@ -1144,7 +1237,7 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
                     onMouseEnter={e=>e.currentTarget.style.background='var(--gray-50)'}
                     onMouseLeave={e=>e.currentTarget.style.background='white'}>
                     <div style={{ width:28, height:28, borderRadius:'50%', background:'var(--navy)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, overflow:'hidden' }}>
-                      {photo ? <img src={photo} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ color:'white', fontSize:'0.65rem', fontWeight:700 }}>{name.split(' ').map(w=>w[0]).slice(0,2).join('')}</span>}
+                      {photo ? <img src={photo} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/> : <span style={{ color:'white', fontSize:'0.65rem', fontWeight:700 }}>{firstNameInitial(p.first_name || name)}</span>}
                     </div>
                     <div style={{ flex:1 }}><div style={{ fontWeight:600 }}>{name}</div><div style={{ fontSize:'0.72rem', color:'var(--gray-400)' }}>{p.governorate||''}</div></div>
                     {isUnreg && <span style={{ fontSize:'0.65rem', background:'#fde68a', color:'#92400e', borderRadius:8, padding:'1px 6px', flexShrink:0 }}>غير مسجّل</span>}
@@ -1287,7 +1380,7 @@ function GSNode({ node, selected, connectMode, connectSource, onSelect, onDragSt
 
   const isConnectSrc = connectSource === node.id
   const hasPhoto     = node.photo && !photoErr
-  const initials     = (node.name||'').split(' ').filter(Boolean).map(w=>w[0]).slice(0,2).join('')||'؟'
+  const initials     = firstNameInitial(node.baseName || node.name)
   const borderColor  = isConnectSrc ? '#c9963c' : selected ? '#0f2744' : node.unregistered ? '#e8b55a' : '#d1d9e6'
 
   const { w:W, h:H, roleLines } = nodeSize(node)
@@ -1619,7 +1712,7 @@ function PeriodBrowserModal({ periods, currentPeriod, groupKey, onSelect, onPeri
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
-const GS_GROUP_KEY = '__AMANAH_AMMA__'
+const GS_GROUP_KEY = 'GS'
 
 export default function GeneralSecretariatTree({ toast, onRegisterPerson, onViewProfile, onViewUnregisteredProfile, viewOnly = false }) {
   const [nodes, setNodes]             = useState([])

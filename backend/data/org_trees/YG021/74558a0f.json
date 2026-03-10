@@ -1,0 +1,95 @@
+{
+  "nodes": [
+    {
+      "id": "n1773073685536_1",
+      "inCouncil": true,
+      "inGroup": false,
+      "personId": 3110,
+      "role": "المسؤول العام",
+      "x": 353,
+      "y": 130
+    },
+    {
+      "id": "n1773073715265_2",
+      "x": 171,
+      "y": 321.5,
+      "role": "مسؤول فئتيّ الإعدادي والثانوي",
+      "personId": 16,
+      "inCouncil": true,
+      "inGroup": true
+    },
+    {
+      "id": "n1773073744895_3",
+      "x": 80,
+      "y": 520.5,
+      "role": "مجلس فئتيّ الإعدادي والثانوي",
+      "personId": 201,
+      "inCouncil": false,
+      "inGroup": true
+    },
+    {
+      "id": "n1773073758155_4",
+      "x": 262,
+      "y": 520.5,
+      "role": "مجلس فئتيّ الإعدادي والثانوي",
+      "personId": 3014,
+      "inCouncil": false,
+      "inGroup": true
+    },
+    {
+      "id": "n1773073770901_5",
+      "x": 444,
+      "y": 321.5,
+      "role": "مسؤول فئة البراعم",
+      "personId": 1199,
+      "inCouncil": true,
+      "inGroup": true
+    },
+    {
+      "id": "n1773073782519_6",
+      "x": 626,
+      "y": 321.5,
+      "role": "مسؤول فئة البراعم",
+      "personId": 1200,
+      "inCouncil": true,
+      "inGroup": true
+    }
+  ],
+  "edges": [
+    {
+      "id": "auto_n1773073685536_1_n1773073715265_2_hierarchy",
+      "from": "n1773073685536_1",
+      "to": "n1773073715265_2",
+      "type": "hierarchy",
+      "auto": true
+    },
+    {
+      "id": "auto_n1773073685536_1_n1773073770901_5_hierarchy",
+      "from": "n1773073685536_1",
+      "to": "n1773073770901_5",
+      "type": "hierarchy",
+      "auto": true
+    },
+    {
+      "id": "auto_n1773073685536_1_n1773073782519_6_hierarchy",
+      "from": "n1773073685536_1",
+      "to": "n1773073782519_6",
+      "type": "hierarchy",
+      "auto": true
+    },
+    {
+      "id": "auto_n1773073715265_2_n1773073744895_3_hierarchy",
+      "from": "n1773073715265_2",
+      "to": "n1773073744895_3",
+      "type": "hierarchy",
+      "auto": true
+    },
+    {
+      "id": "auto_n1773073715265_2_n1773073758155_4_hierarchy",
+      "from": "n1773073715265_2",
+      "to": "n1773073758155_4",
+      "type": "hierarchy",
+      "auto": true
+    }
+  ]
+}

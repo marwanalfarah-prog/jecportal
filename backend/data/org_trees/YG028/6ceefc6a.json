@@ -1,0 +1,143 @@
+{
+  "nodes": [
+    {
+      "id": "n1772994158747_2",
+      "inCouncil": true,
+      "inGroup": false,
+      "personId": 1359,
+      "role": "المسؤول العام",
+      "x": 626,
+      "y": 130
+    },
+    {
+      "id": "n1772994169906_3",
+      "inCouncil": true,
+      "inGroup": false,
+      "personId": 3106,
+      "role": "المرشد الروحي",
+      "x": 1392,
+      "y": 130
+    },
+    {
+      "id": "n1772994194526_4",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 3107,
+      "role": "قائم بأعمال مسؤول فئتيّ الجامعيّة والعاملة",
+      "x": 80,
+      "y": 329
+    },
+    {
+      "id": "n1772994218494_5",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 1359,
+      "role": "قائم بأعمال مسؤول فئة الثانوي",
+      "x": 262,
+      "y": 329
+    },
+    {
+      "id": "n1772994237428_6",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 385,
+      "role": "مسؤول فئة الإعدادي",
+      "x": 444,
+      "y": 329
+    },
+    {
+      "id": "n1772994266020_7",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 3108,
+      "role": "مسؤول فئة البراعم",
+      "x": 626,
+      "y": 329
+    },
+    {
+      "id": "n1772994329383_8",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 1494,
+      "role": "مسؤول لجنة العلاقات العامة",
+      "x": 808,
+      "y": 329
+    },
+    {
+      "id": "n1772994598259_10",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 749,
+      "role": "مسؤول اللجنة الإعلاميّة",
+      "x": 990,
+      "y": 329
+    },
+    {
+      "id": "n1772994619807_11",
+      "inCouncil": true,
+      "inGroup": false,
+      "personId": 3109,
+      "role": "نائب المسؤول العام",
+      "x": 1172,
+      "y": 329
+    }
+  ],
+  "edges": [
+    {
+      "auto": true,
+      "from": "n1772994158747_2",
+      "id": "auto_n1772994158747_2_n1772994169906_3_peer",
+      "to": "n1772994169906_3",
+      "type": "peer"
+    },
+    {
+      "auto": true,
+      "from": "n1772994158747_2",
+      "id": "auto_n1772994158747_2_n1772994194526_4_hierarchy",
+      "to": "n1772994194526_4",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1772994158747_2",
+      "id": "auto_n1772994158747_2_n1772994218494_5_hierarchy",
+      "to": "n1772994218494_5",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1772994158747_2",
+      "id": "auto_n1772994158747_2_n1772994237428_6_hierarchy",
+      "to": "n1772994237428_6",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1772994158747_2",
+      "id": "auto_n1772994158747_2_n1772994266020_7_hierarchy",
+      "to": "n1772994266020_7",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1772994158747_2",
+      "id": "auto_n1772994158747_2_n1772994329383_8_hierarchy",
+      "to": "n1772994329383_8",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1772994158747_2",
+      "id": "auto_n1772994158747_2_n1772994598259_10_hierarchy",
+      "to": "n1772994598259_10",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1772994158747_2",
+      "id": "auto_n1772994158747_2_n1772994619807_11_hierarchy",
+      "to": "n1772994619807_11",
+      "type": "hierarchy"
+    }
+  ]
+}

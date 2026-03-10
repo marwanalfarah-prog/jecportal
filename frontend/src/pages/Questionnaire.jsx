@@ -250,12 +250,18 @@ function YouthGroupPicker({ youthGroups, selected, onChange }) {
   const triggerRef          = useRef(null)
   const dropRef             = useRef(null)
 
-  const filtered = youthGroups.filter(g => !search.trim() || g.toLowerCase().includes(search.trim().toLowerCase()))
+  const getVal = (g) => (typeof g === 'object' ? g.value : g)
+  const getLbl = (g) => (typeof g === 'object' ? (g.label || g.value) : g)
+  const filtered = youthGroups.filter(g => !search.trim() || getLbl(g).toLowerCase().includes(search.trim().toLowerCase()))
   const toggle   = (g) => onChange(selected.includes(g) ? selected.filter(x => x !== g) : [...selected, g])
+  const selectedLabels = selected.map(v => {
+    const hit = youthGroups.find(g => getVal(g) === v)
+    return hit ? getLbl(hit) : v
+  })
 
   const label = selected.length === 0                ? '— اختر مجموعة شبيبة —'
               : selected.length === youthGroups.length ? 'جميع مجموعات الشبيبة'
-              : selected.length === 1                 ? selected[0]
+              : selected.length === 1                 ? selectedLabels[0]
               : `${selected.length} مجموعات مختارة`
 
   const handleOpen = () => {
@@ -332,7 +338,7 @@ function YouthGroupPicker({ youthGroups, selected, onChange }) {
               style={{ ...inp, paddingRight: 28, fontSize: '0.82rem', padding: '6px 28px 6px 8px', borderColor: '#e2e6ef' }} />
           </div>
           <div style={{ display: 'flex', borderBottom: '1px solid #e2e6ef', flexShrink: 0 }}>
-            <button type="button" onClick={() => onChange(youthGroups)}
+            <button type="button" onClick={() => onChange(youthGroups.map(g => getVal(g)))}
               style={{ flex: 1, padding: '7px', background: 'none', border: 'none', borderLeft: '1px solid #e2e6ef', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: '0.78rem', fontWeight: 700, color: '#0f2744' }}>
               ✓ تحديد الكل
             </button>
@@ -343,14 +349,15 @@ function YouthGroupPicker({ youthGroups, selected, onChange }) {
           </div>
           <div style={{ overflowY: 'auto', flex: 1 }}>
             {filtered.map(g => {
-              const chk = selected.includes(g)
+              const gid = getVal(g)
+              const chk = selected.includes(gid)
               return (
-                <button key={g} type="button" onClick={() => toggle(g)}
+                <button key={gid} type="button" onClick={() => toggle(gid)}
                   style={{ width: '100%', padding: '9px 14px', background: chk ? '#eef4ff' : 'none', border: 'none', borderBottom: '1px solid #f5f6fa', cursor: 'pointer', textAlign: 'right', fontFamily: 'var(--font-body)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 10 }}
                   onMouseEnter={e => { if (!chk) e.currentTarget.style.background = '#f8f9fd' }}
                   onMouseLeave={e => { if (!chk) e.currentTarget.style.background = 'none' }}>
                   {checkBox(chk)}
-                  <span style={{ fontWeight: chk ? 700 : 500, color: chk ? '#0f2744' : '#4a5568' }}>{g}</span>
+                  <span style={{ fontWeight: chk ? 700 : 500, color: chk ? '#0f2744' : '#4a5568' }}>{getLbl(g)}</span>
                 </button>
               )
             })}
@@ -365,9 +372,9 @@ function YouthGroupPicker({ youthGroups, selected, onChange }) {
 
       {selected.length > 0 && selected.length < youthGroups.length && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 7 }}>
-          {selected.map(g => (
+          {selected.map((g, idx) => (
             <span key={g} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: '#eef4ff', border: '1px solid #c5d8f8', borderRadius: 6, padding: '2px 8px', fontSize: '0.75rem', color: '#0f2744', fontWeight: 600 }}>
-              {g}
+              {selectedLabels[idx] || g}
               <button type="button" onClick={() => toggle(g)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ba5bc', padding: 0, display: 'flex' }}>
                 <X size={10}/>
               </button>
@@ -826,7 +833,7 @@ export default function Questionnaire({ toast }) {
     const p = Promise.all([api.listUsersBasic(), api.filters()])
       .then(([ud, fd]) => {
         setPersons(ud.users || [])
-        setYGs((fd.youth_group || []).map(g => g.value).filter(Boolean).sort())
+        setYGs((fd.youth_group || []).map(g => ({ value: g.value, label: api.formatYouthGroupLabel(g.label || g.value) })).filter(g => g.value).sort((a, b) => (a.label || '').localeCompare(b.label || '', 'ar')))
         setFormDataReady(true)
       })
       .catch(() => {
@@ -923,7 +930,7 @@ export default function Questionnaire({ toast }) {
               )}
               {q.target_type==='role' && (q.target_youth_groups||[]).length>0 && (
                 <span style={{ background:'#f0fdf4', border:'1px solid #a7f3d0', borderRadius:6, padding:'2px 8px', fontSize:'0.75rem', color:'#065f46', fontWeight:600 }}>
-                  {q.target_youth_groups.length===1?q.target_youth_groups[0]:`${q.target_youth_groups.length} مجموعات`}
+                  {q.target_youth_groups.length===1?(q.target_youth_group_names?.[0] || q.target_youth_groups[0]):`${q.target_youth_groups.length} مجموعات`}
                 </span>
               )}
               {q.target_type==='person' && (

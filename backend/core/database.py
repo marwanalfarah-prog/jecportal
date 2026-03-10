@@ -49,25 +49,50 @@ class Database:
             f.write(key)
         return key
 
+    def _normalize_mobile_number(self, value):
+        if value is None:
+            return None
+        text = str(value).strip()
+        if text in ("", "nan", "None", "null"):
+            return None
+        # Excel/pandas sometimes round-trips plain digits as a float-like string (e.g. 079... -> 079....0).
+        if text.endswith(".0") and text.replace(".", "", 1).replace("-", "", 1).isdigit():
+            text = text[:-2]
+        return text
+
     def load_excel_sheets(self, sheets: list[str]) -> dict[str, pd.DataFrame]:
         store: dict[str, pd.DataFrame] = {}
         xf = pd.ExcelFile(self.excel_path)
         for sheet in sheets:
             if sheet in xf.sheet_names:
-                dtype_overrides = {}
+                if sheet == "mobile_numbers":
+                    df = xf.parse(sheet, dtype={"mobile_number": str})
+                else:
+                    df = xf.parse(sheet)
                 if sheet == "persons":
-                    dtype_overrides = {"birth_date": str, "birth_year": str}
-                store[sheet] = xf.parse(sheet, dtype=dtype_overrides)
+                    if "birth_date" in df.columns:
+                        df["birth_date"] = df["birth_date"].where(df["birth_date"].isna(), df["birth_date"].astype(str))
+                if sheet == "mobile_numbers" and "mobile_number" in df.columns:
+                    df["mobile_number"] = df["mobile_number"].apply(self._normalize_mobile_number)
+                store[sheet] = df
         return store
 
     def save_excel_sheets(self, store: dict[str, pd.DataFrame]):
+        if os.path.exists(self.excel_path):
+            # Replace only target sheets and preserve any unrelated sheets (e.g., auth_users).
+            with pd.ExcelWriter(self.excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
+                for sheet, df in store.items():
+                    df.to_excel(writer, sheet_name=sheet, index=False)
+            return
+
         with pd.ExcelWriter(self.excel_path, engine="openpyxl") as writer:
             for sheet, df in store.items():
                 df.to_excel(writer, sheet_name=sheet, index=False)
 
     def load_json_file(self, path: str, default: Any):
         if os.path.exists(path):
-            with open(path, encoding="utf-8") as f:
+            # Use utf-8-sig to tolerate files accidentally saved with BOM.
+            with open(path, encoding="utf-8-sig") as f:
                 return json.load(f)
         return default
 

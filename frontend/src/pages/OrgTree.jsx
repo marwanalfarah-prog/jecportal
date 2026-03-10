@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import {
   GitBranch, Search, X, Plus, Save, Trash2, UserPlus,
   Camera, AlertCircle, Link, Link2Off, ArrowRight, Sparkles, CheckCircle, ExternalLink,
@@ -18,12 +18,84 @@ function normalizeArabic(t) {
   if (!t) return ''
   return String(t).replace(/\s+/g,' ').trim().split(' ').map(normalizeWord).join(' ')
 }
-function nameMatchesQuery(parts, qWords) {
-  if (!qWords.length) return true
-  if (qWords.every(q => parts.some(p => p.includes(q)))) return true
+
+function normalizeNameVariations(raw) {
+  const out = {}
+  if (!raw) return out
+
+  const entries = []
+  if (Array.isArray(raw)) {
+    for (const row of raw) {
+      if (!row || typeof row !== 'object') continue
+      entries.push([row.name, row.variations])
+    }
+  } else if (typeof raw === 'object') {
+    for (const [base, variations] of Object.entries(raw)) entries.push([base, variations])
+  }
+
+  for (const [baseRaw, variationsRaw] of entries) {
+    const base = normalizeArabic(baseRaw)
+    if (!base) continue
+    const source = Array.isArray(variationsRaw) ? variationsRaw : (typeof variationsRaw === 'string' ? [variationsRaw] : [])
+    const values = [...new Set(source.map(v => normalizeArabic(v)).filter(v => v && v !== base))]
+    out[base] = values
+  }
+
+  return out
+}
+
+function buildNameAliasLookup(variationMap) {
+  const map = new Map()
+  const ensure = (word) => {
+    if (!map.has(word)) map.set(word, new Set([word]))
+    return map.get(word)
+  }
+
+  for (const [base, vars] of Object.entries(variationMap || {})) {
+    if (!base) continue
+    const baseSet = ensure(base)
+    for (const v of vars || []) {
+      if (!v) continue
+      baseSet.add(v)
+      const vSet = ensure(v)
+      vSet.add(base)
+      for (const sibling of vars || []) {
+        if (sibling) vSet.add(sibling)
+      }
+    }
+  }
+
+  return map
+}
+
+function expandQueryWords(words, aliasLookup) {
+  return words.map((w) => {
+    const expanded = new Set([w])
+
+    const exact = aliasLookup.get(w)
+    if (exact && exact.size) {
+      exact.forEach(v => expanded.add(v))
+    }
+
+    for (const [key, values] of aliasLookup.entries()) {
+      if (!key || !values?.size) continue
+      if (key.includes(w) || w.includes(key)) {
+        values.forEach(v => expanded.add(v))
+      }
+    }
+
+    return [...expanded]
+  })
+}
+
+function nameMatchesQuery(parts, qWordGroups) {
+  if (!qWordGroups.length) return true
+  const partMatches = (part, alternatives) => alternatives.some(alt => part.includes(alt))
+
+  if (qWordGroups.every(group => parts.some(p => partMatches(p, group)))) return true
   let pi=0,qi=0
-  while(pi<parts.length&&qi<qWords.length){if(parts[pi].includes(qWords[qi]))qi++;pi++}
-  return qi===qWords.length
+  while(pi<parts.length&&qi<qWordGroups.length){if(partMatches(parts[pi],qWordGroups[qi]))qi++;pi++}
+  return qi===qWordGroups.length
 }
 
 // ── ID gen ────────────────────────────────────────────────────────────────────
@@ -36,7 +108,7 @@ const NODE_MAX_W  = 220
 const NODE_BASE_H = 100   // height when role fits on 1 line
 const NODE_EXTRA_H = 15  // added per extra role line
 const H_GAP  = 22
-const V_GAP  = 36
+const V_GAP  = 84
 
 // Estimate pixel width of Arabic/Latin text at given font size
 // Using ~7px per char for Cairo bold (name) and ~6.2px for Tajawal (role)
@@ -107,6 +179,11 @@ function nodeDisplayName(node) {
     return `${node.laqab.trim()} ${namePart}`.trim()
   }
   return namePart || shortName(node.name || '')
+}
+
+function firstNameInitial(value) {
+  const firstToken = String(value ?? '').trim().split(/\s+/).find(Boolean)
+  return firstToken?.[0] || '؟'
 }
 
 // ── Today as YYYY-MM-DD ───────────────────────────────────────────────────────
@@ -1147,7 +1224,10 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
   const [personType, setPersonType] = useState(node.personType || 'علماني')
   const [laqab, setLaqab]           = useState(node.laqab || '')
   const [baseName, setBaseName]     = useState(node.baseName || node.name || '')
+  const [nameVariations, setNameVariations] = useState({})
   const fileRef = useRef(null)
+
+  const nameAliasLookup = useMemo(() => buildNameAliasLookup(nameVariations), [nameVariations])
 
   useEffect(() => { setPhotoErr(false) }, [node.photo])
 
@@ -1161,6 +1241,18 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
     }
   }, [laqab, baseName, personType])  // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    let cancelled = false
+    api.getConfig()
+      .then((cfg) => {
+        if (!cancelled) setNameVariations(normalizeNameVariations(cfg?.config?.name_variations || {}))
+      })
+      .catch(() => {
+        if (!cancelled) setNameVariations({})
+      })
+    return () => { cancelled = true }
+  }, [])
+
   const switchType = (type) => {
     setPersonType(type)
     if (type === 'علماني') setLaqab('')
@@ -1173,21 +1265,22 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
     setNameQ(q)
     if (!q.trim()) { setRes([]); return }
     const qWords = normalizeArabic(q).split(/\s+/).filter(Boolean)
+    const qWordGroups = expandQueryWords(qWords, nameAliasLookup)
 
     // Registered persons — filtered to youth group
     const pool = selectedGroup
-      ? allPersons.filter(p => (p._youth_groups || []).includes(selectedGroup))
+      ? allPersons.filter(p => (p._youth_group_ids || []).includes(selectedGroup))
       : allPersons
     const regResults = pool.filter(p => {
       const parts = [p.first_name, p.second_name, p.third_name, p.last_name].filter(Boolean).map(normalizeArabic)
-      return nameMatchesQuery(parts, qWords)
+      return nameMatchesQuery(parts, qWordGroups)
     }).slice(0, 6).map(p => ({ ...p, _source: 'registered' }))
 
     // Unregistered persons — no youth_group filter: they may not have person_youth_group
     // rows yet (newly synced), and the list is always small
     const unregResults = (allUnregistered || []).filter(u => {
       const parts = [u.first_name, u.second_name, u.third_name, u.last_name].filter(Boolean).map(normalizeArabic)
-      return nameMatchesQuery(parts, qWords)
+      return nameMatchesQuery(parts, qWordGroups)
     }).slice(0, 4).map(u => ({ ...u, _source: 'unregistered' }))
 
     setRes([...regResults, ...unregResults])
@@ -1240,10 +1333,11 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
 
   return (
     <div style={{
-      position: 'absolute', top: 16, left: 16, zIndex: 400,
+      position: 'absolute', top: 16, left: 16, bottom: 16, zIndex: 400,
       background: 'white', borderRadius: 'var(--radius-lg)',
       boxShadow: 'var(--shadow-lg)', border: '1px solid var(--gray-200)',
       width: 320, overflow: 'hidden', animation: 'slideUp 0.18s ease',
+      display: 'flex', flexDirection: 'column',
     }}>
       {/* Header */}
       <div style={{ background: 'var(--navy)', padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1253,7 +1347,7 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
         <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer' }}><X size={18}/></button>
       </div>
 
-      <div style={{ padding: 18, maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
+      <div style={{ padding: 18, overflowY: 'auto', flex: 1, minHeight: 0 }}>
         {/* Reports-to banner */}
         {reportsToNodes.length > 0 && (
           <div style={{ background: '#eef4ff', border: '1px solid #c3d9ff', borderRadius: 'var(--radius-md)', padding: '9px 12px', marginBottom: 14, fontSize: '0.82rem', color: '#1a3a5c', display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -1261,7 +1355,7 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
             {reportsToNodes.map(rn => (
               <div key={rn.id} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                 <div style={{ width:26, height:26, borderRadius:'50%', background:'var(--navy)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.65rem', fontWeight:700, color:'white', flexShrink:0 }}>
-                  {(rn.name || '؟').split(' ').map(w => w[0]).slice(0,2).join('')}
+                  {firstNameInitial(rn.baseName || rn.name)}
                 </div>
                 <div>
                   <div style={{ fontWeight: 600 }}>{rn.name || 'بدون اسم'}</div>
@@ -1284,7 +1378,7 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
             {hasPhoto
               ? <img src={node.photo} alt="" onError={() => setPhotoErr(true)} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
               : <span style={{ color: node.unregistered ? '#c9963c' : 'white', fontSize: '1.2rem', fontWeight: 700 }}>
-                  {node.name?.split(' ').map(w=>w[0]).slice(0,2).join('') || '؟'}
+                  {firstNameInitial(node.baseName || node.name)}
                 </span>
             }
             <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,0.4)', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', opacity:0, transition:'0.15s' }} className="photo-hover-ov">
@@ -1389,7 +1483,7 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
                     <div style={{ width:28, height:28, borderRadius:'50%', background:'var(--navy)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, overflow:'hidden' }}>
                       {photo
                         ? <img src={photo} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
-                        : <span style={{ color:'white', fontSize:'0.65rem', fontWeight:700 }}>{name.split(' ').map(w=>w[0]).slice(0,2).join('')}</span>}
+                        : <span style={{ color:'white', fontSize:'0.65rem', fontWeight:700 }}>{firstNameInitial(p.first_name || name)}</span>}
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight:600 }}>{name}</div>
@@ -1559,7 +1653,7 @@ function OrgNode({ node, selected, connectMode, connectSource, onSelect, onDragS
 
   const isConnectSrc = connectSource === node.id
   const hasPhoto     = node.photo && !photoErr
-  const initials     = (node.name || '').split(' ').filter(Boolean).map(w => w[0]).slice(0, 2).join('') || '؟'
+  const initials     = firstNameInitial(node.baseName || node.name)
   const borderColor  = isConnectSrc ? '#c9963c' : selected ? '#0f2744' : node.unregistered ? '#e8b55a' : '#d1d9e6'
 
   const { w: W, h: H, roleLines } = nodeSize(node)
@@ -2025,10 +2119,23 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
   const dragRef = useRef(null)
 
   const [allUnregistered, setAllUnregistered] = useState([])
+  const groupLabelById = useMemo(() => {
+    const out = {}
+    for (const g of (groups || [])) {
+      if (g?.value) out[g.value] = g.label || g.value
+    }
+    return out
+  }, [groups])
 
   // ── Load groups + persons ──────────────────────────────────────────────────
   useEffect(() => {
-    api.filters().then(f => setGroups(f.youth_group || []))
+    api.filters().then(f => {
+      const ys = (f.youth_group || []).map(g => ({
+        ...g,
+        label: api.formatYouthGroupLabel(g?.label || g?.value),
+      }))
+      setGroups(ys)
+    })
     api.personsEnriched().then(p => setAllPersons(p))
     api.getUnregistered().then(u => setAllUnregistered(u))
   }, [])
@@ -2632,7 +2739,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
       ctx.fillRect(0, 0, fullW, HEADER_H)
 
       // Header text — drawn by browser, so Arabic works perfectly
-      const groupLabel   = selectedGroup || 'الهيكل التنظيمي'
+      const groupLabel   = groupLabelById[selectedGroup] || selectedGroup || 'الهيكل التنظيمي'
       const periodLabel  = currentPeriod
         ? `  •  ${currentPeriod.from_date || ''}${currentPeriod.to_date ? ' ← ' + currentPeriod.to_date : ' ← الآن'}`
         : ''
@@ -2691,7 +2798,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
       })
 
       doc.addImage(full.toDataURL('image/png'), 'PNG', offX_mm, offY_mm, imgW_mm, imgH_mm)
-      doc.save(`org-tree-${(selectedGroup || 'tree').replace(/\s+/g, '-')}.pdf`)
+      doc.save(`org-tree-${(groupLabelById[selectedGroup] || selectedGroup || 'tree').replace(/\s+/g, '-')}.pdf`)
 
     } catch (err) {
       console.error('PDF export failed:', err)
@@ -2704,7 +2811,8 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
     if (allowedGroups !== null) {
       if (!allowedGroups.includes(g.value)) return false
     }
-    return !groupSearch || normalizeArabic(g.value).includes(normalizeArabic(groupSearch))
+    const label = g.label || g.value
+    return !groupSearch || normalizeArabic(label).includes(normalizeArabic(groupSearch))
   })
 
   // Auto-select if member has only one group
@@ -2741,7 +2849,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
                 onMouseEnter={e=>e.currentTarget.style.background='var(--gray-50)'}
                 onMouseLeave={e=>e.currentTarget.style.background='white'}>
                 <div>
-                  <div style={{ fontWeight:700, color:'var(--navy)', fontSize:'0.95rem' }}>{g.value}</div>
+                  <div style={{ fontWeight:700, color:'var(--navy)', fontSize:'0.95rem' }}>{g.label || g.value}</div>
                   <div style={{ fontSize:'0.78rem', color:'var(--gray-400)', marginTop:2 }}>{g.count} عضو</div>
                 </div>
                 <ArrowRight size={16} style={{ color:'var(--gray-300)', transform:'rotate(180deg)' }}/>
@@ -2790,12 +2898,12 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
       <div style={{ background:'white', border:'1px solid var(--gray-200)', borderRadius:'var(--radius-lg)', padding:'10px 16px', marginBottom:12, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
         {(!allowedGroups || allowedGroups.length > 1) && (
           <button onClick={() => { setGroup(''); setNodes([]); setEdges([]) }} className="btn btn-ghost btn-sm">
-            <ArrowRight size={14}/> {selectedGroup}
+            <ArrowRight size={14}/> {groupLabelById[selectedGroup] || selectedGroup}
           </button>
         )}
         {(!allowedGroups || allowedGroups.length > 1) && <div style={{ width:1, height:24, background:'var(--gray-200)' }}/>}
         {allowedGroups && allowedGroups.length === 1 && (
-          <span style={{ fontWeight:700, color:'var(--navy)', fontSize:'0.9rem' }}>{selectedGroup}</span>
+          <span style={{ fontWeight:700, color:'var(--navy)', fontSize:'0.9rem' }}>{groupLabelById[selectedGroup] || selectedGroup}</span>
         )}
 
         {/* Period badge */}

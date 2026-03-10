@@ -19,9 +19,155 @@ function normalizeArabic(text) {
   if (!text) return ''
   return String(text).replace(/\s+/g, ' ').trim().split(' ').map(normalizeWord).join(' ')
 }
+
+function normalizeNameVariations(raw) {
+  const out = {}
+  if (!raw) return out
+
+  const entries = []
+  if (Array.isArray(raw)) {
+    for (const row of raw) {
+      if (!row || typeof row !== 'object') continue
+      entries.push([row.name, row.variations])
+    }
+  } else if (typeof raw === 'object') {
+    for (const [base, variations] of Object.entries(raw)) entries.push([base, variations])
+  }
+
+  for (const [baseRaw, variationsRaw] of entries) {
+    const base = normalizeArabic(baseRaw)
+    if (!base) continue
+    const source = Array.isArray(variationsRaw) ? variationsRaw : (typeof variationsRaw === 'string' ? [variationsRaw] : [])
+    const values = [...new Set(source.map(v => normalizeArabic(v)).filter(v => v && v !== base))]
+    out[base] = values
+  }
+
+  return out
+}
+
+function buildNameAliasLookup(variationMap) {
+  const map = new Map()
+  const ensure = (word) => {
+    if (!map.has(word)) map.set(word, new Set([word]))
+    return map.get(word)
+  }
+
+  for (const [base, vars] of Object.entries(variationMap || {})) {
+    if (!base) continue
+    const baseSet = ensure(base)
+    for (const v of vars || []) {
+      if (!v) continue
+      baseSet.add(v)
+      const vSet = ensure(v)
+      vSet.add(base)
+      for (const sibling of vars || []) {
+        if (sibling) vSet.add(sibling)
+      }
+    }
+  }
+
+  return map
+}
+
+function expandQueryWords(words, aliasLookup) {
+  return words.map((w) => {
+    const expanded = new Set([w])
+
+    const exact = aliasLookup.get(w)
+    if (exact && exact.size) {
+      exact.forEach(v => expanded.add(v))
+    }
+
+    for (const [key, values] of aliasLookup.entries()) {
+      if (!key || !values?.size) continue
+      if (key.includes(w) || w.includes(key)) {
+        values.forEach(v => expanded.add(v))
+      }
+    }
+
+    return [...expanded]
+  })
+}
 function getNameParts(p) {
   return [p.first_name, p.second_name, p.third_name, p.last_name]
     .filter(Boolean).map(normalizeArabic)
+}
+
+function getDisplayName(p) {
+  return [p.title, p.first_name, p.second_name, p.third_name, p.last_name]
+    .filter(Boolean)
+    .join(' ')
+    .trim()
+}
+
+function firstNameInitial(value) {
+  const firstToken = String(value ?? '').trim().split(/\s+/).find(Boolean)
+  return firstToken?.[0] || '؟'
+}
+
+function toYouthGroupShortLabel(value) {
+  const raw = String(value ?? '').trim()
+  if (!raw) return ''
+
+  const withoutPrefix = raw.replace(/^\s*شبيبة\s*/u, '').trim()
+  if (!withoutPrefix) return ''
+
+  const shortPart = withoutPrefix.includes('-')
+    ? withoutPrefix.split('-').map(part => part.trim()).filter(Boolean).at(-1)
+    : withoutPrefix
+
+  return shortPart ? `شبيبة ${shortPart}` : ''
+}
+
+function calcAgeFromBirthDate(person) {
+  const year = Number(person?.birth_year)
+  const month = Number(person?.birth_month)
+  const day = Number(person?.birth_day)
+
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return null
+  if (year <= 0 || month < 1 || month > 12 || day < 1 || day > 31) return null
+
+  const birthDate = new Date(year, month - 1, day)
+  if (
+    birthDate.getFullYear() !== year ||
+    birthDate.getMonth() !== month - 1 ||
+    birthDate.getDate() !== day
+  ) {
+    return null
+  }
+
+  const today = new Date()
+  let age = today.getFullYear() - year
+  const hasHadBirthdayThisYear =
+    today.getMonth() > (month - 1) ||
+    (today.getMonth() === (month - 1) && today.getDate() >= day)
+
+  if (!hasHadBirthdayThisYear) age -= 1
+  return age >= 0 ? age : null
+}
+
+function buildMemberMeta(person) {
+  const youthGroups = Array.isArray(person?._youth_groups)
+    ? person._youth_groups.map(value => toYouthGroupShortLabel(value))
+    : []
+
+  const ageGroups = Array.isArray(person?._age_groups)
+    ? person._age_groups.map(value => String(value ?? '').trim())
+    : []
+
+  const pairsCount = Math.max(youthGroups.length, ageGroups.length)
+  const youthWithAge = pairsCount
+    ? Array.from({ length: pairsCount }, (_, index) => {
+        const youth = youthGroups[index] || '—'
+        const ageGroup = ageGroups[index] || '—'
+        return `${youth} (${ageGroup})`
+      }).join('، ')
+    : '—'
+
+  const age = calcAgeFromBirthDate(person)
+  const ageLabel = age == null ? '—' : `${age} سنة`
+
+  return [youthWithAge, ageLabel].join(' · ')
 }
 
 const PERSON_SEARCH_CACHE = new WeakMap()
@@ -37,15 +183,17 @@ function getCachedSearchFields(p) {
   return computed
 }
 
-function nameMatches(parts, queryWords) {
-  if (!queryWords.length) return true
-  if (queryWords.every(qw => parts.some(p => p.includes(qw)))) return true
+function nameMatches(parts, queryWordGroups) {
+  if (!queryWordGroups.length) return true
+  const partMatches = (part, alternatives) => alternatives.some(alt => part.includes(alt))
+
+  if (queryWordGroups.every(group => parts.some(p => partMatches(p, group)))) return true
   let pi = 0, qi = 0
-  while (pi < parts.length && qi < queryWords.length) {
-    if (parts[pi].includes(queryWords[qi])) qi++
+  while (pi < parts.length && qi < queryWordGroups.length) {
+    if (partMatches(parts[pi], queryWordGroups[qi])) qi++
     pi++
   }
-  return qi === queryWords.length
+  return qi === queryWordGroups.length
 }
 
 // ── Column definitions ────────────────────────────────────────────────────────
@@ -83,15 +231,16 @@ function getValues(p, col) {
 }
 
 // ── Apply filters to a row set, optionally skipping one column key ────────────
-function applyFilters(rows, filterState, skipKey, q) {
+function applyFilters(rows, filterState, skipKey, q, nameAliasLookup) {
   let result = rows
 
   if (q?.trim()) {
     const normQ  = normalizeArabic(q)
     const qWords = normQ.split(/\s+/).filter(Boolean)
+    const qWordGroups = expandQueryWords(qWords, nameAliasLookup)
     result = result.filter(p => {
       const { nameParts, otherFields } = getCachedSearchFields(p)
-      if (nameMatches(nameParts, qWords)) return true
+      if (nameMatches(nameParts, qWordGroups)) return true
       return otherFields.some(f => f.includes(normQ))
     })
   }
@@ -304,7 +453,7 @@ function FilterBox({ label, allValues, selected, sort, onChange }) {
 // ── Avatar ────────────────────────────────────────────────────────────────────
 function Avatar({ name, photoUrl }) {
   const [imgError, setImgError] = useState(false)
-  const initials = name?.split(' ').filter(Boolean).map(w => w[0]).slice(0, 2).join('') || '؟'
+  const initials = firstNameInitial(name)
 
   if (photoUrl && !imgError) {
     return (
@@ -356,6 +505,55 @@ function ConfirmDialog({ open, title, message, confirmLabel, confirmClass, onCon
   )
 }
 
+// ── Archive Membership Dialog ───────────────────────────────────────────────
+function ArchiveMembershipDialog({ open, name, options, selectedId, onChange, onConfirm, onCancel }) {
+  if (!open) return null
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 9999,
+      background: 'rgba(15,39,68,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }} onClick={onCancel}>
+      <div style={{
+        background: 'white', borderRadius: 'var(--radius-lg)', padding: '24px 28px', maxWidth: 460, width: '92%',
+        boxShadow: 'var(--shadow-lg)', direction: 'rtl',
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontFamily: 'var(--font-head)', fontWeight: 700, fontSize: '1.08rem', color: 'var(--navy)', marginBottom: 8 }}>
+          اختيار مجموعة الأرشفة
+        </div>
+        <div style={{ fontSize: '0.9rem', color: 'var(--gray-600)', marginBottom: 14, lineHeight: 1.7 }}>
+          اختر مجموعة الشبيبة التي تريد أرشفة <strong>"{name}"</strong> ضمنها.
+        </div>
+
+        <div style={{ marginBottom: 18 }}>
+          <select
+            value={selectedId || ''}
+            onChange={e => onChange(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '10px 12px',
+              border: '1.5px solid var(--gray-200)',
+              borderRadius: 'var(--radius-md)',
+              fontFamily: 'var(--font-body)',
+              fontSize: '0.9rem',
+              background: 'white',
+            }}
+          >
+            <option value="">اختر مجموعة الشبيبة…</option>
+            {(options || []).map(opt => (
+              <option key={opt.id} value={opt.id}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button className="btn btn-ghost btn-sm" onClick={onCancel}>إلغاء</button>
+          <button className="btn btn-primary btn-sm" onClick={onConfirm} disabled={!selectedId}>أرشفة</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, toast }) {
   const [activeTab, setActiveTab]         = useState('registered')
@@ -364,6 +562,7 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
   const [loading, setLoading]             = useState(true)
   const [unregLoading, setUnregLoading]   = useState(true)
   const [confirm, setConfirm]             = useState(null) // { type, id, name, action }
+  const [archivePrompt, setArchivePrompt] = useState(null) // { type, id, name, options, selectedId }
 
   // Registered state
   const [q, setQ]                         = useState('')
@@ -378,7 +577,13 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
   const [showUFilters, setShowUFilters]   = useState(false)
   const [uFilterState, setUFilterState]   = useState({})
   const [uPage, setUPage]                 = useState(1)
+  const [archiveQ, setArchiveQ]           = useState('')
+  const deferredArchiveQ                   = useDeferredValue(archiveQ)
+  const [archiveGroup, setArchiveGroup]   = useState('all')
+  const [nameVariations, setNameVariations] = useState({})
   const PER_PAGE = 50
+
+  const nameAliasLookup = useMemo(() => buildNameAliasLookup(nameVariations), [nameVariations])
 
   useEffect(() => {
     let canceled = false
@@ -401,6 +606,15 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
       }
     })()
 
+    ;(async () => {
+      try {
+        const cfg = await api.getConfig()
+        if (!canceled) setNameVariations(normalizeNameVariations(cfg?.config?.name_variations || {}))
+      } catch {
+        if (!canceled) setNameVariations({})
+      }
+    })()
+
     return () => { canceled = true }
   }, [])
 
@@ -414,6 +628,82 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
     ...archivedUnreg.map(r => ({ ...r, _isReg: false })),
   ], [archivedPersons, archivedUnreg])
 
+  const toGroupLabel = (groupId) => {
+    const gid = String(groupId || '').trim()
+    if (!gid) return '—'
+    const short = toYouthGroupShortLabel(gid)
+    return short || api.formatYouthGroupLabel(gid) || gid
+  }
+
+  const getActiveMembershipChoices = (row) => {
+    const ids = Array.isArray(row?._youth_group_ids) ? row._youth_group_ids : []
+    const names = Array.isArray(row?._youth_groups) ? row._youth_groups : []
+    const ages = Array.isArray(row?._age_groups) ? row._age_groups : []
+
+    const choices = []
+    const seen = new Set()
+    for (let i = 0; i < ids.length; i += 1) {
+      const id = String(ids[i] || '').trim()
+      if (!id || seen.has(id)) continue
+      seen.add(id)
+      const groupLabel = names[i] ? toYouthGroupShortLabel(names[i]) || String(names[i]) : toGroupLabel(id)
+      const age = String(ages[i] || '').trim()
+      choices.push({ id, label: age ? `${groupLabel} (${age})` : groupLabel })
+    }
+    return choices
+  }
+
+  const getArchivedMembershipIds = (row) => {
+    if (Array.isArray(row?._archived_youth_group_ids) && row._archived_youth_group_ids.length > 0) {
+      return row._archived_youth_group_ids.map(v => String(v || '').trim()).filter(Boolean)
+    }
+    if (row?.archived && Array.isArray(row?._youth_group_ids) && row._youth_group_ids.length > 0) {
+      return row._youth_group_ids.map(v => String(v || '').trim()).filter(Boolean)
+    }
+    return []
+  }
+
+  const archiveGroupOptions = useMemo(() => {
+    const counts = new Map()
+    for (const row of archivedAll) {
+      const ids = getArchivedMembershipIds(row)
+      for (const id of ids) counts.set(id, (counts.get(id) || 0) + 1)
+    }
+    return [...counts.entries()]
+      .map(([id, count]) => ({ id, label: `${toGroupLabel(id)} (${count})` }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'ar'))
+  }, [archivedAll])
+
+  const visibleArchived = useMemo(() => {
+    const qText = normalizeArabic(deferredArchiveQ)
+    return archivedAll.filter(row => {
+      if (qText) {
+        const nameParts = getNameParts(row)
+        const words = qText.split(/\s+/).filter(Boolean)
+        if (!nameMatches(nameParts, expandQueryWords(words, nameAliasLookup))) return false
+      }
+      if (archiveGroup !== 'all') {
+        const ids = getArchivedMembershipIds(row)
+        if (!ids.includes(archiveGroup)) return false
+      }
+      return true
+    })
+  }, [archivedAll, deferredArchiveQ, archiveGroup])
+
+  const firstActiveMembershipGroup = (row) => {
+    if (Array.isArray(row?._youth_group_ids) && row._youth_group_ids.length > 0) {
+      return String(row._youth_group_ids[0] || '').trim() || null
+    }
+    return null
+  }
+
+  const firstArchivedMembershipGroup = (row) => {
+    if (Array.isArray(row?._archived_youth_group_ids) && row._archived_youth_group_ids.length > 0) {
+      return String(row._archived_youth_group_ids[0] || '').trim() || null
+    }
+    return null
+  }
+
   // ── Registered logic ──────────────────────────────────────────────────────
   const updateFilter = (key, selected, sort) => { setFilterState(f => ({ ...f, [key]: { selected, sort } })); setPage(1) }
   const clearAll = () => { setFilterState({}); setQ(''); setPage(1) }
@@ -421,7 +711,7 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
   const primarySortCol = COL_DEFS.find(c => filterState[c.key]?.sort)
 
   const visible = useMemo(() => {
-    let rows = applyFilters(activePersons, filterState, null, deferredQ)
+    let rows = applyFilters(activePersons, filterState, null, deferredQ, nameAliasLookup)
     if (primarySortCol) {
       const dir = filterState[primarySortCol.key].sort
       rows = [...rows].sort((a, b) => {
@@ -431,14 +721,14 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
       })
     }
     return rows
-  }, [activePersons, filterState, deferredQ, primarySortCol])
+  }, [activePersons, filterState, deferredQ, primarySortCol, nameAliasLookup])
 
   const cascadedOpts = useMemo(() => {
     if (!showFilters) return {}
     const result = {}
-    for (const col of COL_DEFS) result[col.key] = buildOpts(applyFilters(activePersons, filterState, col.key, deferredQ), col)
+    for (const col of COL_DEFS) result[col.key] = buildOpts(applyFilters(activePersons, filterState, col.key, deferredQ, nameAliasLookup), col)
     return result
-  }, [activePersons, filterState, deferredQ, showFilters])
+  }, [activePersons, filterState, deferredQ, showFilters, nameAliasLookup])
 
   const totalPages = Math.ceil(visible.length / PER_PAGE)
   const pageRows   = visible.slice((page - 1) * PER_PAGE, page * PER_PAGE)
@@ -450,7 +740,7 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
   const primaryUSortCol = UNREG_COL_DEFS.find(c => uFilterState[c.key]?.sort)
 
   const visibleUnreg = useMemo(() => {
-    let rows = applyUnregFilters(activeUnreg, uFilterState, null, deferredUq)
+    let rows = applyUnregFilters(activeUnreg, uFilterState, null, deferredUq, nameAliasLookup)
     if (primaryUSortCol) {
       const dir = uFilterState[primaryUSortCol.key].sort
       rows = [...rows].sort((a, b) => {
@@ -460,63 +750,110 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
       })
     }
     return rows
-  }, [activeUnreg, uFilterState, deferredUq, primaryUSortCol])
+  }, [activeUnreg, uFilterState, deferredUq, primaryUSortCol, nameAliasLookup])
 
   const uCascadedOpts = useMemo(() => {
     if (!showUFilters) return {}
     const result = {}
-    for (const col of UNREG_COL_DEFS) result[col.key] = buildUnregOpts(applyUnregFilters(activeUnreg, uFilterState, col.key, deferredUq), col)
+    for (const col of UNREG_COL_DEFS) result[col.key] = buildUnregOpts(applyUnregFilters(activeUnreg, uFilterState, col.key, deferredUq, nameAliasLookup), col)
     return result
-  }, [activeUnreg, uFilterState, deferredUq, showUFilters])
+  }, [activeUnreg, uFilterState, deferredUq, showUFilters, nameAliasLookup])
 
   const uTotalPages = Math.ceil(visibleUnreg.length / PER_PAGE)
   const uPageRows   = visibleUnreg.slice((uPage - 1) * PER_PAGE, uPage * PER_PAGE)
 
   const handleDeleteUnreg = async (e, r) => {
     e.stopPropagation()
-    const name = [r.first_name, r.second_name, r.third_name, r.last_name].filter(Boolean).join(' ') || 'هذا الشخص'
+    const name = getDisplayName(r) || 'هذا الشخص'
     setConfirm({ type: 'delete-unreg', id: r.person_id, name })
   }
 
   const handleDeletePerson = async (e, p) => {
     e.stopPropagation()
-    const name = [p.first_name, p.second_name, p.third_name, p.last_name].filter(Boolean).join(' ') || 'هذا العضو'
+    const name = getDisplayName(p) || 'هذا العضو'
     setConfirm({ type: 'delete-reg', id: p.person_id, name })
   }
 
   const handleArchivePerson = async (e, p) => {
     e.stopPropagation()
-    const name = [p.first_name, p.second_name, p.third_name, p.last_name].filter(Boolean).join(' ') || 'هذا العضو'
-    setConfirm({ type: 'archive-reg', id: p.person_id, name })
+    const options = getActiveMembershipChoices(p)
+    if (!options.length) {
+      toast?.('لا توجد عضوية شبيبة نشطة لأرشفتها', 'error')
+      return
+    }
+    const name = getDisplayName(p) || 'هذا العضو'
+    setArchivePrompt({ type: 'archive-reg', id: p.person_id, name, options, selectedId: options[0].id })
   }
 
   const handleUnarchivePerson = async (e, p) => {
     e.stopPropagation()
+    const youthGroupId = firstArchivedMembershipGroup(p)
+    if (!youthGroupId) {
+      toast?.('لا توجد عضوية مؤرشفة لاستعادتها', 'error')
+      return
+    }
     try {
-      await api.unarchivePerson(p.person_id)
-      setAllPersons(ps => ps.map(x => x.person_id === p.person_id ? { ...x, archived: false } : x))
+      await api.unarchivePerson(p.person_id, youthGroupId)
+      const refreshed = await api.personsEnriched()
+      setAllPersons(refreshed)
       toast?.('تم استعادة العضو', 'success')
     } catch { toast?.('خطأ في الاستعادة', 'error') }
   }
 
   const handleArchiveUnreg = async (e, r) => {
     e.stopPropagation()
-    const name = [r.first_name, r.second_name, r.third_name, r.last_name].filter(Boolean).join(' ') || 'هذا الشخص'
-    setConfirm({ type: 'archive-unreg', id: r.person_id, name })
+    const options = getActiveMembershipChoices(r)
+    if (!options.length) {
+      toast?.('لا توجد عضوية شبيبة نشطة لأرشفتها', 'error')
+      return
+    }
+    const name = getDisplayName(r) || 'هذا الشخص'
+    setArchivePrompt({ type: 'archive-unreg', id: r.person_id, name, options, selectedId: options[0].id })
+  }
+
+  const executeArchivePrompt = async () => {
+    if (!archivePrompt) return
+    const { type, id, selectedId } = archivePrompt
+    const youthGroupId = String(selectedId || '').trim()
+    if (!youthGroupId) {
+      toast?.('يرجى اختيار مجموعة الشبيبة', 'error')
+      return
+    }
+    try {
+      if (type === 'archive-reg') {
+        await api.archivePerson(id, youthGroupId)
+        const refreshed = await api.personsEnriched()
+        setAllPersons(refreshed)
+      } else if (type === 'archive-unreg') {
+        await api.archiveUnregistered(id, youthGroupId)
+        const refreshed = await api.getUnregistered()
+        setUnreg(refreshed)
+      }
+      toast?.('تمت الأرشفة', 'success')
+      setArchivePrompt(null)
+    } catch {
+      toast?.('حدث خطأ', 'error')
+    }
   }
 
   const handleUnarchiveUnreg = async (e, r) => {
     e.stopPropagation()
+    const youthGroupId = firstArchivedMembershipGroup(r)
+    if (!youthGroupId) {
+      toast?.('لا توجد عضوية مؤرشفة لاستعادتها', 'error')
+      return
+    }
     try {
-      await api.unarchiveUnregistered(r.person_id)
-      setUnreg(rs => rs.map(x => x.person_id === r.person_id ? { ...x, archived: false } : x))
+      await api.unarchiveUnregistered(r.person_id, youthGroupId)
+      const refreshed = await api.getUnregistered()
+      setUnreg(refreshed)
       toast?.('تم استعادة الشخص', 'success')
     } catch { toast?.('خطأ في الاستعادة', 'error') }
   }
 
   const executeConfirm = async () => {
     if (!confirm) return
-    const { type, id } = confirm
+    const { type, id, youthGroupId } = confirm
     try {
       if (type === 'delete-reg') {
         await api.deletePerson(id)
@@ -527,12 +864,14 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
         setUnreg(rs => rs.filter(r => r.person_id !== id))
         toast?.('تم الحذف', 'success')
       } else if (type === 'archive-reg') {
-        await api.archivePerson(id)
-        setAllPersons(ps => ps.map(p => p.person_id === id ? { ...p, archived: true } : p))
+        await api.archivePerson(id, youthGroupId)
+        const refreshed = await api.personsEnriched()
+        setAllPersons(refreshed)
         toast?.('تمت الأرشفة', 'success')
       } else if (type === 'archive-unreg') {
-        await api.archiveUnregistered(id)
-        setUnreg(rs => rs.map(r => r.person_id === id ? { ...r, archived: true } : r))
+        await api.archiveUnregistered(id, youthGroupId)
+        const refreshed = await api.getUnregistered()
+        setUnreg(refreshed)
         toast?.('تمت الأرشفة', 'success')
       }
     } catch { toast?.('حدث خطأ', 'error') }
@@ -562,6 +901,16 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
         confirmClass={confirm?.type?.startsWith('delete') ? 'btn-danger' : 'btn-primary'}
         onConfirm={executeConfirm}
         onCancel={() => setConfirm(null)}
+      />
+
+      <ArchiveMembershipDialog
+        open={!!archivePrompt}
+        name={archivePrompt?.name || ''}
+        options={archivePrompt?.options || []}
+        selectedId={archivePrompt?.selectedId || ''}
+        onChange={(value) => setArchivePrompt(prev => (prev ? { ...prev, selectedId: value } : prev))}
+        onConfirm={executeArchivePrompt}
+        onCancel={() => setArchivePrompt(null)}
       />
 
       {/* Tab switcher */}
@@ -634,13 +983,13 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
             {pageRows.length === 0 ? (
               <div className="empty-state"><Search size={48} /><p>لا توجد نتائج مطابقة</p></div>
             ) : pageRows.map(p => {
-              const name = [p.first_name, p.second_name, p.third_name, p.last_name].filter(Boolean).join(' ')
+              const name = getDisplayName(p)
               return (
                 <div key={p.person_id} className="member-row" onClick={() => onSelectPerson(p.person_id)}>
                   <Avatar name={name} photoUrl={p._photo} />
                   <div className="member-info">
                     <div className="member-name">{name}</div>
-                    <div className="member-meta">{[p.governorate, p.gender, p.birth_year].filter(Boolean).join(' · ')}</div>
+                    <div className="member-meta">{buildMemberMeta(p)}</div>
                   </div>
                   <div style={{ display: 'flex', gap: 4, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                     <button className="btn btn-ghost btn-sm" title="أرشفة" onClick={e => handleArchivePerson(e, p)}
@@ -714,13 +1063,13 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
             ) : uPageRows.length === 0 ? (
               <div className="empty-state"><Search size={48} /><p>لا توجد نتائج مطابقة</p></div>
             ) : uPageRows.map(r => {
-              const name = [r.first_name, r.second_name, r.third_name, r.last_name].filter(Boolean).join(' ')
+              const name = getDisplayName(r)
               return (
                 <div key={r.person_id} className="member-row" onClick={() => onSelectUnregistered?.(r.person_id)} style={{ cursor: 'pointer' }}>
                   <Avatar name={name} photoUrl={r._photo} />
                   <div className="member-info">
                     <div className="member-name">{name || 'بدون اسم'}</div>
-                    <div className="member-meta">{[r.governorate, r.gender, r.birth_year].filter(Boolean).join(' · ')}</div>
+                    <div className="member-meta">{buildMemberMeta(r)}</div>
                   </div>
                   <div style={{ display: 'flex', gap: 4, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                     <button className="btn btn-ghost btn-sm" title="أرشفة" onClick={e => handleArchiveUnreg(e, r)}
@@ -757,16 +1106,49 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
         <>
           <div style={{ fontSize: '0.83rem', color: 'var(--gray-500)', marginBottom: 10 }}>
             <Archive size={13} style={{ display: 'inline', marginLeft: 4, verticalAlign: 'middle' }} />
-            الأرشيف — <strong>{archivedAll.length.toLocaleString('ar-EG')}</strong> {archivedAll.length === 0 ? 'لا توجد سجلات مؤرشفة' : 'سجل مؤرشف'}
+            الأرشيف — <strong>{visibleArchived.length.toLocaleString('ar-EG')}</strong> من أصل {archivedAll.length.toLocaleString('ar-EG')}
           </div>
-          {archivedAll.length === 0 ? (
+
+          <div style={{ display: 'flex', gap: 10, marginBottom: 12, alignItems: 'center' }}>
+            <div className="search-bar" style={{ flex: 1 }}>
+              <Search size={17} className="search-icon" />
+              <input
+                placeholder="بحث في الأرشيف…"
+                value={archiveQ}
+                onChange={e => setArchiveQ(e.target.value)}
+              />
+              {archiveQ && <X size={15} style={{ color: 'var(--gray-400)', cursor: 'pointer', flexShrink: 0 }} onClick={() => setArchiveQ('')} />}
+            </div>
+            <select
+              value={archiveGroup}
+              onChange={e => setArchiveGroup(e.target.value)}
+              style={{
+                padding: '9px 12px',
+                border: '1.5px solid var(--gray-200)',
+                borderRadius: 8,
+                fontFamily: 'var(--font-body)',
+                fontSize: '0.88rem',
+                direction: 'rtl',
+                outline: 'none',
+                background: 'white',
+                minWidth: 170,
+              }}
+            >
+              <option value="all">كل مجموعات الشبيبة</option>
+              {archiveGroupOptions.map(opt => (
+                <option key={opt.id} value={opt.id}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {visibleArchived.length === 0 ? (
             <div className="card">
               <div className="empty-state"><Archive size={48} /><p>لا توجد سجلات مؤرشفة</p></div>
             </div>
           ) : (
             <div className="card" style={{ overflow: 'hidden' }}>
-              {archivedAll.map(r => {
-                const name = [r.first_name, r.second_name, r.third_name, r.last_name].filter(Boolean).join(' ')
+              {visibleArchived.map(r => {
+                const name = getDisplayName(r)
                 const isReg = r._isReg
                 return (
                   <div key={r.person_id} className="member-row"
@@ -776,7 +1158,7 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
                     <div className="member-info">
                       <div className="member-name">{name || 'بدون اسم'}</div>
                       <div className="member-meta">
-                        {[r.governorate, r.gender, r.birth_year].filter(Boolean).join(' · ')}
+                        {buildMemberMeta(r)}
                         <span style={{ marginRight: 8, background: 'var(--gray-200)', color: 'var(--gray-600)', borderRadius: 10, fontSize: '0.7rem', fontWeight: 700, padding: '1px 7px' }}>
                           {isReg ? 'مسجّل' : 'غير مسجّل'}
                         </span>

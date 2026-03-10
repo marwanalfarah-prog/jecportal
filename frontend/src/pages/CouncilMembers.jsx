@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { Search, Users, UserCheck, ArrowUpCircle, CheckCircle, XCircle, RefreshCw, Clock, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react'
+import { Search, Users, UserCheck, ArrowUpCircle, CheckCircle, XCircle, RefreshCw, Clock, ChevronLeft, ChevronRight, Trash2, Archive } from 'lucide-react'
 import { api } from '../api.js'
 
 // ── Arabic helpers ────────────────────────────────────────────────────────────
@@ -14,18 +14,94 @@ function normalizeArabic(t) {
   if (!t) return ''
   return String(t).replace(/\s+/g,' ').trim().split(' ').map(normalizeWord).join(' ')
 }
-function nameMatches(parts, qWords) {
-  if (!qWords.length) return true
-  if (qWords.every(qw => parts.some(p => p.includes(qw)))) return true
+
+function normalizeNameVariations(raw) {
+  const out = {}
+  if (!raw) return out
+
+  const entries = []
+  if (Array.isArray(raw)) {
+    for (const row of raw) {
+      if (!row || typeof row !== 'object') continue
+      entries.push([row.name, row.variations])
+    }
+  } else if (typeof raw === 'object') {
+    for (const [base, variations] of Object.entries(raw)) entries.push([base, variations])
+  }
+
+  for (const [baseRaw, variationsRaw] of entries) {
+    const base = normalizeArabic(baseRaw)
+    if (!base) continue
+    const source = Array.isArray(variationsRaw) ? variationsRaw : (typeof variationsRaw === 'string' ? [variationsRaw] : [])
+    const values = [...new Set(source.map(v => normalizeArabic(v)).filter(v => v && v !== base))]
+    out[base] = values
+  }
+
+  return out
+}
+
+function buildNameAliasLookup(variationMap) {
+  const map = new Map()
+  const ensure = (word) => {
+    if (!map.has(word)) map.set(word, new Set([word]))
+    return map.get(word)
+  }
+
+  for (const [base, vars] of Object.entries(variationMap || {})) {
+    if (!base) continue
+    const baseSet = ensure(base)
+    for (const v of vars || []) {
+      if (!v) continue
+      baseSet.add(v)
+      const vSet = ensure(v)
+      vSet.add(base)
+      for (const sibling of vars || []) {
+        if (sibling) vSet.add(sibling)
+      }
+    }
+  }
+  return map
+}
+
+function expandQueryWords(words, aliasLookup) {
+  return words.map((w) => {
+    const expanded = new Set([w])
+
+    const exact = aliasLookup.get(w)
+    if (exact && exact.size) {
+      exact.forEach(v => expanded.add(v))
+    }
+
+    for (const [key, values] of aliasLookup.entries()) {
+      if (!key || !values?.size) continue
+      if (key.includes(w) || w.includes(key)) {
+        values.forEach(v => expanded.add(v))
+      }
+    }
+
+    return [...expanded]
+  })
+}
+
+function nameMatches(parts, qWordGroups) {
+  if (!qWordGroups.length) return true
+  const partMatches = (part, alternatives) => alternatives.some(alt => part.includes(alt))
+
+  if (qWordGroups.every(group => parts.some(p => partMatches(p, group)))) return true
   let pi=0,qi=0
-  while(pi<parts.length&&qi<qWords.length){if(parts[pi].includes(qWords[qi]))qi++;pi++}
-  return qi===qWords.length
+  while(pi<parts.length&&qi<qWordGroups.length){if(partMatches(parts[pi],qWordGroups[qi]))qi++;pi++}
+  return qi===qWordGroups.length
 }
 function getNameParts(p) {
   return [p.first_name,p.second_name,p.third_name,p.last_name].filter(Boolean).map(normalizeArabic)
 }
 function fullName(p) {
   return [p.first_name,p.second_name,p.third_name,p.last_name].filter(Boolean).join(' ')
+}
+
+function firstNameInitial(value) {
+  const firstToken = String(value ?? '').trim().split(/\s+/).find(Boolean)
+  return firstToken?.[0] || '؟'
 }
 
 // ── Age group config ──────────────────────────────────────────────────────────
@@ -100,7 +176,7 @@ function StatusBadge({ status }) {
 function Avatar({ pid, isUnreg, name }) {
   const [err, setErr] = useState(false)
   const photo = isUnreg ? api.unregisteredPhotoUrl(pid) : api.photoUrl(pid)
-  const initials = (name || '').split(' ').filter(Boolean).map(w => w[0]).slice(0,2).join('')
+  const initials = firstNameInitial(name)
   return (
     <div style={{
       width: 32, height: 32, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
@@ -209,7 +285,7 @@ function AdultDataModal({ onConfirm, onCancel, youthGroup }) {
     const uni = university === 'أخرى' ? universityOther : university
     const allH = [...hobbies, ...(hobbiesOther.trim() ? [hobbiesOther.trim()] : [])]
     const responsibilities = (hasResp === 'حاليًّا' || hasResp === 'سابقًا')
-      ? [{ youth_group_name: youthGroup, responsibility: respText, time: hasResp }]
+      ? [{ youth_group_id: youthGroup, responsibility: respText, time: hasResp }]
       : []
 
     const extraData = {
@@ -392,6 +468,7 @@ export default function CouncilMembers({ councilAccess, currentUser, onSelectPer
   const [loading,      setLoading]    = useState(true)
   const [promoLoading, setPromoLoad]  = useState(false)
   const [scanning,     setScanning]   = useState(false)
+  const [groupLabels,  setGroupLabels]= useState({})
 
   // Members tab filters
   const [search,       setSearch]     = useState('')
@@ -400,20 +477,75 @@ export default function CouncilMembers({ councilAccess, currentUser, onSelectPer
 
   // Promotions tab filters
   const [promoFilter,  setPromoFilter]= useState('pending')   // pending|approved|rejected|all
+  const [nameVariations, setNameVariations] = useState({})
+
+  const nameAliasLookup = useMemo(() => buildNameAliasLookup(nameVariations), [nameVariations])
 
   const load = useCallback(() => {
     setLoading(true)
-    Promise.all([api.personsEnriched(), api.getUnregistered(), api.listPromotions()])
-      .then(([enriched, unreg, pd]) => {
+    Promise.all([api.personsEnriched(), api.getUnregistered(), api.listPromotions(), api.filters(), api.getConfig()])
+      .then(([enriched, unreg, pd, fd, cfg]) => {
         setEnriched(enriched)
         setUnreg(unreg)
         setPromotions(pd.promotions || [])
+        setNameVariations(normalizeNameVariations(cfg?.config?.name_variations || {}))
+        const labels = {}
+        ;(fd?.youth_group || []).forEach(g => {
+          if (g?.value) labels[g.value] = api.formatYouthGroupLabel(g.label || g.value)
+        })
+        setGroupLabels(labels)
         setLoading(false)
       })
       .catch(() => setLoading(false))
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  const groupNameById = useMemo(() => {
+    const map = { ...groupLabels }
+    Object.entries(councilAccess || {}).forEach(([gid, info]) => {
+      const label = String(info?.group_name || '').trim()
+      if (label) map[gid] = label
+    })
+    return map
+  }, [groupLabels, councilAccess])
+
+  const resolveGroupLabel = useCallback((groupRef) => {
+    const text = String(groupRef || '').trim()
+    if (!text) return '—'
+
+    const mapped = groupNameById[text]
+    if (mapped) return api.formatYouthGroupLabel(mapped)
+
+    // If it is already a readable name, keep it formatted; if it is a raw ID with no
+    // known mapping, avoid showing the raw technical identifier in UI.
+    if (/^YG\d{3,}$/i.test(text) || text === 'GS') return 'مجموعة غير معرّفة'
+    return api.formatYouthGroupLabel(text)
+  }, [groupNameById])
+
+  const scopedMemberships = useCallback((person) => {
+    const ids = Array.isArray(person?._youth_group_ids) ? person._youth_group_ids : []
+    const ages = Array.isArray(person?._age_groups) ? person._age_groups : []
+
+    const rows = []
+    for (let i = 0; i < ids.length; i += 1) {
+      const groupId = ids[i]
+      const info = councilAccess?.[groupId]
+      if (!info) continue
+
+      const age = ages[i] || null
+      const allowedAges = Array.isArray(info?.age_groups) ? info.age_groups : []
+      const allowed = info?.full_group || !age || allowedAges.includes(age)
+      if (!allowed) continue
+
+      rows.push({
+        groupId,
+        age,
+        groupLabel: resolveGroupLabel(groupId),
+      })
+    }
+    return rows
+  }, [councilAccess, resolveGroupLabel])
 
   const [adultDataModal, setAdultDataModal] = useState(null) // { promoId } | null
 
@@ -431,7 +563,7 @@ export default function CouncilMembers({ councilAccess, currentUser, onSelectPer
 
     const passes = (p) => {
       for (const [yg, info] of Object.entries(councilAccess)) {
-        if (!(p._youth_groups || []).includes(yg)) continue
+        if (!(p._youth_group_ids || []).includes(yg)) continue
         if (info.full_group) return true
         if ((p._age_groups || []).some(ag => (info.age_groups || []).includes(ag))) return true
       }
@@ -449,17 +581,20 @@ export default function CouncilMembers({ councilAccess, currentUser, onSelectPer
   // ── Filtered members list ─────────────────────────────────────────────────
   const filtered = useMemo(() => {
     const qWords = normalizeArabic(search).split(/\s+/).filter(Boolean)
+    const qWordGroups = expandQueryWords(qWords, nameAliasLookup)
     const ok = (p) => {
-      if (!nameMatches(getNameParts(p), qWords)) return false
-      if (filterGroup !== 'all' && !(p._youth_groups || []).includes(filterGroup)) return false
-      if (filterAge !== 'all' && !(p._age_groups || []).includes(filterAge)) return false
+      const scoped = scopedMemberships(p)
+      if (!scoped.length) return false
+      if (!nameMatches(getNameParts(p), qWordGroups)) return false
+      if (filterGroup !== 'all' && !scoped.some(m => m.groupId === filterGroup)) return false
+      if (filterAge !== 'all' && !scoped.some(m => m.age === filterAge)) return false
       return true
     }
     return [
-      ...accessibleReg.filter(ok).map(p => ({ ...p, _isUnreg: false })),
-      ...accessibleUnreg.filter(ok).map(p => ({ ...p, _isUnreg: true })),
+      ...accessibleReg.filter(ok).map(p => ({ ...p, _isUnreg: false, _scopedMemberships: scopedMemberships(p) })),
+      ...accessibleUnreg.filter(ok).map(p => ({ ...p, _isUnreg: true, _scopedMemberships: scopedMemberships(p) })),
     ]
-  }, [accessibleReg, accessibleUnreg, search, filterGroup, filterAge])
+  }, [accessibleReg, accessibleUnreg, search, filterGroup, filterAge, scopedMemberships, nameAliasLookup])
 
   // ── Filtered promotions ───────────────────────────────────────────────────
   const filteredPromos = useMemo(() => {
@@ -516,6 +651,32 @@ export default function CouncilMembers({ councilAccess, currentUser, onSelectPer
     } catch { toast('حدث خطأ', 'error') }
   }
 
+  const handleArchiveMember = async (e, row) => {
+    e.stopPropagation()
+
+    const targetMembership = (row?._scopedMemberships || [])[0] || null
+    const youthGroupId = String(targetMembership?.groupId || '').trim()
+    if (!youthGroupId) {
+      toast('لا توجد عضوية شبيبة نشطة لأرشفتها', 'error')
+      return
+    }
+
+    const name = fullName(row) || 'هذا العضو'
+    if (!confirm(`هل تريد أرشفة "${name}" ضمن مجموعة ${resolveGroupLabel(youthGroupId)}؟`)) return
+
+    try {
+      if (row?._isUnreg) {
+        await api.archiveUnregistered(row.person_id, youthGroupId)
+      } else {
+        await api.archivePerson(row.person_id, youthGroupId)
+      }
+      toast('تمت الأرشفة بنجاح', 'success')
+      load()
+    } catch {
+      toast('خطأ في الأرشفة', 'error')
+    }
+  }
+
   if (loading) return <div className="loading-center"><div className="spinner"/></div>
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -554,7 +715,7 @@ export default function CouncilMembers({ councilAccess, currentUser, onSelectPer
             flex: 2, minWidth: 200,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0f2744' }}>{yg}</div>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0f2744' }}>{resolveGroupLabel(info.group_name || yg)}</div>
               {info.full_group && (
                 <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '1px 8px', borderRadius: 20,
                   background: '#fffbeb', color: '#92400e', border: '1px solid #fde68a' }}>
@@ -592,7 +753,7 @@ export default function CouncilMembers({ councilAccess, currentUser, onSelectPer
               <select value={filterGroup} onChange={e => setFGroup(e.target.value)}
                 style={{ padding: '9px 12px', border: '1.5px solid #e2e6ef', borderRadius: 8, fontFamily: 'var(--font-body)', fontSize: '0.88rem', direction: 'rtl', outline: 'none', background: 'white' }}>
                 <option value="all">كل المجموعات</option>
-                {youthGroups.map(yg => <option key={yg} value={yg}>{yg}</option>)}
+                {youthGroups.map(yg => <option key={yg} value={yg}>{resolveGroupLabel(councilAccess[yg]?.group_name || yg)}</option>)}
               </select>
             )}
             <select value={filterAge} onChange={e => setFAge(e.target.value)}
@@ -623,7 +784,8 @@ export default function CouncilMembers({ councilAccess, currentUser, onSelectPer
                     const isUn  = p._isUnreg
                     const name  = fullName(p)
                     const by    = p.birth_year
-                    const curAgs = p._age_groups || []
+                    const curAgs = [...new Set((p._scopedMemberships || []).map(m => m.age).filter(Boolean))]
+                    const scopedGroups = [...new Set((p._scopedMemberships || []).map(m => m.groupLabel).filter(Boolean))]
                     // Highlight if any current age group is out of range
                     const outOfRange = curAgs.some(ag => {
                       const exp = expectedAgeGroup(by, ag)
@@ -658,13 +820,36 @@ export default function CouncilMembers({ councilAccess, currentUser, onSelectPer
                           </div>
                         </td>
                         <td style={{ padding: '10px 14px', color: '#6b778f', fontSize: '0.83rem' }}>
-                          {(p._youth_groups || []).join('، ') || '—'}
+                          {scopedGroups.join('، ') || '—'}
                         </td>
                         <td style={{ padding: '10px 14px', color: '#6b778f' }}>{p.governorate || '—'}</td>
                         <td style={{ padding: '10px 14px' }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 20, fontSize: '0.78rem', fontWeight: 600, background: '#eef4ff', color: '#0f2744', border: '1px solid #c5d8f8', cursor: 'pointer' }}>
-                            <UserCheck size={12}/> عرض الملف
-                          </span>
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'center', justifyContent: 'flex-start', flexWrap: 'wrap' }}>
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 12px', borderRadius: 20, fontSize: '0.78rem', fontWeight: 600, background: '#eef4ff', color: '#0f2744', border: '1px solid #c5d8f8', cursor: 'pointer' }}>
+                              <UserCheck size={12}/> عرض الملف
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => handleArchiveMember(e, p)}
+                              title="أرشفة"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 5,
+                                padding: '4px 10px',
+                                borderRadius: 20,
+                                fontSize: '0.76rem',
+                                fontWeight: 700,
+                                background: '#fff7ed',
+                                color: '#9a3412',
+                                border: '1px solid #fed7aa',
+                                cursor: 'pointer',
+                                fontFamily: 'var(--font-body)',
+                              }}
+                            >
+                              <Archive size={12} /> أرشفة
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     )
@@ -784,7 +969,7 @@ export default function CouncilMembers({ councilAccess, currentUser, onSelectPer
                     {/* Youth group */}
                     <div style={{ flex: '1 1 140px', fontSize: '0.8rem', color: '#6b778f' }}>
                       <div style={{ fontWeight: 700, color: '#4a5568', marginBottom: 2 }}>مجموعة الشبيبة</div>
-                      {pr.youth_group}
+                      {resolveGroupLabel(pr.youth_group)}
                     </div>
 
                     {/* Status */}

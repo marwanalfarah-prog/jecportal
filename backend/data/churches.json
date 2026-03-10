@@ -1,0 +1,616 @@
+{
+  "parishes": [
+    {
+      "id": "PA001",
+      "patron_saint": "قلب مريم الطاهر",
+      "area": "الفحيص",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/fuheis-parish-immaculate-heart-of-mary-church",
+      "facebook_url": "https://web.facebook.com/profile.php?id=100069302916014",
+      "instagram_url": "https://www.instagram.com/fuheis.latin.church/",
+      "region": "الوسط",
+      "governorate": "البلقاء"
+    },
+    {
+      "id": "PA002",
+      "patron_saint": "سلطانة السلام",
+      "area": "الزرقاء الجديدة",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/new-zarqa-parish-queen-of-peace-church",
+      "facebook_url": "https://web.facebook.com/SultanaOfPeace/?_rdc=1&_rdr#",
+      "instagram_url": "",
+      "region": "الوسط",
+      "governorate": "الزرقاء"
+    },
+    {
+      "id": "PA003",
+      "patron_saint": "القديس بيوس العاشر",
+      "area": "الزرقاء الجنوبي",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/zarqa-south-parish-saint-pius-x-church",
+      "facebook_url": "",
+      "instagram_url": "",
+      "region": "الوسط",
+      "governorate": "الزرقاء"
+    },
+    {
+      "id": "PA004",
+      "patron_saint": "القديس يوسف",
+      "area": "أدر",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/ader-parish-saint-joseph-and-elijah-church",
+      "facebook_url": "",
+      "instagram_url": "",
+      "region": "الجنوب",
+      "governorate": "الكرك"
+    },
+    {
+      "id": "PA005",
+      "patron_saint": "القديس جورج الشهيد",
+      "area": "إربد",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/irbid-parish-saint-george-the-martyr-church",
+      "facebook_url": "https://web.facebook.com/groups/5041778621?locale=ar_AR",
+      "instagram_url": "",
+      "region": "الشمال",
+      "governorate": "إربد"
+    },
+    {
+      "id": "PA006",
+      "patron_saint": "القديس بولس الرسول",
+      "area": "الجبيهة",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/jubeiha-parish-st-paul-the-apostle-church",
+      "facebook_url": "https://web.facebook.com/profile.php?id=100064557074906&locale=ar_AR",
+      "instagram_url": "",
+      "region": "الوسط",
+      "governorate": "عمان"
+    },
+    {
+      "id": "PA007",
+      "patron_saint": "الحبل بلا دنس",
+      "area": "الحصن",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/husn-parish-immaculate-conception-church",
+      "facebook_url": "https://web.facebook.com/profile.php?id=61584060346554",
+      "instagram_url": "https://www.instagram.com/latinhusn?igsh=b3VhdXBpOXhjZ3cz",
+      "region": "الشمال",
+      "governorate": "إربد"
+    },
+    {
+      "id": "PA008",
+      "patron_saint": "العائلة المقدسة",
+      "area": "الرصيفة",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/rusaifeh-parish-holy-family-church",
+      "facebook_url": "",
+      "instagram_url": "",
+      "region": "الوسط",
+      "governorate": "الزرقاء"
+    },
+    {
+      "id": "PA009",
+      "patron_saint": "ارتفاع الصليب المقدس",
+      "area": "الرميمين",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/rumeimin-parish-exaltation-of-the-holy-cross-church",
+      "facebook_url": "",
+      "instagram_url": "",
+      "region": "الوسط",
+      "governorate": "البلقاء"
+    },
+    {
+      "id": "PA010",
+      "patron_saint": "الرسل",
+      "area": "الزرقاء الشمالي",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/zarqa-north-parish-the-twelve-apostles-church",
+      "facebook_url": "https://web.facebook.com/groups/280084855831577?locale=ar_AR",
+      "instagram_url": "",
+      "region": "الوسط",
+      "governorate": "الزرقاء"
+    },
+    {
+      "id": "PA011",
+      "patron_saint": "انتقال السيدة",
+      "area": "السلط",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/salt-parish-assumption-of-our-lady-church",
+      "facebook_url": "https://web.facebook.com/p/%D9%83%D9%86%D9%8A%D8%B3%D8%A9-%D8%A7%D9%86%D8%AA%D9%82%D8%A7%D9%84-%D8%A7%D9%84%D8%B3%D9%8A%D8%AF%D8%A9-%D8%AF%D9%8A%D8%B1-%D8%A7%D9%84%D9%84%D8%A7%D8%AA%D9%8A%D9%86-%D8%A7%D9%84%D8%B3%D9%84%D8%B7-100088047443460/?utm_source=chatgpt.com&_rdc=1&_rdr#",
+      "instagram_url": "",
+      "region": "الوسط",
+      "governorate": "البلقاء"
+    },
+    {
+      "id": "PA012",
+      "patron_saint": "القديس ميخائيل",
+      "area": "السماكية",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/smakieh-parish-saint-michael-church",
+      "facebook_url": "https://www.facebook.com/profile.php?id=100064858173464#",
+      "instagram_url": "",
+      "region": "الجنوب",
+      "governorate": "الكرك"
+    },
+    {
+      "id": "PA013",
+      "patron_saint": "العذراء الناصرية",
+      "area": "الصويفية",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/sweifieh-parish-mary-of-nazareth-church",
+      "facebook_url": "https://web.facebook.com/p/StMary-Of-Nazareth-Church-%D9%83%D9%86%D9%8A%D8%B3%D8%A9-%D8%A7%D9%84%D8%B9%D8%B0%D8%B1%D8%A7%D8%A1-%D8%A7%D9%84%D9%86%D8%A7%D8%B5%D8%B1%D9%8A%D8%A9-%D8%A7%D9%84%D8%B5%D9%88%D9%8A%D9%81%D9%8A%D8%A9-100070483206798/?_rdc=1&_rdr#",
+      "instagram_url": "",
+      "region": "الوسط",
+      "governorate": "عمان"
+    },
+    {
+      "id": "PA014",
+      "patron_saint": "سيدة نجمة البحر",
+      "area": "العقبة",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/aqaba-parish-our-lady-stella-maris-church",
+      "facebook_url": "https://www.facebook.com/stella.maris.church.2025",
+      "instagram_url": "https://www.instagram.com/stella_maris_church/",
+      "region": "الجنوب",
+      "governorate": "العقبة"
+    },
+    {
+      "id": "PA015",
+      "patron_saint": "قلب يسوع الأقدس",
+      "area": "ناعور",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/naour-parish-sacred-heart-church",
+      "facebook_url": "",
+      "instagram_url": "",
+      "region": "الوسط",
+      "governorate": "عمان"
+    },
+    {
+      "id": "PA016",
+      "patron_saint": "سيدة الوردية",
+      "area": "الكرك",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/karak-parish-our-lady-of-the-rosary-church",
+      "facebook_url": "https://www.facebook.com/groups/491453657878179/",
+      "instagram_url": "",
+      "region": "الجنوب",
+      "governorate": "الكرك"
+    },
+    {
+      "id": "PA017",
+      "patron_saint": "يسوع الملك",
+      "area": "المصدار",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/al-misdar-parish-christ-the-king-church",
+      "facebook_url": "https://www.facebook.com/Christ.The.King.Church.Almisdar/",
+      "instagram_url": "https://www.instagram.com/christ.the.king.latin.church?igsh=aHhrazlwYjIwcDNn",
+      "region": "الوسط",
+      "governorate": "عمان"
+    },
+    {
+      "id": "PA018",
+      "patron_saint": "القديس يوسف",
+      "area": "المفرق",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/mafraq-parish-st-joseph-church",
+      "facebook_url": "https://web.facebook.com/groups/1565979983506573/?locale=ar_AR&utm_source=chatgpt.com&_rdc=1&_rdr#",
+      "instagram_url": "",
+      "region": "الشمال",
+      "governorate": "المفرق"
+    },
+    {
+      "id": "PA019",
+      "patron_saint": "مار إلياس",
+      "area": "الوهادنة",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/al-wahadneh-parish-saint-elijah-church",
+      "facebook_url": "https://web.facebook.com/profile.php?id=100066141056596",
+      "instagram_url": "https://www.instagram.com/latin.church.wahadneh/",
+      "region": "الشمال",
+      "governorate": "عجلون"
+    },
+    {
+      "id": "PA020",
+      "patron_saint": "قلب يسوع الأقدس",
+      "area": "تلاع العلي",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/tilalali-parish-sacred-heart-of-jesus-church",
+      "facebook_url": "https://www.facebook.com/photo/?fbid=1470230824405301&set=a.726728832088841&locale=ar_AR",
+      "instagram_url": "",
+      "region": "الوسط",
+      "governorate": "عمان"
+    },
+    {
+      "id": "PA021",
+      "patron_saint": "القديس يوحنا دي لا سال",
+      "area": "جبل الحسين",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/jabal-al-hussein-parish-st-john-de-la-salle-church",
+      "facebook_url": "",
+      "instagram_url": "",
+      "region": "الوسط",
+      "governorate": "عمان"
+    },
+    {
+      "id": "PA022",
+      "patron_saint": "سيدة البشارة",
+      "area": "اللويبدة",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/jabal-al-weibdeh-parish-annunciation-church",
+      "facebook_url": "https://www.facebook.com/profile.php?id=100064853761103",
+      "instagram_url": "",
+      "region": "الوسط",
+      "governorate": "عمان"
+    },
+    {
+      "id": "PA023",
+      "patron_saint": "سيدة الكرمل",
+      "area": "الهاشمي الشمالي",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/jabal-al-hashimi-parish-our-lady-of-carmel-church",
+      "facebook_url": "",
+      "instagram_url": "",
+      "region": "الوسط",
+      "governorate": "عمان"
+    },
+    {
+      "id": "PA024",
+      "patron_saint": "القديس يوسف",
+      "area": "جبل عمان",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/jabal-amman-parish-saint-joseph-church",
+      "facebook_url": "https://web.facebook.com/profile.php?id=61574751114403",
+      "instagram_url": "https://www.instagram.com/st_joseph_church_jabal_amman/",
+      "region": "الوسط",
+      "governorate": "عمان"
+    },
+    {
+      "id": "PA025",
+      "patron_saint": "سيدة البشارة",
+      "area": "شطنا",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/shatana-parish-assumption-of-our-lady-church",
+      "facebook_url": "https://web.facebook.com/LatinShatana/?_rdc=1&_rdr#",
+      "instagram_url": "",
+      "region": "الشمال",
+      "governorate": "إربد"
+    },
+    {
+      "id": "PA026",
+      "patron_saint": "القديسة تريزا الطفل يسوع",
+      "area": "صافوط",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/safout-parish-saint-theresa-of-the-child-jesus-church",
+      "facebook_url": "",
+      "instagram_url": "",
+      "region": "الوسط",
+      "governorate": "البلقاء"
+    },
+    {
+      "id": "PA027",
+      "patron_saint": "القديس بولس الرسول",
+      "area": "عجلون",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/ajloun-parish-saint-paul-church",
+      "facebook_url": "https://web.facebook.com/saintpaullatinchurch",
+      "instagram_url": "",
+      "region": "الشمال",
+      "governorate": "عجلون"
+    },
+    {
+      "id": "PA028",
+      "patron_saint": "سيدة الجبل",
+      "area": "عنجرة",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/anjara-parish-our-lady-of-the-visitation-church",
+      "facebook_url": "https://web.facebook.com/anjaralatinchurch/?_rdc=1&_rdr#",
+      "instagram_url": "https://www.instagram.com/anjarachurch?igsh=b2lubXdyYmt3cjBo",
+      "region": "الشمال",
+      "governorate": "عجلون"
+    },
+    {
+      "id": "PA029",
+      "patron_saint": "قطع رأس يوحنا المعمدان",
+      "area": "مادبا",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/madaba-parish-beheading-of-saint-john-the-baptist-church",
+      "facebook_url": "https://www.facebook.com/profile.php?id=100064705687473#",
+      "instagram_url": "https://www.instagram.com/johnthebaptistchurchmadaba?igsh=M29ybnIwNXdxbTU1",
+      "region": "الوسط",
+      "governorate": "مادبا"
+    },
+    {
+      "id": "PA030",
+      "patron_saint": "العذراء أم الكنيسة",
+      "area": "ماركا",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/marka-parish-mary-mother-of-the-church",
+      "facebook_url": "https://web.facebook.com/groups/564224736942720",
+      "instagram_url": "",
+      "region": "الوسط",
+      "governorate": "عمان"
+    },
+    {
+      "id": "PA031",
+      "patron_saint": "القديس يعقوب الصغير",
+      "area": "ماعين",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/main-parish-saint-james-the-less-church",
+      "facebook_url": "",
+      "instagram_url": "",
+      "region": "الوسط",
+      "governorate": "مادبا"
+    },
+    {
+      "id": "PA032",
+      "patron_saint": "شهداء الاردن",
+      "area": "مرج الحمام",
+      "lpj_url": "https://www.lpj.org/ar/the-patriarchate/diocese/parishes/jordan/marj-al-hamam-parish-martyrs-of-jordan-church",
+      "facebook_url": "https://www.facebook.com/p/%D9%83%D9%86%D9%8A%D8%B3%D8%A9-%D8%B4%D9%87%D8%AF%D8%A7%D8%A1-%D8%A7%D9%84%D8%A7%D8%B1%D8%AF%D9%86-%D9%85%D8%B1%D8%AC-%D8%A7%D9%84%D8%AD%D9%85%D8%A7%D9%85-100072214111222/?locale=ar_AR&utm_source=chatgpt.com",
+      "instagram_url": "",
+      "region": "الوسط",
+      "governorate": "عمان"
+    },
+    {
+      "id": "PA033",
+      "patron_saint": "الراعي الصالح",
+      "area": "طريق المطار",
+      "lpj_url": "",
+      "facebook_url": "https://web.facebook.com/profile.php?id=100079896781479",
+      "instagram_url": "",
+      "region": "الوسط",
+      "governorate": "عمان"
+    }
+  ],
+  "churches": [
+    {
+      "id": "CH001",
+      "parish_id": "PA001",
+      "patron_saint": "قلب مريم الطاهر",
+      "area": "الفحيص / البلد",
+      "lat": 32.010871256946025,
+      "lng": 35.766984906175104
+    },
+    {
+      "id": "CH002",
+      "parish_id": "PA002",
+      "patron_saint": "سلطانة السلام",
+      "area": "الزرقاء الجديدة",
+      "lat": 32.10143398023146,
+      "lng": 36.10339187665955
+    },
+    {
+      "id": "CH003",
+      "parish_id": "PA003",
+      "patron_saint": "القديس بيوس العاشر",
+      "area": "الزرقاء الجنوبي",
+      "lat": 32.058743863199496,
+      "lng": 36.08819221483177
+    },
+    {
+      "id": "CH004",
+      "parish_id": "PA004",
+      "patron_saint": "القديس يوسف",
+      "area": "أدر",
+      "lat": 31.206293839912018,
+      "lng": 35.76000265932715
+    },
+    {
+      "id": "CH005",
+      "parish_id": "PA005",
+      "patron_saint": "القديس جورج الشهيد",
+      "area": "إربد",
+      "lat": 32.558738764041784,
+      "lng": 35.84220349993429
+    },
+    {
+      "id": "CH006",
+      "parish_id": "PA006",
+      "patron_saint": "القديس بولس الرسول",
+      "area": "الجبيهة",
+      "lat": 32.03312930328362,
+      "lng": 35.89747250999091
+    },
+    {
+      "id": "CH007",
+      "parish_id": "PA007",
+      "patron_saint": "الحبل بلا دنس",
+      "area": "الحصن",
+      "lat": 32.48616527383257,
+      "lng": 35.88223109281459
+    },
+    {
+      "id": "CH008",
+      "parish_id": "PA008",
+      "patron_saint": "العائلة المقدسة",
+      "area": "الرصيفة",
+      "lat": 32.017233417786,
+      "lng": 36.04078829339831
+    },
+    {
+      "id": "CH009",
+      "parish_id": "PA009",
+      "patron_saint": "ارتفاع الصليب المقدس",
+      "area": "الرميمين",
+      "lat": 32.10336996395997,
+      "lng": 35.79882139484458
+    },
+    {
+      "id": "CH010",
+      "parish_id": "PA010",
+      "patron_saint": "الرسل",
+      "area": "الزرقاء الشمالي",
+      "lat": 32.06783242979883,
+      "lng": 36.090872292902326
+    },
+    {
+      "id": "CH011",
+      "parish_id": "PA011",
+      "patron_saint": "انتقال السيدة",
+      "area": "السلط",
+      "lat": 32.039116662488986,
+      "lng": 35.726839083394744
+    },
+    {
+      "id": "CH012",
+      "parish_id": "PA012",
+      "patron_saint": "القديس ميخائيل",
+      "area": "السماكية",
+      "lat": 31.306676141610684,
+      "lng": 35.80163772530699
+    },
+    {
+      "id": "CH013",
+      "parish_id": "PA013",
+      "patron_saint": "العذراء الناصرية",
+      "area": "الصويفية",
+      "lat": 31.951892244343824,
+      "lng": 35.87053539649511
+    },
+    {
+      "id": "CH014",
+      "parish_id": "PA014",
+      "patron_saint": "سيدة نجمة البحر",
+      "area": "العقبة",
+      "lat": 29.53613807139276,
+      "lng": 35.01486239355136
+    },
+    {
+      "id": "CH015",
+      "parish_id": "PA001",
+      "patron_saint": "أم النعم",
+      "area": "الفحيص / العلالي",
+      "lat": 32.00380802947289,
+      "lng": 35.780611718235875
+    },
+    {
+      "id": "CH016",
+      "parish_id": "PA016",
+      "patron_saint": "سيدة الوردية",
+      "area": "الكرك",
+      "lat": 31.185356922705378,
+      "lng": 35.70674062530245
+    },
+    {
+      "id": "CH017",
+      "parish_id": "PA017",
+      "patron_saint": "يسوع الملك",
+      "area": "المصدار",
+      "lat": 31.944147897628415,
+      "lng": 35.92897823697295
+    },
+    {
+      "id": "CH018",
+      "parish_id": "PA018",
+      "patron_saint": "القديس يوسف",
+      "area": "المفرق",
+      "lat": 32.341330429329176,
+      "lng": 36.210435909995695
+    },
+    {
+      "id": "CH019",
+      "parish_id": "PA019",
+      "patron_saint": "مار إلياس",
+      "area": "الوهادنة",
+      "lat": 32.32481965967352,
+      "lng": 35.64302154540552
+    },
+    {
+      "id": "CH020",
+      "parish_id": "PA020",
+      "patron_saint": "قلب يسوع الأقدس",
+      "area": "تلاع العلي",
+      "lat": 31.988791196643927,
+      "lng": 35.8601688882733
+    },
+    {
+      "id": "CH021",
+      "parish_id": "PA021",
+      "patron_saint": "القديس يوحنا دي لا سال",
+      "area": "جبل الحسين",
+      "lat": 31.96566116378512,
+      "lng": 35.915387147789396
+    },
+    {
+      "id": "CH022",
+      "parish_id": "PA022",
+      "patron_saint": "سيدة البشارة",
+      "area": "اللويبدة",
+      "lat": 31.955532796744663,
+      "lng": 35.924496382402424
+    },
+    {
+      "id": "CH023",
+      "parish_id": "PA023",
+      "patron_saint": "سيدة الكرمل",
+      "area": "الهاشمي الشمالي",
+      "lat": 31.97047639506069,
+      "lng": 35.96031770813825
+    },
+    {
+      "id": "CH024",
+      "parish_id": "PA024",
+      "patron_saint": "القديس يوسف",
+      "area": "جبل عمان",
+      "lat": 31.94908200140217,
+      "lng": 35.923723890113614
+    },
+    {
+      "id": "CH025",
+      "parish_id": "PA025",
+      "patron_saint": "سيدة البشارة",
+      "area": "شطنا",
+      "lat": 32.43593315878817,
+      "lng": 35.86484553517744
+    },
+    {
+      "id": "CH026",
+      "parish_id": "PA026",
+      "patron_saint": "القديسة تريزا الطفل يسوع",
+      "area": "صافوط",
+      "lat": 32.038354369379874,
+      "lng": 35.83183553512605
+    },
+    {
+      "id": "CH027",
+      "parish_id": "PA027",
+      "patron_saint": "القديس بولس الرسول",
+      "area": "عجلون",
+      "lat": 32.33564023471019,
+      "lng": 35.749829945954076
+    },
+    {
+      "id": "CH028",
+      "parish_id": "PA028",
+      "patron_saint": "سيدة الجبل",
+      "area": "عنجرة",
+      "lat": 32.30838355819757,
+      "lng": 35.74952373456626
+    },
+    {
+      "id": "CH029",
+      "parish_id": "PA029",
+      "patron_saint": "قطع رأس يوحنا المعمدان",
+      "area": "مادبا",
+      "lat": 31.714850329025968,
+      "lng": 35.79341339648622
+    },
+    {
+      "id": "CH030",
+      "parish_id": "PA029",
+      "patron_saint": "الروح القدس",
+      "area": "حنينا",
+      "lat": 31.733388723167216,
+      "lng": 35.797465256008884
+    },
+    {
+      "id": "CH031",
+      "parish_id": "PA031",
+      "patron_saint": "القديس يعقوب الصغير",
+      "area": "ماعين",
+      "lat": 31.680636187641973,
+      "lng": 35.73270229648503
+    },
+    {
+      "id": "CH032",
+      "parish_id": "PA032",
+      "patron_saint": "شهداء الاردن",
+      "area": "مرج الحمام",
+      "lat": 31.897293443579503,
+      "lng": 35.86389143242901
+    },
+    {
+      "id": "CH033",
+      "parish_id": "PA030",
+      "patron_saint": "العذراء أم الكنيسة",
+      "area": "ماركا",
+      "lat": 31.979241388043548,
+      "lng": 35.986591469510856
+    },
+    {
+      "id": "CH034",
+      "parish_id": "PA015",
+      "patron_saint": "قلب يسوع الأقدس",
+      "area": "ناعور",
+      "lat": 31.881542839026423,
+      "lng": 35.82600969834278
+    },
+    {
+      "id": "CH035",
+      "parish_id": "PA033",
+      "patron_saint": "الراعي الصالح",
+      "area": "طريق المطار",
+      "lat": 31.86591238244409,
+      "lng": 35.86558352717806
+    }
+  ]
+}

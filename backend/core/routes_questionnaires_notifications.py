@@ -19,7 +19,34 @@ notif_lock = threading.Lock()
 
 
 def _load_questionnaires() -> dict:
-    return S.db.load_questionnaires()
+    data = S.db.load_questionnaires()
+    changed = False
+    for q in data.get("questionnaires", []):
+        group_list = q.get("target_youth_groups") or []
+        new_ids = []
+        for g in group_list:
+            gid = S.youth_group_id(g, create=True)
+            if gid:
+                new_ids.append(gid)
+        if new_ids != group_list:
+            q["target_youth_groups"] = new_ids
+            changed = True
+
+        single = q.get("target_youth_group")
+        if single is not None:
+            single_id = S.youth_group_id(single, create=True)
+            if single_id != single:
+                q["target_youth_group"] = single_id
+                changed = True
+
+        names = [S.youth_group_name(gid) or gid for gid in (q.get("target_youth_groups") or [])]
+        if q.get("target_youth_group_names") != names:
+            q["target_youth_group_names"] = names
+            changed = True
+
+    if changed:
+        _save_questionnaires(data)
+    return data
 
 
 def _save_questionnaires(data: dict):
@@ -160,12 +187,12 @@ def _person_has_questionnaire_access(u: dict) -> bool:
             for (yg, role) in roles:
                 tg_list = q.get('target_youth_groups') or []
                 tg_single = q.get('target_youth_group')
-                yg_safe = _safe_yg(yg)
+                yg_id = S.youth_group_id(yg)
                 if tg_list:
-                    if not any(_safe_yg(tg) == yg_safe for tg in tg_list):
+                    if yg_id not in tg_list:
                         continue
                 elif tg_single:
-                    if _safe_yg(tg_single) != yg_safe:
+                    if tg_single != yg_id:
                         continue
                 if _role_matches_questionnaire(role, q):
                     return True
@@ -246,12 +273,12 @@ def _person_has_questionnaire_for_q(u: dict, q: dict) -> bool:
         for (yg, role) in roles:
             tg_list = q.get('target_youth_groups') or []
             tg_single = q.get('target_youth_group')
-            yg_safe = _safe_yg(yg)
+            yg_id = S.youth_group_id(yg)
             if tg_list:
-                if not any(_safe_yg(tg) == yg_safe for tg in tg_list):
+                if yg_id not in tg_list:
                     continue
             elif tg_single:
-                if _safe_yg(tg_single) != yg_safe:
+                if tg_single != yg_id:
                     continue
             if _role_matches_questionnaire(role, q):
                 return True
@@ -391,12 +418,12 @@ def register_questionnaires_notifications_routes(app):
                 for (yg, role) in roles:
                     tg_list = q.get('target_youth_groups') or []
                     tg_single = q.get('target_youth_group')
-                    yg_safe = _safe_yg(yg)
+                    yg_id = S.youth_group_id(yg)
                     if tg_list:
-                        if not any(_safe_yg(tg) == yg_safe for tg in tg_list):
+                        if yg_id not in tg_list:
                             continue
                     elif tg_single:
-                        if _safe_yg(tg_single) != yg_safe:
+                        if tg_single != yg_id:
                             continue
                     if _role_matches_questionnaire(role, q):
                         applicable.append(q)
@@ -423,6 +450,9 @@ def register_questionnaires_notifications_routes(app):
             return err
         u = _current_user()
         body = request.json or {}
+        target_group_ids = [S.youth_group_id(g, create=True) or g for g in (body.get("target_youth_groups", []) or [])]
+        target_group_ids = [g for g in target_group_ids if g]
+        target_group_single = S.youth_group_id(body.get("target_youth_group"), create=True) if body.get("target_youth_group") else None
 
         new_q = {
             "id": _q_id(),
@@ -437,8 +467,9 @@ def register_questionnaires_notifications_routes(app):
             "role_groups": body.get("role_groups"),
             "role_member_type": body.get("role_member_type"),
             "role_committees": body.get("role_committees"),
-            "target_youth_group": body.get("target_youth_group"),
-            "target_youth_groups": body.get("target_youth_groups", []),
+            "target_youth_group": target_group_single,
+            "target_youth_groups": target_group_ids,
+            "target_youth_group_names": [S.youth_group_name(gid) or gid for gid in target_group_ids],
             "role_is_acting": body.get("role_is_acting", False),
             "role": body.get("role"),
             "target_person_id": body.get("target_person_id"),
@@ -471,6 +502,9 @@ def register_questionnaires_notifications_routes(app):
             for field in ["title", "description", "active", "target_type", "role_tab", "role_groups", "role_member_type", "role_committees", "role_is_acting", "target_youth_group", "target_youth_groups", "role", "target_person_id", "target_person_type", "target_person_name", "questions"]:
                 if field in body:
                     q[field] = body[field]
+            q["target_youth_groups"] = [S.youth_group_id(g, create=True) or g for g in (q.get("target_youth_groups") or []) if (S.youth_group_id(g, create=True) or g)]
+            q["target_youth_group"] = S.youth_group_id(q.get("target_youth_group"), create=True) if q.get("target_youth_group") else None
+            q["target_youth_group_names"] = [S.youth_group_name(gid) or gid for gid in (q.get("target_youth_groups") or [])]
             q["updated_at"] = _now_str()
             _save_questionnaires(data)
 
@@ -625,6 +659,45 @@ def register_questionnaires_notifications_routes(app):
             if not n:
                 return jsonify({"error": "not found"}), 404
             n['read'] = True
+            _save_notifications(notifs)
+
+        return jsonify({"ok": True})
+
+    @app.patch("/api/notifications/<nid>/unread")
+    def mark_notification_unread(nid):
+        u = _current_user()
+        if not u:
+            return jsonify({"error": "unauthorized"}), 401
+
+        with notif_lock:
+            notifs = _load_notifications()
+            n = next((
+                x for x in notifs['notifications']
+                if x['id'] == nid and _notification_belongs_to_user(x, u)
+            ), None)
+            if not n:
+                return jsonify({"error": "not found"}), 404
+            n['read'] = False
+            _save_notifications(notifs)
+
+        return jsonify({"ok": True})
+
+    @app.delete("/api/notifications/<nid>")
+    def delete_notification(nid):
+        u = _current_user()
+        if not u:
+            return jsonify({"error": "unauthorized"}), 401
+
+        with notif_lock:
+            notifs = _load_notifications()
+            idx = next((
+                i for i, x in enumerate(notifs['notifications'])
+                if x['id'] == nid and _notification_belongs_to_user(x, u)
+            ), None)
+            if idx is None:
+                return jsonify({"error": "not found"}), 404
+
+            notifs['notifications'].pop(idx)
             _save_notifications(notifs)
 
         return jsonify({"ok": True})

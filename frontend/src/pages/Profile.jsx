@@ -6,6 +6,11 @@ import {
 } from 'lucide-react'
 import { api } from '../api.js'
 
+function firstNameInitial(value) {
+  const firstToken = String(value ?? '').trim().split(/\s+/).find(Boolean)
+  return firstToken?.[0] || '؟'
+}
+
 // ── Combo dropdown (searchable + free-text "other") ──────────────────────────
 // options: [{ value, count }] sorted by count desc
 function ComboDropdown({ value, onChange, options, placeholder = '—' }) {
@@ -21,8 +26,9 @@ function ComboDropdown({ value, onChange, options, placeholder = '—' }) {
     return () => document.removeEventListener('mousedown', h)
   }, [])
 
+  const getLabel = (o) => (o?.label || o?.value)
   const filtered = options.filter(o =>
-    o.value && o.value.toString().toLowerCase().includes(query.toLowerCase())
+    getLabel(o) && getLabel(o).toString().toLowerCase().includes(query.toLowerCase())
   )
 
   const pick = (v) => { onChange(v); setOpen(false); setQuery(''); setCustom(false) }
@@ -70,7 +76,7 @@ function ComboDropdown({ value, onChange, options, placeholder = '—' }) {
             {filtered.map(o => (
               <button type="button" key={o.value} className={`combo-item${value === o.value ? ' selected' : ''}`}
                 onClick={() => pick(o.value)}>
-                {o.value}
+                {getLabel(o)}
               </button>
             ))}
             <button type="button" className="combo-item combo-other"
@@ -95,7 +101,7 @@ function SelectDropdown({ value, onChange, options, placeholder = '—' }) {
     >
       <option value="">{placeholder}</option>
       {options.map(o => (
-        <option key={o.value || o} value={o.value || o}>{o.value || o}</option>
+        <option key={o.value || o} value={o.value || o}>{o.label || o.value || o}</option>
       ))}
     </select>
   )
@@ -106,10 +112,11 @@ function YearPicker({ value, onChange, fromYear = 1960 }) {
   const currentYear = new Date().getFullYear()
   const years = []
   for (let y = currentYear; y >= fromYear; y--) years.push(y)
+  const normalizedValue = value === null || value === undefined || value === '' ? '' : String(value)
   return (
     <select
       className="combo-trigger"
-      value={value || ''}
+      value={normalizedValue}
       onChange={e => onChange(e.target.value)}
       style={{ cursor: 'pointer' }}
     >
@@ -136,22 +143,15 @@ const MONTHS = [
   { en: 'Dec', ar: 'كانون الأول',  num: 12 },
 ]
 
-function parseBirthDate(str) {
-  // Handles multiple formats that may come from the API / Excel:
-  //   "Jun 15"          → stored format (ideal)
-  //   "2000-06-15"      → ISO date (pandas may auto-parse)
-  //   "2000-06-15T00:00:00" → ISO datetime
-  //   "15-Jun"          → reversed
+function parseLegacyBirthDate(str) {
   if (!str) return { month: '', day: '' }
   const s = String(str).trim()
 
-  // ISO date: "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM:SS"
   const isoMatch = s.match(/^\d{4}-(\d{1,2})-(\d{1,2})/)
   if (isoMatch) {
     return { month: String(parseInt(isoMatch[1], 10)), day: String(parseInt(isoMatch[2], 10)) }
   }
 
-  // "Jun 15" or "Jun 15 2000"
   const parts = s.split(/\s+/)
   if (parts.length >= 2) {
     const mIdx = MONTHS.findIndex(m => m.en.toLowerCase() === parts[0].toLowerCase())
@@ -159,7 +159,6 @@ function parseBirthDate(str) {
       const d = parseInt(parts[1], 10)
       if (d > 0) return { month: String(mIdx + 1), day: String(d) }
     }
-    // "15-Jun" reversed
     const mIdx2 = MONTHS.findIndex(m => m.en.toLowerCase() === parts[1].toLowerCase())
     if (mIdx2 >= 0) {
       const d = parseInt(parts[0], 10)
@@ -167,7 +166,6 @@ function parseBirthDate(str) {
     }
   }
 
-  // "15-Jun" with hyphen
   const hyphenMatch = s.match(/^(\d{1,2})-([A-Za-z]+)$/)
   if (hyphenMatch) {
     const mIdx = MONTHS.findIndex(m => m.en.toLowerCase() === hyphenMatch[2].toLowerCase())
@@ -177,49 +175,50 @@ function parseBirthDate(str) {
   return { month: '', day: '' }
 }
 
-function formatBirthDate(month, day) {
-  if (!month || !day) return ''
-  const mIdx = parseInt(month, 10) - 1
-  if (mIdx < 0 || mIdx > 11) return ''
-  return `${MONTHS[mIdx].en} ${day}`
+function toDatePart(v, min, max) {
+  if (v === null || v === undefined || v === '') return ''
+  const n = parseInt(v, 10)
+  if (Number.isNaN(n) || n < min || n > max) return ''
+  return String(n)
 }
 
-function BirthDatePicker({ value, onChange }) {
-  const parsed = parseBirthDate(value)
-  const [month, setMonth] = useState(parsed.month)
-  const [day,   setDay]   = useState(parsed.day)
+function BirthDatePicker({ day, month, legacyValue, onChange }) {
+  const [monthState, setMonthState] = useState('')
+  const [dayState, setDayState] = useState('')
 
-  // Sync when value arrives after async data load
   useEffect(() => {
-    const p = parseBirthDate(value)
-    setMonth(p.month)
-    setDay(p.day)
-  }, [value])
+    const normalizedDay = toDatePart(day, 1, 31)
+    const normalizedMonth = toDatePart(month, 1, 12)
+    if (normalizedDay || normalizedMonth) {
+      setDayState(normalizedDay)
+      setMonthState(normalizedMonth)
+      return
+    }
+    const legacy = parseLegacyBirthDate(legacyValue)
+    setDayState(legacy.day)
+    setMonthState(legacy.month)
+  }, [day, month, legacyValue])
 
-  const handleChange = (m, d) => {
-    setMonth(m); setDay(d)
-    onChange(formatBirthDate(m, d))
+  const emit = (nextDay, nextMonth) => {
+    setDayState(nextDay)
+    setMonthState(nextMonth)
+    onChange(nextDay, nextMonth)
   }
 
-  const daysInMonth = month ? new Date(2000, parseInt(month, 10), 0).getDate() : 31
+  const daysInMonth = monthState ? new Date(2000, parseInt(monthState, 10), 0).getDate() : 31
   const days = Array.from({ length: daysInMonth }, (_, i) => i + 1)
-
-  // Display label for current value
-  const monthLabel = month
-    ? (() => { const m = MONTHS[parseInt(month,10)-1]; return m ? `${m.ar} - ${m.num}` : '' })()
-    : ''
 
   return (
     <div style={{ display: 'flex', gap: 6 }}>
       <select className="combo-trigger" style={{ flex: '1', cursor: 'pointer' }}
-        value={month} onChange={e => handleChange(e.target.value, day)}>
+        value={monthState} onChange={e => emit(dayState, e.target.value)}>
         <option value="">الشهر</option>
         {MONTHS.map(m => (
           <option key={m.num} value={String(m.num)}>{m.ar} - {m.num}</option>
         ))}
       </select>
       <select className="combo-trigger" style={{ flex: '0 0 80px', cursor: 'pointer' }}
-        value={day} onChange={e => handleChange(month, e.target.value)}>
+        value={dayState} onChange={e => emit(e.target.value, monthState)}>
         <option value="">اليوم</option>
         {days.map(d => <option key={d} value={String(d)}>{d}</option>)}
       </select>
@@ -390,12 +389,12 @@ function InlineYearField({ label, value, onChange, fromYear = 1960 }) {
   )
 }
 
-function InlineDateField({ label, value, onChange }) {
+function InlineBirthDateField({ label, day, month, legacyValue, onChange }) {
   return (
     <div className="info-row">
       <span className="info-key">{label}</span>
       <div style={{ flex: 1 }}>
-        <BirthDatePicker value={value} onChange={onChange} />
+        <BirthDatePicker day={day} month={month} legacyValue={legacyValue} onChange={onChange} />
       </div>
     </div>
   )
@@ -503,7 +502,7 @@ function MiniNodeCard({ node }) {
       }}>
         {node.photo
           ? <img src={node.photo} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          : (node.name || '؟').split(' ').filter(Boolean).map(w => w[0]).slice(0, 2).join('')}
+          : firstNameInitial(node.name)}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--gray-800)',
@@ -929,7 +928,7 @@ function buildOrgHistory(personIdOrMatcher, allPeriodTrees) {
 
 // ── Smart connection row ──────────────────────────────────────────────────────
 function SmartConnRow({ node, connStart, connEnd, needsAnnotation, onViewProfile }) {
-  const initials = (node.name || '؟').split(' ').filter(Boolean).map(w => w[0]).slice(0, 2).join('')
+  const initials = firstNameInitial(node.baseName || node.name)
   // Both registered (personId) and unregistered (unregisteredId) are navigable
   const canClick = !!(node.personId || node.unregisteredId)
   const handleClick = () => {
@@ -1135,10 +1134,11 @@ function OrgHistoryView({ entries, onViewProfile }) {
 }
 
 // ── Shared data loader for org history ────────────────────────────────────────
-async function loadAllPeriodTrees(nodeMatcher) {
+async function loadAllPeriodTrees(nodeMatcher, relevantGroupIds = []) {
   const allPeriodTrees = []
-  const filters = await api.filters()
-  const groups  = (filters.youth_group || []).map(g => g.value)
+  const groups = (Array.isArray(relevantGroupIds) ? relevantGroupIds : [])
+    .map(g => String(g || '').trim())
+    .filter(Boolean)
 
   await Promise.all(groups.map(async (groupName) => {
     try {
@@ -1146,7 +1146,7 @@ async function loadAllPeriodTrees(nodeMatcher) {
       if (!periods?.length) return
       await Promise.all(periods.map(async (period) => {
         try {
-          const tree  = await api.getOrgTree(groupName, period.id)
+          const tree  = await api.getOrgTreePeriod(groupName, period.id)
           const nodes = tree.nodes || []
           const edges = tree.edges || []
           if (!nodes.some(nodeMatcher)) return
@@ -1160,43 +1160,43 @@ async function loadAllPeriodTrees(nodeMatcher) {
 }
 
 // ── Org history tab (registered) ──────────────────────────────────────────────
-function OrgTab({ personId, orgContext, onViewProfile }) {
+function OrgTab({ personId, orgContext, onViewProfile, relevantGroupIds }) {
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
     const matcher = (n) => String(n.personId) === String(personId)
-    loadAllPeriodTrees(matcher)
+    loadAllPeriodTrees(matcher, relevantGroupIds)
       .then(trees => { if (!cancelled) { setEntries(buildOrgHistory(matcher, trees)); setLoading(false) } })
       .catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [personId])
+  }, [personId, relevantGroupIds])
 
   if (loading) return <div className="loading-center"><div className="spinner" /></div>
   return <OrgHistoryView entries={entries} onViewProfile={onViewProfile} />
 }
 
 // ── Org history tab (unregistered) ────────────────────────────────────────────
-function OrgTabUnregistered({ unregisteredId, orgContext, onViewProfile }) {
+function OrgTabUnregistered({ unregisteredId, orgContext, onViewProfile, relevantGroupIds }) {
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
     const matcher = (n) => String(n.unregisteredId) === String(unregisteredId)
-    loadAllPeriodTrees(matcher)
+    loadAllPeriodTrees(matcher, relevantGroupIds)
       .then(trees => { if (!cancelled) { setEntries(buildOrgHistory(matcher, trees)); setLoading(false) } })
       .catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [unregisteredId])
+  }, [unregisteredId, relevantGroupIds])
 
   if (loading) return <div className="loading-center"><div className="spinner" /></div>
   return <OrgHistoryView entries={entries} onViewProfile={onViewProfile} />
 }
 
 // ── GS org history helpers ─────────────────────────────────────────────────────
-const GS_GROUP_KEY_PROFILE = '__AMANAH_AMMA__'
+const GS_GROUP_KEY_PROFILE = 'GS'
 
 async function loadGSPeriodTrees(nodeMatcher) {
   const allPeriodTrees = []
@@ -1205,7 +1205,7 @@ async function loadGSPeriodTrees(nodeMatcher) {
     if (!periods?.length) return allPeriodTrees
     await Promise.all(periods.map(async (period) => {
       try {
-        const tree  = await api.getOrgTree(GS_GROUP_KEY_PROFILE, period.id)
+        const tree  = await api.getOrgTreePeriod(GS_GROUP_KEY_PROFILE, period.id)
         const nodes = tree.nodes || []
         const edges = tree.edges || []
         if (!nodes.some(nodeMatcher)) return
@@ -1621,7 +1621,7 @@ function ConfirmDialog({ open, title, message, confirmLabel, confirmClass, onCon
 }
 
 // ── Main profile page ─────────────────────────────────────────────────────────
-export default function Profile({ personId, isUnregistered, onBack, toast, orgContext, onViewProfile, onPromoted }) {
+export default function Profile({ personId, isUnregistered, onBack, toast, orgContext, onViewProfile, onPromoted, currentUser, readOnly = false }) {
   const [data, setData]           = useState(null)
   const [photo, setPhoto]         = useState(null)
   const [loading, setLoading]     = useState(true)
@@ -1639,7 +1639,10 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
 
   // Helper: get sorted option list for a filter key (count desc, value only)
   const opts = useCallback((key) =>
-    (filters[key] || []).map(f => ({ value: f.value }))
+    (filters[key] || []).map(f => ({
+      value: f.value,
+      label: key === 'youth_group' ? api.formatYouthGroupLabel(f.label || f.value) : (f.label || f.value),
+    }))
   , [filters])
 
   useEffect(() => {
@@ -1660,6 +1663,18 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       if (!d.hobbies_skills)     d.hobbies_skills = []
       if (!d.person_youth_group) d.person_youth_group = []
       if (!d.responsibilities)   d.responsibilities = []
+      const personData = d.person || {}
+      const normalizedDay = toDatePart(personData.birth_day, 1, 31)
+      const normalizedMonth = toDatePart(personData.birth_month, 1, 12)
+      if ((!normalizedDay || !normalizedMonth) && personData.birth_date) {
+        const legacy = parseLegacyBirthDate(personData.birth_date)
+        if (!normalizedDay && legacy.day) personData.birth_day = parseInt(legacy.day, 10)
+        if (!normalizedMonth && legacy.month) personData.birth_month = parseInt(legacy.month, 10)
+      }
+      if (Object.prototype.hasOwnProperty.call(personData, 'birth_date')) {
+        delete personData.birth_date
+      }
+      d.person = personData
       setData(d)
       setPhoto(d.photo ?? null)
       setLoading(false)
@@ -1697,6 +1712,18 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   const update      = (changes)       => { const nd = { ...data, ...changes }; setData(nd); scheduleAutoSave(nd) }
   const updateField = (field, value)  => update({ person: { ...data.person, [field]: value } })
   const updateSub   = (key, newRows)  => update({ [key]: newRows })
+  const updateBirthYear = (value) => {
+    update({ person: { ...data.person, birth_year: value ? parseInt(value, 10) : null } })
+  }
+  const updateBirthDate = (day, month) => {
+    update({
+      person: {
+        ...data.person,
+        birth_day: day ? parseInt(day, 10) : null,
+        birth_month: month ? parseInt(month, 10) : null,
+      },
+    })
+  }
 
   const handlePromote = async () => {
     if (!window.confirm('هل تريد تحويل هذا الشخص إلى عضو مسجّل؟ سيتم نقل بياناته إلى قائمة الأعضاء.')) return
@@ -1722,11 +1749,25 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   }
 
   const handleArchiveConfirm = async () => {
+    const memberships = Array.isArray(data?.person_youth_group) ? data.person_youth_group : []
+    const activeMemberships = memberships.filter(row => !row?.archived)
+    const scopedActiveMemberships = shouldScopeToViewerGroups
+      ? activeMemberships.filter(row => viewerCouncilGroupIds.includes(String(row?.youth_group_id || '').trim()))
+      : activeMemberships
+
+    const target = scopedActiveMemberships[0] || activeMemberships[0] || null
+    const youthGroupId = String(target?.youth_group_id || '').trim()
+    if (!youthGroupId) {
+      toast('لا توجد عضوية شبيبة نشطة لأرشفتها', 'error')
+      setConfirm(null)
+      return
+    }
+
     try {
       if (isUnregistered) {
-        await api.archiveUnregistered(personId)
+        await api.archiveUnregistered(personId, youthGroupId)
       } else {
-        await api.archivePerson(personId)
+        await api.archivePerson(personId, youthGroupId)
       }
       toast('تمت الأرشفة بنجاح', 'success')
       onBack()
@@ -1744,9 +1785,41 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
 
   const { person, nationality, mobile_numbers, schools, higher_education, jobs, hobbies_skills, person_youth_group, responsibilities } = data
 
+  const youthGroupName = (groupId) => {
+    const gid = String(groupId || '').trim()
+    if (!gid) return '—'
+    const found = opts('youth_group').find(o => String(o?.value || '').trim() === gid)
+    return found?.label || api.formatYouthGroupLabel(gid) || gid
+  }
+
+  const viewerCouncilGroupIds = Object.keys(currentUser?.council_access || {})
+  const isViewerLeader = (currentUser?.role === 'member') && viewerCouncilGroupIds.length > 0
+  const isViewingOwnProfile =
+    currentUser
+    && String(currentUser.person_id) === String(personId)
+    && ((currentUser.person_type === 'unregistered') === !!isUnregistered)
+
+  // Leaders can inspect member profiles, but only in their own youth groups.
+  const shouldScopeToViewerGroups = isViewerLeader && !isViewingOwnProfile
+  const visiblePersonYouthGroup = shouldScopeToViewerGroups
+    ? (person_youth_group || []).filter(row => viewerCouncilGroupIds.includes(String(row?.youth_group_id || '').trim()))
+    : (person_youth_group || [])
+  const visibleResponsibilities = shouldScopeToViewerGroups
+    ? (responsibilities || []).filter(row => viewerCouncilGroupIds.includes(String(row?.youth_group_id || '').trim()))
+    : (responsibilities || [])
+
+  const relevantGroupIds = [...new Set([
+    ...visiblePersonYouthGroup.map(r => r?.youth_group_id),
+    ...visibleResponsibilities.map(r => r?.youth_group_id),
+  ].map(v => String(v || '').trim()).filter(Boolean))]
+
   const fullName = [person?.first_name, person?.second_name, person?.third_name, person?.last_name]
     .filter(Boolean).join(' ') || 'بلا اسم'
-  const initials = [person?.first_name, person?.last_name].filter(Boolean).map(n => n[0]).join('') || '؟'
+  const initials = firstNameInitial(person?.first_name)
+  const editableYouthRows = (person_youth_group || []).map(row => ({
+    ...row,
+    status_label: row?.archived ? 'عضو قديم' : 'عضو حالي',
+  }))
   // For مكرّسين, prepend title to displayed name in header
   const displayName = (isUnregistered && person?.title)
     ? `${person.title} ${fullName}`.trim()
@@ -1890,8 +1963,14 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
               <InlineComboField label="اسم العائلة"   value={person?.last_name}   onChange={v => updateField('last_name', v)}   options={opts('last_name')} />
               <InlineSelectField label="الجنس"        value={person?.gender}      onChange={v => updateField('gender', v)}       options={opts('gender')} />
               <InlineSelectField label="المحافظة"     value={person?.governorate} onChange={v => updateField('governorate', v)}  options={opts('governorate')} />
-              <InlineYearField   label="سنة الميلاد"  value={person?.birth_year}  onChange={v => updateField('birth_year', v)} />
-              <InlineDateField   label="تاريخ الميلاد" value={person?.birth_date} onChange={v => updateField('birth_date', v)} />
+              <InlineYearField   label="سنة الميلاد"  value={person?.birth_year}  onChange={updateBirthYear} />
+              <InlineBirthDateField
+                label="تاريخ الميلاد"
+                day={person?.birth_day}
+                month={person?.birth_month}
+                legacyValue={person?.birth_date}
+                onChange={updateBirthDate}
+              />
               {isUnregistered && (
                 <InlineField label="اللقب / العنوان" value={person?.title} onChange={v => updateField('title', v)} />
               )}
@@ -1931,28 +2010,99 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       {/* ── Youth ── */}
       {activeTab === 'youth' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {shouldScopeToViewerGroups && (
+            <div style={{
+              background: '#fffbeb', border: '1px solid #e8b55a', borderRadius: 'var(--radius-md)',
+              padding: '8px 12px', fontSize: '0.8rem', color: '#92400e',
+            }}>
+              يتم عرض بيانات الشبيبة المرتبطة فقط بمجموعاتك التي لديك فيها صلاحية قيادة.
+            </div>
+          )}
           <div className="card">
             <div className="card-header"><span className="card-title"><Users size={15} /> انتساب الشبيبة</span></div>
             <div className="card-body">
-              <SubTable rows={person_youth_group}
-                setRows={rows => updateSub('person_youth_group', rows)}
-                columns={[
-                  { key: 'youth_group_name', label: 'اسم الشبيبة',  selectOptions: opts('youth_group') },
-                  { key: 'youth_join_year',  label: 'سنة الانتساب', yearFrom: 1964 },
-                  { key: 'age_group',        label: 'الفئة العمرية', selectOptions: opts('age_group') },
-                ]} />
+              {readOnly ? (
+                <table className="sub-table">
+                  <thead>
+                    <tr>
+                      <th>اسم الشبيبة</th>
+                      <th>سنة الانتساب</th>
+                      <th>الفئة العمرية</th>
+                      <th>الحالة</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visiblePersonYouthGroup.length ? visiblePersonYouthGroup.map((row, i) => (
+                      <tr key={i}>
+                        <td>{youthGroupName(row?.youth_group_id)}</td>
+                        <td>{row?.youth_join_year || '—'}</td>
+                        <td>{row?.age_group || '—'}</td>
+                        <td>{row?.archived ? 'عضو قديم' : 'عضو حالي'}</td>
+                      </tr>
+                    )) : (
+                      <tr>
+                        <td colSpan={4} style={{ color: 'var(--gray-400)' }}>لا توجد بيانات ضمن مجموعاتك</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              ) : (
+                <SubTable rows={editableYouthRows}
+                  setRows={rows => updateSub('person_youth_group', rows.map(({ status_label, ...rest }) => ({
+                    ...rest,
+                    archived: status_label === 'عضو قديم',
+                  })))}
+                  columns={[
+                    { key: 'youth_group_id',   label: 'اسم الشبيبة',  selectOptions: opts('youth_group') },
+                    { key: 'youth_join_year',  label: 'سنة الانتساب', yearFrom: 1964 },
+                    { key: 'age_group',        label: 'الفئة العمرية', selectOptions: opts('age_group') },
+                    {
+                      key: 'status_label',
+                      label: 'الحالة',
+                      selectOptions: [
+                        { value: 'عضو حالي', label: 'عضو حالي' },
+                        { value: 'عضو قديم', label: 'عضو قديم' },
+                      ],
+                    },
+                  ]} />
+              )}
             </div>
           </div>
           <div className="card">
             <div className="card-header"><span className="card-title"><Shield size={15} /> المسؤوليات</span></div>
             <div className="card-body">
-              <SubTable rows={responsibilities}
-                setRows={rows => updateSub('responsibilities', rows)}
-                columns={[
-                  { key: 'youth_group_name', label: 'الشبيبة',    selectOptions: opts('youth_group') },
-                  { key: 'time',             label: 'الفترة' },
-                  { key: 'responsibility',   label: 'المسؤولية',   comboOptions: opts('responsibility') },
-                ]} />
+              {readOnly ? (
+                <table className="sub-table">
+                  <thead>
+                    <tr>
+                      <th>الشبيبة</th>
+                      <th>الفترة</th>
+                      <th>المسؤولية</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleResponsibilities.length ? visibleResponsibilities.map((row, i) => (
+                      <tr key={i}>
+                        <td>{youthGroupName(row?.youth_group_id)}</td>
+                        <td>{row?.time || '—'}</td>
+                        <td>{row?.responsibility || '—'}</td>
+                      </tr>
+                    )) : (
+                      <tr>
+                        <td colSpan={3} style={{ color: 'var(--gray-400)' }}>لا توجد بيانات ضمن مجموعاتك</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              ) : (
+                <SubTable rows={responsibilities}
+                  setRows={rows => updateSub('responsibilities', rows)}
+                  columns={[
+                    { key: 'youth_group_id',   label: 'الشبيبة',    selectOptions: opts('youth_group') },
+                    { key: 'time',             label: 'الفترة' },
+                    { key: 'responsibility',   label: 'المسؤولية',   comboOptions: opts('responsibility') },
+                  ]} />
+              )}
             </div>
           </div>
         </div>
@@ -2006,10 +2156,10 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
 
       {/* ── Org tab ── */}
       {activeTab === 'org' && !isUnregistered && (
-        <OrgTab personId={personId} orgContext={orgContext} onViewProfile={onViewProfile} />
+        <OrgTab personId={personId} orgContext={orgContext} onViewProfile={onViewProfile} relevantGroupIds={relevantGroupIds} />
       )}
       {activeTab === 'org' && isUnregistered && (
-        <OrgTabUnregistered unregisteredId={personId} orgContext={orgContext} onViewProfile={onViewProfile} />
+        <OrgTabUnregistered unregisteredId={personId} orgContext={orgContext} onViewProfile={onViewProfile} relevantGroupIds={relevantGroupIds} />
       )}
       {activeTab === 'gsorg' && !isUnregistered && (
         <GSTab personId={personId} onViewProfile={onViewProfile} />

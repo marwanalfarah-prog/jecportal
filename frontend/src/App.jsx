@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, Users, GitBranch, UserPlus, LogOut, ShieldCheck, User as UserIcon, Eye, X, Search, ClipboardList } from 'lucide-react'
+import { LayoutDashboard, Users, GitBranch, UserPlus, LogOut, ShieldCheck, User as UserIcon, Eye, X, Search, ClipboardList, Settings, Building2, ImageOff, Key, MapPin } from 'lucide-react'
 import Dashboard from './pages/Dashboard.jsx'
 import Members from './pages/Members.jsx'
 import Profile from './pages/Profile.jsx'
@@ -13,6 +13,10 @@ import { useToast, ToastContainer } from './useToast.jsx'
 import NotificationBell from './NotificationBell.jsx'
 import Questionnaire from './pages/Questionnaire.jsx'
 import MyQuestions from './pages/MyQuestions.jsx'
+import Config from './pages/Config.jsx'
+import YouthGroupAdmin from './pages/YouthGroupAdmin.jsx'
+import ChurchesAdmin from './pages/ChurchesAdmin.jsx'
+import ChurchesMap from './pages/ChurchesMap.jsx'
 import { api } from './api.js'
 
 // ── ViewAsPicker Modal ────────────────────────────────────────────────────────
@@ -175,6 +179,113 @@ function ViewAsPicker({ currentAdminUser, onSelect, onClose }) {
   )
 }
 
+function MemberYouthGroupLogoTile({ groupId, label }) {
+  const [missing, setMissing] = useState(false)
+  const [specialMissing, setSpecialMissing] = useState(false)
+
+  useEffect(() => {
+    setMissing(false)
+    setSpecialMissing(false)
+  }, [groupId])
+
+  return (
+    <div
+      style={{
+        minWidth: 142,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '8px 10px',
+        border: '1px solid var(--gray-200)',
+        borderRadius: 10,
+        background: 'white',
+      }}
+      title={label}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+        {missing ? (
+          <div
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 8,
+              border: '1px dashed var(--gray-300)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--gray-400)',
+              background: 'var(--gray-50)',
+              flexShrink: 0,
+            }}
+          >
+            <ImageOff size={14} />
+          </div>
+        ) : (
+          <img
+            src={api.youthGroupLogoUrl(groupId)}
+            alt={label || groupId}
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 8,
+              objectFit: 'contain',
+              border: '1px solid var(--gray-200)',
+              background: 'var(--gray-50)',
+              flexShrink: 0,
+            }}
+            onError={() => setMissing(true)}
+          />
+        )}
+
+        {!specialMissing ? (
+          <img
+            src={api.youthGroupActiveSpecialLogoUrl(groupId)}
+            alt={label ? `Special Logo - ${label}` : 'Special Occasion Logo'}
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 8,
+              objectFit: 'contain',
+              border: '1px solid var(--gray-200)',
+              background: 'var(--gray-50)',
+              flexShrink: 0,
+            }}
+            onError={() => setSpecialMissing(true)}
+          />
+        ) : null}
+      </div>
+
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: '0.76rem',
+            color: 'var(--gray-400)',
+            lineHeight: 1.1,
+            marginBottom: 2,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          مجموعة الشبيبة
+        </div>
+        <div
+          style={{
+            fontSize: '0.84rem',
+            color: 'var(--navy)',
+            fontWeight: 700,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {label || groupId}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const PAGE_TITLES = {
   dashboard:           'لوحة المعلومات',
   members:             'الأعضاء',
@@ -183,6 +294,10 @@ const PAGE_TITLES = {
   users:               'إدارة المستخدمين',
   council_members:     'أعضاء فئتي',
   general_secretariat: 'الأمانة العامة للشبيبة المسيحيّة',
+  config:              'الإعدادات والتهيئة',
+  youth_groups:        'ملف مجموعات الشبيبة',
+  churches:            'الكنائس',
+  churches_map:        'خريطة الكنائس',
 }
 
 export default function App() {
@@ -196,6 +311,12 @@ export default function App() {
   const [profileReturnPage, setProfileReturnPage] = useState('members')
   const [viewAsUser, setViewAsUser]       = useState(null)   // { username, display_name, role, person_id, person_type, youth_groups, council_access, ... }
   const [showViewAsPicker, setShowViewAsPicker] = useState(false)
+  const [showCredentialsModal, setShowCredentialsModal] = useState(false)
+  const [credUsername, setCredUsername] = useState('')
+  const [credPassword, setCredPassword] = useState('')
+  const [credPasswordConfirm, setCredPasswordConfirm] = useState('')
+  const [savingCreds, setSavingCreds] = useState(false)
+  const [youthGroupLabels, setYouthGroupLabels] = useState({})
   const { toasts, toast }               = useToast()
 
   useEffect(() => {
@@ -231,6 +352,52 @@ export default function App() {
     setSelected(null)
   }
 
+  const openCredentialsModal = () => {
+    setCredUsername((authUser?.username || '').toLowerCase())
+    setCredPassword('')
+    setCredPasswordConfirm('')
+    setShowCredentialsModal(true)
+  }
+
+  const handleSaveMyCredentials = async () => {
+    const currentUsername = (authUser?.username || '').toLowerCase()
+    const nextUsername = (credUsername || '').trim().toLowerCase()
+    const nextPassword = credPassword || ''
+    const nextPasswordConfirm = credPasswordConfirm || ''
+
+    if (!nextUsername) {
+      toast('اسم المستخدم مطلوب', 'error')
+      return
+    }
+
+    const body = {}
+    if (nextUsername !== currentUsername) body.username = nextUsername
+    if (nextPassword && nextPassword !== nextPasswordConfirm) {
+      toast('تأكيد كلمة المرور غير مطابق', 'error')
+      return
+    }
+    if (nextPassword) body.password = nextPassword
+    if (!Object.keys(body).length) {
+      setShowCredentialsModal(false)
+      return
+    }
+
+    setSavingCreds(true)
+    try {
+      const res = await api.updateUser(currentUsername, body)
+      if (res?.user) setAuthUser(prev => ({ ...(prev || {}), ...res.user }))
+      toast('تم حفظ بيانات الدخول', 'success')
+      setShowCredentialsModal(false)
+      setCredPassword('')
+      setCredPasswordConfirm('')
+    } catch (e) {
+      if ((e?.message || '').includes('409')) toast('اسم المستخدم موجود مسبقاً', 'error')
+      else toast('تعذّر حفظ بيانات الدخول', 'error')
+    } finally {
+      setSavingCreds(false)
+    }
+  }
+
   // When impersonating, use the viewAsUser as effective context (read-only for everything)
   const effectiveUser  = viewAsUser || authUser
   const isAdmin        = authUser?.role === 'admin' && !viewAsUser
@@ -238,7 +405,25 @@ export default function App() {
   // council_access: { youth_group_name: [age_group, ...] }
   const councilAccess  = effectiveUser?.council_access || {}
   const isCouncil      = isMember && Object.keys(councilAccess).length > 0
-  const memberYouthGroups = effectiveUser?.youth_groups || []
+  const memberYouthGroups = [...new Set((effectiveUser?.youth_groups || []).filter(Boolean))]
+  const memberYouthGroupCards = memberYouthGroups.map(gid => ({
+    id: gid,
+    label: youthGroupLabels[gid] || api.formatYouthGroupLabel(gid) || gid,
+  }))
+
+  useEffect(() => {
+    api.filters()
+      .then((f) => {
+        const map = {}
+        for (const yg of (f?.youth_group || [])) {
+          const gid = String(yg?.value || '').trim()
+          if (!gid) continue
+          map[gid] = api.formatYouthGroupLabel(yg?.label || gid) || gid
+        }
+        setYouthGroupLabels(map)
+      })
+      .catch(() => {})
+  }, [])
 
   // ── Navigation ──────────────────────────────────────────────────────────────
   const NAV = isAdmin ? [
@@ -248,6 +433,10 @@ export default function App() {
     { id: 'general_secretariat', label: 'الأمانة العامة',              icon: GitBranch },
     { id: 'users',               label: 'إدارة المستخدمين',            icon: ShieldCheck },
     { id: 'questionnaires',       label: 'إدارة الاستبيانات',           icon: ClipboardList },
+    { id: 'youth_groups',         label: 'ملف مجموعات الشبيبة',          icon: Building2 },
+    { id: 'churches',             label: 'الكنائس',                       icon: MapPin },
+    { id: 'churches_map',         label: 'خريطة الكنائس',                 icon: MapPin },
+    { id: 'config',               label: 'الإعدادات',                    icon: Settings },
   ] : [
     { id: 'profile',         label: 'ملفي الشخصي',       icon: UserIcon },
     { id: 'orgtree',         label: 'الهيكل التنظيمي',   icon: GitBranch },
@@ -289,7 +478,7 @@ export default function App() {
 
   const navigate = (p) => {
     const allowed = isAdmin
-      ? ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires']
+      ? ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches', 'churches_map', 'config']
       : ['profile', 'orgtree', 'council_members', 'my_questions']
     if (!allowed.includes(p)) return
     setPage(p)
@@ -358,7 +547,15 @@ export default function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <img src="/api/logo" alt="JEC Logo" className="sidebar-logo-image" />
+          <img
+            src="/api/logo"
+            alt="JEC Logo"
+            className="sidebar-logo-image"
+            onError={(e) => {
+              e.currentTarget.onerror = null
+              e.currentTarget.src = '/api/logo'
+            }}
+          />
           <div className="sidebar-logo-text">
             <h1>JEC</h1>
             <span>نظام إدارة الأعضاء</span>
@@ -405,6 +602,7 @@ export default function App() {
               </div>
               {Object.entries(councilAccess).map(([grp, info]) => (
                 <div key={grp} style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.6)', lineHeight: 1.8 }}>
+                  <span style={{ color: '#ffffff', opacity: 0.9 }}>{info.group_name || grp}: </span>
                   {info.full_group
                     ? <span style={{ color: '#e8b55a', fontWeight: 700 }}>جميع الأعضاء</span>
                     : (info.age_groups || []).join(' · ')
@@ -500,8 +698,29 @@ export default function App() {
                 onOpenQuestionnaire={(qid) => { navigate(authUser?.role === 'admin' ? 'questionnaires' : 'my_questions') }}
               />
             )}
+            {!viewAsUser && (
+              <button className="btn btn-ghost btn-sm" onClick={openCredentialsModal}>
+                <Key size={14}/> بيانات الدخول
+              </button>
+            )}
           </div>
         </header>
+
+        {isMember && memberYouthGroupCards.length > 0 && (
+          <div
+            style={{
+              background: 'var(--gray-50)',
+              borderBottom: '1px solid var(--gray-200)',
+              padding: '10px 20px',
+            }}
+          >
+            <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
+              {memberYouthGroupCards.map((g) => (
+                <MemberYouthGroupLogoTile key={g.id} groupId={g.id} label={g.label} />
+              ))}
+            </div>
+          </div>
+        )}
 
         <main className="page-body">
           {isAdmin && page === 'dashboard' && <Dashboard/>}
@@ -572,6 +791,22 @@ export default function App() {
             <Questionnaire toast={toast} />
           )}
 
+          {isAdmin && page === 'youth_groups' && (
+            <YouthGroupAdmin toast={toast} />
+          )}
+
+          {isAdmin && page === 'churches' && (
+            <ChurchesAdmin toast={toast} />
+          )}
+
+          {isAdmin && page === 'churches_map' && (
+            <ChurchesMap toast={toast} />
+          )}
+
+          {isAdmin && page === 'config' && (
+            <Config toast={toast} />
+          )}
+
           {isMember && page === 'my_questions' && (
             <MyQuestions
               toast={toast}
@@ -600,6 +835,79 @@ export default function App() {
           }}
           onClose={() => setShowViewAsPicker(false)}
         />
+      )}
+
+      {showCredentialsModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1200,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+          }}
+          onClick={(e) => e.target === e.currentTarget && !savingCreds && setShowCredentialsModal(false)}
+        >
+          <div
+            style={{
+              background: 'white', borderRadius: 14, width: '100%', maxWidth: 420,
+              boxShadow: '0 24px 64px rgba(0,0,0,0.2)', direction: 'rtl',
+            }}
+          >
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid #e2e6ef', fontWeight: 800, color: '#0f2744' }}>
+              تعديل بيانات الدخول
+            </div>
+            <div style={{ padding: 18, display: 'grid', gap: 12 }}>
+              <div>
+                <label style={{ fontSize: '0.8rem', color: '#4a5568', fontWeight: 700, display: 'block', marginBottom: 5 }}>
+                  اسم المستخدم
+                </label>
+                <input
+                  value={credUsername}
+                  onChange={(e) => setCredUsername(e.target.value)}
+                  style={{
+                    width: '100%', padding: '9px 12px', border: '1.5px solid #e2e6ef', borderRadius: 8,
+                    fontFamily: 'var(--font-body)', fontSize: '0.9rem', direction: 'rtl', textAlign: 'right', outline: 'none',
+                  }}
+                  placeholder="username"
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.8rem', color: '#4a5568', fontWeight: 700, display: 'block', marginBottom: 5 }}>
+                  كلمة المرور الجديدة (اختياري)
+                </label>
+                <input
+                  type="password"
+                  value={credPassword}
+                  onChange={(e) => setCredPassword(e.target.value)}
+                  style={{
+                    width: '100%', padding: '9px 12px', border: '1.5px solid #e2e6ef', borderRadius: 8,
+                    fontFamily: 'var(--font-body)', fontSize: '0.9rem', direction: 'rtl', textAlign: 'right', outline: 'none',
+                  }}
+                  placeholder="اتركها فارغة إذا لا تريد تغييرها"
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '0.8rem', color: '#4a5568', fontWeight: 700, display: 'block', marginBottom: 5 }}>
+                  تأكيد كلمة المرور الجديدة
+                </label>
+                <input
+                  type="password"
+                  value={credPasswordConfirm}
+                  onChange={(e) => setCredPasswordConfirm(e.target.value)}
+                  style={{
+                    width: '100%', padding: '9px 12px', border: '1.5px solid #e2e6ef', borderRadius: 8,
+                    fontFamily: 'var(--font-body)', fontSize: '0.9rem', direction: 'rtl', textAlign: 'right', outline: 'none',
+                  }}
+                  placeholder="أعد إدخال كلمة المرور الجديدة"
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+                <button className="btn btn-ghost btn-sm" onClick={() => setShowCredentialsModal(false)} disabled={savingCreds}>إلغاء</button>
+                <button className="btn btn-gold btn-sm" onClick={handleSaveMyCredentials} disabled={savingCreds}>
+                  {savingCreds ? 'جاري الحفظ...' : 'حفظ'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       <ToastContainer toasts={toasts}/>

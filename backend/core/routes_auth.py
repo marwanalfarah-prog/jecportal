@@ -213,13 +213,17 @@ def _get_person_youth_groups(person_type: str, pid) -> list:
         if person_type == "registered":
             pyg = S.store["person_youth_group"]
             rows = pyg[pyg["person_id"] == int(pid)]
-            return rows["youth_group_name"].dropna().unique().tolist()
+            if S.YOUTH_GROUP_ID_COL not in rows.columns:
+                return []
+            return rows[S.YOUTH_GROUP_ID_COL].dropna().astype(str).unique().tolist()
         elif person_type == "unregistered":
             df = S.unreg_store.get("person_youth_group", pd.DataFrame())
             if df.empty or "person_id" not in df.columns:
                 return []
             rows = df[df["person_id"].astype(str) == str(pid)]
-            return rows["youth_group_name"].dropna().unique().tolist()
+            if S.YOUTH_GROUP_ID_COL not in rows.columns:
+                return []
+            return rows[S.YOUTH_GROUP_ID_COL].dropna().astype(str).unique().tolist()
     except Exception:
         pass
     return []
@@ -262,9 +266,9 @@ def _get_council_access(person_type: str, pid, youth_groups: list) -> dict:
     access = {}
     pid_str = str(pid)
 
-    for group_name in youth_groups:
+    for group_id in youth_groups:
         try:
-            index_path = _index_path(group_name)
+            index_path = _index_path(group_id)
             if not os.path.exists(index_path):
                 continue
             periods = S.db.load_json_file(index_path, [])
@@ -275,7 +279,7 @@ def _get_council_access(person_type: str, pid, youth_groups: list) -> dict:
             if not active:
                 active = sorted(periods, key=lambda p: p.get('from_date') or '', reverse=True)[0]
 
-            period_file = _period_path(group_name, active['id'])
+            period_file = _period_path(group_id, active['id'])
             if not os.path.exists(period_file):
                 continue
             tree = S.db.load_json_file(period_file, {"nodes": [], "edges": []})
@@ -297,28 +301,30 @@ def _get_council_access(person_type: str, pid, youth_groups: list) -> dict:
                 if not classified:
                     continue
 
-                if group_name not in access:
-                    access[group_name] = {'full_group': False, 'age_groups': set()}
+                if group_id not in access:
+                    access[group_id] = {'full_group': False, 'age_groups': set()}
 
                 if classified.get('full_group'):
-                    access[group_name]['full_group'] = True
+                    access[group_id]['full_group'] = True
                 else:
                     ags = classified.get('age_groups', [])
                     if ags:
-                        access[group_name]['age_groups'].update(ags)
+                        access[group_id]['age_groups'].update(ags)
 
         except Exception as e:
-            print(f'Warning: council access scan failed for {group_name}: {e}')
+            print(f'Warning: council access scan failed for {group_id}: {e}')
             continue
 
     result = {}
-    for group_name, info in access.items():
+    for group_id, info in access.items():
+        group_name = S.youth_group_name(group_id) or group_id
         if info['full_group']:
-            result[group_name] = {'full_group': True, 'age_groups': AGE_GROUPS_PY}
+            result[group_id] = {'full_group': True, 'age_groups': AGE_GROUPS_PY, 'group_name': group_name}
         elif info['age_groups']:
-            result[group_name] = {
+            result[group_id] = {
                 'full_group': False,
                 'age_groups': sorted(list(info['age_groups']), key=lambda x: AGE_GROUPS_PY.index(x) if x in AGE_GROUPS_PY else 99),
+                'group_name': group_name,
             }
     return result
 
@@ -469,6 +475,23 @@ def register_auth_routes(app):
             user = next((u for u in data["users"] if u["username"].lower() == username.lower()), None)
             if not user:
                 return jsonify({"error": "not found"}), 404
+            old_username = str(user.get("username") or "").strip().lower()
+
+            if "username" in body:
+                new_username = (str(body.get("username") or "")).strip().lower()
+                if not new_username:
+                    return jsonify({"error": "username required"}), 400
+                taken = next(
+                    (
+                        u for u in data["users"]
+                        if u is not user and str(u.get("username") or "").strip().lower() == new_username
+                    ),
+                    None,
+                )
+                if taken is not None:
+                    return jsonify({"error": "المستخدم موجود مسبقاً"}), 409
+                user["username"] = new_username
+
             if body.get("password"):
                 user["password_hash"] = _hash_pw(body["password"])
             if me["role"] == "admin":
@@ -480,6 +503,9 @@ def register_auth_routes(app):
                     user["person_type"] = body["person_type"]
                 if "person_id" in body:
                     user["person_id"] = S._normalize_person_id(body["person_id"])
+
+            if me["username"].lower() == old_username and user.get("username"):
+                session["user_id"] = str(user.get("username")).strip().lower()
             _save_auth(data)
         safe = {k: v for k, v in user.items() if k != "password_hash"}
         return jsonify({"ok": True, "user": safe})
@@ -512,23 +538,23 @@ def register_auth_routes(app):
         pyg = S._sheet_for_registered("person_youth_group")
         accessible_pids = set()
 
-        for group_name, info in council_access.items():
+        for group_id, info in council_access.items():
             age_groups = info.get("age_groups", [])
             if info.get("full_group"):
-                mask = pyg["youth_group_name"] == group_name
+                mask = pyg[S.YOUTH_GROUP_ID_COL] == group_id
             else:
-                mask = (pyg["youth_group_name"] == group_name) & (pyg["age_group"].isin(age_groups))
+                mask = (pyg[S.YOUTH_GROUP_ID_COL] == group_id) & (pyg["age_group"].isin(age_groups))
             pids = pyg[mask]["person_id"].dropna().unique().tolist()
             accessible_pids.update(str(int(p)) for p in pids)
 
         unreg_pyg = S.unreg_store.get("person_youth_group", pd.DataFrame())
         if not unreg_pyg.empty and "person_id" in unreg_pyg.columns:
-            for group_name, info in council_access.items():
+            for group_id, info in council_access.items():
                 age_groups = info.get("age_groups", [])
                 if info.get("full_group"):
-                    mask = unreg_pyg["youth_group_name"] == group_name
+                    mask = unreg_pyg[S.YOUTH_GROUP_ID_COL] == group_id
                 else:
-                    mask = (unreg_pyg["youth_group_name"] == group_name) & (unreg_pyg["age_group"].isin(age_groups))
+                    mask = (unreg_pyg[S.YOUTH_GROUP_ID_COL] == group_id) & (unreg_pyg["age_group"].isin(age_groups))
                 uids = unreg_pyg[mask]["person_id"].dropna().astype(str).unique().tolist()
                 accessible_pids.update(f"unreg:{uid}" for uid in uids)
 

@@ -1,0 +1,47 @@
+{
+  "nodes": [
+    {
+      "id": "n1772820416001_1",
+      "x": 80,
+      "y": 130,
+      "role": "المرشد الروحي",
+      "personId": 3105,
+      "inCouncil": true,
+      "inGroup": false
+    },
+    {
+      "id": "n1772820431314_2",
+      "x": 300,
+      "y": 130,
+      "role": "المسؤول العام",
+      "personId": 271,
+      "inCouncil": true,
+      "inGroup": false
+    },
+    {
+      "id": "n1772820439667_3",
+      "x": 300,
+      "y": 321.5,
+      "role": "مسؤول فئتيّ الجامعيّة والعاملة",
+      "personId": 245,
+      "inCouncil": true,
+      "inGroup": true
+    }
+  ],
+  "edges": [
+    {
+      "id": "auto_n1772820431314_2_n1772820416001_1_peer",
+      "from": "n1772820431314_2",
+      "to": "n1772820416001_1",
+      "type": "peer",
+      "auto": true
+    },
+    {
+      "id": "auto_n1772820431314_2_n1772820439667_3_hierarchy",
+      "from": "n1772820431314_2",
+      "to": "n1772820439667_3",
+      "type": "hierarchy",
+      "auto": true
+    }
+  ]
+}

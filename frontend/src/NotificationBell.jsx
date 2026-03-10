@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import ReactDOM from 'react-dom'
-import { CheckCheck, MessageSquare, FileText, X, Bell } from 'lucide-react'
+import { CheckCheck, Check, MessageSquare, FileText, X, Bell, Mail, Trash2 } from 'lucide-react'
 import { api } from './api.js'
 
 export default function NotificationBell({ onOpenQuestionnaire }) {
@@ -54,6 +54,22 @@ export default function NotificationBell({ onOpenQuestionnaire }) {
     setOpen(false)
   }
 
+  const toggleRead = async (n, e) => {
+    e.stopPropagation()
+    if (n.read) {
+      await api.markNotificationUnread(n.id)
+    } else {
+      await api.markNotificationRead(n.id)
+    }
+    load()
+  }
+
+  const deleteNotification = async (n, e) => {
+    e.stopPropagation()
+    await api.deleteNotification(n.id)
+    load()
+  }
+
   const markAll = async () => {
     setBusy(true)
     await api.markAllNotificationsRead()
@@ -62,6 +78,7 @@ export default function NotificationBell({ onOpenQuestionnaire }) {
   }
 
   const displayed = filter === 'unread' ? notifs.filter(n => !n.read) : notifs
+  const readCount = Math.max(0, notifs.length - unread)
 
   const panel = open && ReactDOM.createPortal(
     <div ref={dropRef} style={{
@@ -140,16 +157,18 @@ export default function NotificationBell({ onOpenQuestionnaire }) {
               </div>
               <div style={{ fontSize: '0.83rem', color: '#9ba5bc', lineHeight: 1.6 }}>
                 {filter === 'unread'
-                  ? <button onClick={() => setFilter('all')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0f2744', fontFamily: 'var(--font-body)', fontWeight: 700, fontSize: '0.83rem', textDecoration: 'underline' }}>عرض كل الإشعارات السابقة</button>
+                  ? ''
                   : 'ستظهر إشعاراتك هنا فور وصولها'}
               </div>
             </div>
           </div>
         ) : displayed.map(n => (
-          <button key={n.id} onClick={() => markRead(n)}
-            style={{ width: '100%', padding: '14px 18px', background: n.read ? 'white' : '#f0f7ff', border: 'none', borderBottom: '1px solid #f3f4f8', cursor: 'pointer', textAlign: 'right', fontFamily: 'var(--font-body)', display: 'flex', alignItems: 'flex-start', gap: 12, transition: 'background 0.12s' }}
+          <div key={n.id}
+            style={{ width: '100%', background: n.read ? 'white' : '#f0f7ff', borderBottom: '1px solid #f3f4f8', fontFamily: 'var(--font-body)', display: 'flex', alignItems: 'stretch', gap: 0, transition: 'background 0.12s' }}
             onMouseEnter={e => e.currentTarget.style.background = n.read ? '#f8f9fd' : '#e4effe'}
             onMouseLeave={e => e.currentTarget.style.background = n.read ? 'white' : '#f0f7ff'}>
+            <button onClick={() => markRead(n)}
+              style={{ flex: 1, width: '100%', padding: '14px 12px 14px 8px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'right', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
             <div style={{ width: 42, height: 42, borderRadius: '50%', flexShrink: 0, background: n.type === 'new_questionnaire' ? '#eef4ff' : '#fffbeb', border: `2px solid ${n.type === 'new_questionnaire' ? '#c5d8f8' : '#fde68a'}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {n.type === 'new_questionnaire' ? <FileText size={18} color="#0f2744" /> : <MessageSquare size={18} color="#c9963c" />}
             </div>
@@ -165,18 +184,55 @@ export default function NotificationBell({ onOpenQuestionnaire }) {
               </div>
             </div>
             {!n.read && <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#c9963c', flexShrink: 0, marginTop: 6 }} />}
-          </button>
+            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 10px', flexShrink: 0 }}>
+              <button
+                onClick={(e) => toggleRead(n, e)}
+                aria-label={n.read ? 'تمييز كغير مقروء' : 'تمييز كمقروء'}
+                title={n.read ? 'تمييز كغير مقروء' : 'تمييز كمقروء'}
+                style={{
+                  width: 30,
+                  height: 30,
+                  background: n.read ? 'white' : '#eef4ff',
+                  border: '1px solid #d7deea',
+                  borderRadius: '50%',
+                  color: n.read ? '#9ba5bc' : '#0f2744',
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-body)',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  padding: 0,
+                  flexShrink: 0,
+                }}
+              >
+                {n.read ? <Mail size={14} /> : <Check size={14} strokeWidth={2.6} />}
+              </button>
+              <button
+                onClick={(e) => deleteNotification(n, e)}
+                aria-label="حذف الإشعار"
+                title="حذف الإشعار"
+                style={{
+                  width: 30,
+                  height: 30,
+                  background: 'white',
+                  border: '1px solid #efd6d6',
+                  borderRadius: '50%',
+                  color: '#b65b5b',
+                  cursor: 'pointer',
+                  padding: 0,
+                  flexShrink: 0,
+                }}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </div>
         ))}
       </div>
 
       {/* Footer */}
       <div style={{ padding: '10px 20px', borderTop: '1px solid #e2e6ef', background: '#f8f9fd', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
-        <span style={{ fontSize: '0.76rem', color: '#9ba5bc' }}>{notifs.length} إشعار · {unread} غير مقروء</span>
-        {filter === 'unread' && notifs.length > unread && (
-          <button onClick={() => setFilter('all')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#0f2744', fontFamily: 'var(--font-body)', fontSize: '0.76rem', fontWeight: 700, padding: 0 }}>
-            عرض السابقة ←
-          </button>
-        )}
+        <span style={{ fontSize: '0.76rem', color: '#9ba5bc' }}>{readCount} مقروء · {unread} غير مقروء</span>
       </div>
     </div>,
     document.body

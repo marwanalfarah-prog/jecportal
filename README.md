@@ -130,14 +130,14 @@ Base path: `/api`
 - `GET /filters`
 - `GET /persons`, `GET /persons/enriched`
 - `GET /person/<pid>`, `POST /person`, `PUT /person/<pid>`, `DELETE /person/<pid>`
-- `PATCH /person/<pid>/archive`, `PATCH /person/<pid>/unarchive`
+- `PATCH /person/<pid>/archive`, `PATCH /person/<pid>/unarchive` (JSON body: `{ "youth_group_id": "<group_id>" }`)
 - `POST /person/<pid>/photo`, `GET /person/<pid>/photo`
 - `GET /table/<sheet>`, `PUT /table/<sheet>`
 
 ### Unregistered Members
 - `GET /unregistered`, `GET /unregistered/<uid>`
 - `POST /unregistered`, `PUT /unregistered/<uid>`, `DELETE /unregistered/<uid>`
-- `PATCH /unregistered/<uid>/archive`, `PATCH /unregistered/<uid>/unarchive`
+- `PATCH /unregistered/<uid>/archive`, `PATCH /unregistered/<uid>/unarchive` (JSON body: `{ "youth_group_id": "<group_id>" }`)
 - `POST /unregistered/<uid>/photo`, `GET /unregistered/<uid>/photo`
 - `POST /unregistered/<uid>/promote`
 - `POST /unregistered/sync`

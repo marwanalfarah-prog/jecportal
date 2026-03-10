@@ -11,7 +11,16 @@ def _unreg_sub(sheet, uid):
     df = S.unreg_store.get(sheet, pd.DataFrame())
     if df.empty or "person_id" not in df.columns:
         return []
-    return S.df_to_json(df[df["person_id"].astype(str) == str(uid)])
+    rows = S.df_to_json(df[df["person_id"].astype(str) == str(uid)])
+    if sheet == "person_youth_group":
+        out = []
+        for row in rows:
+            normalized = dict(row)
+            archived = normalized.get("archived")
+            normalized["archived"] = bool(archived) if archived is not None and str(archived) not in ("nan", "None", "") else False
+            out.append(normalized)
+        return out
+    return rows
 
 
 def _unreg_build_record(uid):
@@ -25,6 +34,7 @@ def _unreg_build_record(uid):
     _, ext = S.get_unreg_photo_path(uid)
     return {
         "person": person_data,
+        "avatar_initial": S.avatar_initial_from_person(person_data),
         "photo": f"/api/unregistered/{uid}/photo" if ext else None,
         "nationality": _unreg_sub("nationality", uid),
         "mobile_numbers": _unreg_sub("mobile_numbers", uid),
@@ -43,6 +53,10 @@ def _unreg_replace_sub(sheet, uid, rows):
         df = df[df["person_id"].astype(str) != str(uid)]
     if rows:
         new_df = pd.DataFrame(rows)
+        if sheet == "person_youth_group":
+            if "archived" not in new_df.columns:
+                new_df["archived"] = False
+            new_df["archived"] = new_df["archived"].fillna(False).astype(bool)
         if "person_id" not in new_df.columns:
             new_df.insert(0, "person_id", uid)
         else:
@@ -72,12 +86,33 @@ def register_unregistered_routes(app):
                     result[str(pid)] = grp[col].dropna().astype(str).unique().tolist()
                 return result
 
+            def pid_to_youth_rows_u(df):
+                result = {}
+                if df.empty or "person_id" not in df.columns:
+                    return result
+
+                for pid, grp in df.groupby("person_id", sort=False):
+                    rows = []
+                    for _, row in grp.iterrows():
+                        yg_id = S._normalize_text(row.get(S.YOUTH_GROUP_ID_COL))
+                        if not yg_id:
+                            continue
+                        age_group = S._normalize_text(row.get("age_group")) or ""
+                        join_year = S._normalize_text(row.get("youth_join_year")) or ""
+                        archived = row.get("archived")
+                        rows.append({
+                            "youth_group_id": yg_id,
+                            "age_group": age_group,
+                            "youth_join_year": join_year,
+                            "archived": bool(archived) if archived is not None and str(archived) not in ("nan", "None", "") else False,
+                        })
+                    result[str(pid)] = rows
+                return result
+
             nat_map = pid_to_list_u(nat, "nationality")
             sch_map = pid_to_list_u(sch, "school")
-            yg_map = pid_to_list_u(pyg, "youth_group_name")
-            ag_map = pid_to_list_u(pyg, "age_group")
-            yjy_map = pid_to_list_u(pyg, "youth_join_year")
-            ryg_map = pid_to_list_u(resp, "youth_group_name")
+            youth_rows_map = pid_to_youth_rows_u(pyg)
+            ryg_id_map = pid_to_list_u(resp, S.YOUTH_GROUP_ID_COL)
             rtime_map = pid_to_list_u(resp, "time")
             rrole_map = pid_to_list_u(resp, "responsibility")
             uni_map = pid_to_list_u(he, "university_college")
@@ -90,12 +125,23 @@ def register_unregistered_routes(app):
             enriched = []
             for row in persons_df.to_dict(orient="records"):
                 uid = str(row.get("person_id", ""))
+                row["_avatar_initial"] = S.avatar_initial_from_person(row)
                 row["_nationalities"] = nat_map.get(uid, [])
                 row["_schools"] = sch_map.get(uid, [])
-                row["_youth_groups"] = yg_map.get(uid, [])
-                row["_age_groups"] = ag_map.get(uid, [])
-                row["_youth_join_years"] = yjy_map.get(uid, [])
-                row["_responsibility_youth_groups"] = ryg_map.get(uid, [])
+                youth_rows = youth_rows_map.get(uid, [])
+                active_youth_rows = [entry for entry in youth_rows if not bool(entry.get("archived"))]
+                archived_youth_rows = [entry for entry in youth_rows if bool(entry.get("archived"))]
+                row["_youth_memberships"] = youth_rows
+
+                yg_ids = [entry["youth_group_id"] for entry in active_youth_rows]
+                row["_youth_group_ids"] = yg_ids
+                row["_youth_groups"] = [S.youth_group_name(gid) or gid for gid in yg_ids]
+                row["_age_groups"] = [entry["age_group"] for entry in active_youth_rows]
+                row["_youth_join_years"] = [entry["youth_join_year"] for entry in active_youth_rows]
+                row["_archived_youth_group_ids"] = [entry["youth_group_id"] for entry in archived_youth_rows]
+                ryg_ids = ryg_id_map.get(uid, [])
+                row["_responsibility_youth_group_ids"] = ryg_ids
+                row["_responsibility_youth_groups"] = [S.youth_group_name(gid) or gid for gid in ryg_ids]
                 row["_responsibility_times"] = rtime_map.get(uid, [])
                 row["_responsibilities"] = rrole_map.get(uid, [])
                 row["_universities"] = uni_map.get(uid, [])
@@ -106,8 +152,7 @@ def register_unregistered_routes(app):
                 row["_hobbies"] = hob_map.get(uid, [])
                 _, ext = S.get_unreg_photo_path(uid)
                 row["_photo"] = f"/api/unregistered/{uid}/photo" if ext else None
-                archived = row.get("archived")
-                row["archived"] = bool(archived) if archived is not None and str(archived) not in ('nan', 'None', '') else False
+                row["archived"] = bool(youth_rows) and len(active_youth_rows) == 0
                 enriched.append(row)
         return jsonify(enriched)
 
@@ -130,7 +175,7 @@ def register_unregistered_routes(app):
                 if str(new_uid) in existing["person_id"].astype(str).values:
                     record = _unreg_build_record(new_uid)
                     return jsonify({"ok": True, "person_id": new_uid, "record": record})
-            p = body.get("person") or {}
+            p = S.normalize_person_birth_fields(body.get("person") or {})
             if not p.get("first_name"):
                 raw_name = body.get("name", "")
                 parts = raw_name.strip().split() if raw_name else []
@@ -168,7 +213,7 @@ def register_unregistered_routes(app):
             idx = persons_df[persons_df["person_id"].astype(str) == str(uid)].index
             if idx.empty:
                 return jsonify({"error": "not found"}), 404
-            p = body.get("person", {})
+            p = S.normalize_person_birth_fields(body.get("person", {}))
             for k, v in p.items():
                 S.unreg_store["persons"].at[idx[0], k] = v
             for sheet in ("nationality", "mobile_numbers", "schools", "higher_education", "jobs", "responsibilities", "person_youth_group", "hobbies_skills"):

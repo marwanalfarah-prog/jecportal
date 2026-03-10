@@ -1,5 +1,5 @@
-import { useEffect, useState, useRef } from 'react'
-import { Users, Plus, Trash2, Key, RefreshCw, X, Search, ShieldCheck, User, Download, Copy, Check } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Users, Plus, Trash2, RefreshCw, X, Search, ShieldCheck, User, Download, Copy, Check, Pencil } from 'lucide-react'
 import { api } from '../api.js'
 
 function Badge({ children, color = 'navy' }) {
@@ -61,7 +61,7 @@ export default function UserManagement({ toast }) {
   const [loading, setLoading] = useState(true)
   const [search,  setSearch]  = useState('')
   const [showAdd, setShowAdd] = useState(false)
-  const [showPw,  setShowPw]  = useState(null)   // username being password-changed
+  const [showCreds, setShowCreds] = useState(null) // { currentUsername, nextUsername }
   const [genResult, setGenResult] = useState(null)
   const [copied, setCopied] = useState(null)
 
@@ -69,8 +69,10 @@ export default function UserManagement({ toast }) {
   const [form, setForm] = useState({ username: '', password: '', role: 'member', person_type: 'registered', person_id: '' })
   const [formErr, setFormErr] = useState('')
 
-  // Password change form
+  // Credentials change form
+  const [nextUsername, setNextUsername] = useState('')
   const [newPw, setNewPw] = useState('')
+  const [confirmPw, setConfirmPw] = useState('')
 
   const load = () => {
     setLoading(true)
@@ -113,11 +115,47 @@ export default function UserManagement({ toast }) {
     load()
   }
 
-  const handleChangePw = async () => {
-    if (!newPw) return
-    await api.updateUser(showPw, { password: newPw })
-    toast('تم تغيير كلمة المرور', 'success')
-    setShowPw(null); setNewPw('')
+  const openCredentialsModal = (username) => {
+    setShowCreds({ currentUsername: username, nextUsername: username })
+    setNextUsername(username)
+    setNewPw('')
+    setConfirmPw('')
+  }
+
+  const handleChangeCredentials = async () => {
+    if (!showCreds?.currentUsername) return
+
+    const currentUsername = (showCreds.currentUsername || '').toLowerCase()
+    const desiredUsername = (nextUsername || '').trim().toLowerCase()
+    if (!desiredUsername) {
+      toast('اسم المستخدم مطلوب', 'error')
+      return
+    }
+
+    const body = {}
+    if (desiredUsername !== currentUsername) body.username = desiredUsername
+    if (newPw && newPw !== confirmPw) {
+      toast('تأكيد كلمة المرور غير مطابق', 'error')
+      return
+    }
+    if (newPw) body.password = newPw
+    if (!Object.keys(body).length) {
+      setShowCreds(null)
+      setNewPw('')
+      return
+    }
+
+    try {
+      await api.updateUser(currentUsername, body)
+      toast('تم تحديث بيانات الدخول', 'success')
+      setShowCreds(null)
+      setNewPw('')
+      setConfirmPw('')
+      load()
+    } catch (e) {
+      if ((e.message || '').includes('409')) toast('اسم المستخدم موجود مسبقاً', 'error')
+      else toast('تعذر تحديث بيانات الدخول', 'error')
+    }
   }
 
   const handleGenerateAll = async () => {
@@ -221,8 +259,8 @@ export default function UserManagement({ toast }) {
                   <td style={{ padding: '10px 14px' }}>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                       <button className="btn btn-ghost btn-sm" style={{ gap: 5, fontSize: '0.78rem' }}
-                        onClick={() => { setShowPw(u.username); setNewPw('') }}>
-                        <Key size={12}/> تغيير كلمة المرور
+                        onClick={() => openCredentialsModal(u.username)}>
+                        <Pencil size={12}/> تعديل اسم المستخدم/كلمة المرور
                       </button>
                       {u.username !== 'admin' && (
                         <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)', gap: 5, fontSize: '0.78rem' }}
@@ -284,17 +322,26 @@ export default function UserManagement({ toast }) {
         </Modal>
       )}
 
-      {/* Change password modal */}
-      {showPw && (
-        <Modal title={`تغيير كلمة مرور: ${showPw}`} onClose={() => { setShowPw(null); setNewPw('') }}>
-          <InputRow label="كلمة المرور الجديدة">
+      {/* Change credentials modal */}
+      {showCreds && (
+        <Modal title={`تعديل بيانات الدخول: ${showCreds.currentUsername}`} onClose={() => { setShowCreds(null); setNewPw(''); setConfirmPw('') }}>
+          <InputRow label="اسم المستخدم الجديد">
+            <input style={inputStyle} type="text" value={nextUsername}
+              onChange={e => setNextUsername(e.target.value)} placeholder="username"/>
+          </InputRow>
+          <InputRow label="كلمة المرور الجديدة (اختياري)">
             <input style={inputStyle} type="text" value={newPw}
               onChange={e => setNewPw(e.target.value)} placeholder="أدخل كلمة المرور الجديدة"
-              onKeyDown={e => e.key === 'Enter' && handleChangePw()}/>
+              onKeyDown={e => e.key === 'Enter' && handleChangeCredentials()}/>
+          </InputRow>
+          <InputRow label="تأكيد كلمة المرور الجديدة">
+            <input style={inputStyle} type="text" value={confirmPw}
+              onChange={e => setConfirmPw(e.target.value)} placeholder="أعد إدخال كلمة المرور الجديدة"
+              onKeyDown={e => e.key === 'Enter' && handleChangeCredentials()}/>
           </InputRow>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
-            <button className="btn btn-ghost btn-sm" onClick={() => setShowPw(null)}>إلغاء</button>
-            <button className="btn btn-gold btn-sm" onClick={handleChangePw}>حفظ</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setShowCreds(null); setConfirmPw('') }}>إلغاء</button>
+            <button className="btn btn-gold btn-sm" onClick={handleChangeCredentials}>حفظ</button>
           </div>
         </Modal>
       )}
