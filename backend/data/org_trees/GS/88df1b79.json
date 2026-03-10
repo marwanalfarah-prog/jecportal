@@ -12,13 +12,13 @@
     },
     {
       "id": "n1772229962402_4",
+      "inAmanah": true,
       "inGroup": false,
       "personId": 965,
+      "reportsToHeadId": null,
       "role": "الأمين العام",
       "x": 4213,
-      "y": 130,
-      "reportsToHeadId": null,
-      "inAmanah": true
+      "y": 130
     },
     {
       "id": "n1772229978079_5",
@@ -477,7 +477,7 @@
       "id": "n1772258310192_3",
       "inAmanah": false,
       "inGroup": true,
-      "personId": null,
+      "personId": 3103,
       "reportsToHeadId": null,
       "role": "موظف شبيبة ستور",
       "x": 7762,

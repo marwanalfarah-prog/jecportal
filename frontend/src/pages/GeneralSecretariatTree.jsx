@@ -1754,12 +1754,7 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
     setSuppressed(new Set())
     api.getOrgTree(GS_GROUP_KEY)
       .then(data => {
-        const _ln = data.nodes || []
-        setNodes(_ln)
-        setEdges(data.edges || [])
-        setCurrentPeriod(data.period || null)
-        setPeriods(data.periods || [])
-        setDirty(false); setStructuralDirty(false)
+        loadTreeIntoView(data, null, data.periods || [])
       })
       .catch(() => { setNodes([]); setEdges([]); setCurrentPeriod(null); setPeriods([]); setDirty(false); setStructuralDirty(false) })
       .finally(() => setLoading(false))
@@ -1788,10 +1783,7 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
     setSuppressed(new Set())
     api.getOrgTree(GS_GROUP_KEY, period.id)
       .then(data => {
-        setNodes(data.nodes || [])
-        setEdges(data.edges || [])
-        setCurrentPeriod(period)
-        setDirty(false); setStructuralDirty(false)
+        loadTreeIntoView(data, period, periods)
       })
       .catch(() => { setNodes([]); setEdges([]) })
       .finally(() => setLoading(false))
@@ -1942,6 +1934,47 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
     const { tidied, newZoom, newPan } = result
     setAnimating(true); setNodes(tidied); setZoom(newZoom); setPan(newPan)
     setTimeout(() => setAnimating(false), 620)
+  }
+
+  function loadTreeIntoView(data, fallbackPeriod = null, nextPeriods = null) {
+    const nextNodes = data?.nodes || []
+    const nextEdges = data?.edges || []
+
+    if (!nextNodes.length) {
+      setNodes([])
+      setEdges(nextEdges)
+      setCurrentPeriod(data?.period || fallbackPeriod || null)
+      if (nextPeriods) setPeriods(nextPeriods)
+      else if (data?.periods) setPeriods(data.periods)
+      setSelected(null)
+      setConnSrc(null)
+      setConnectMode(false)
+      setZoom(1)
+      setPan({ x: 0, y: 0 })
+      setDirty(false)
+      setStructuralDirty(false)
+      return
+    }
+
+    const layoutResult = tidyLayout(nextNodes, nextEdges)
+    const fittedNodes = nextNodes.every(n => Number.isFinite(n.x) && Number.isFinite(n.y))
+      ? nextNodes
+      : (layoutResult?.tidied || nextNodes)
+    const nextZoom = layoutResult?.newZoom ?? 1
+    const nextPan = layoutResult?.newPan ?? { x: 0, y: 0 }
+
+    setNodes(fittedNodes)
+    setEdges(nextEdges)
+    setCurrentPeriod(data?.period || fallbackPeriod || null)
+    if (nextPeriods) setPeriods(nextPeriods)
+    else if (data?.periods) setPeriods(data.periods)
+    setSelected(null)
+    setConnSrc(null)
+    setConnectMode(false)
+    setZoom(nextZoom)
+    setPan(nextPan)
+    setDirty(false)
+    setStructuralDirty(false)
   }
 
   // ── Mutations ──────────────────────────────────────────────────────────────
