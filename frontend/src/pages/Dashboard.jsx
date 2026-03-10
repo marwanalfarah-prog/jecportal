@@ -74,7 +74,7 @@ export default function Dashboard() {
     <div>
       <div className="stat-grid">
         <StatCard label="إجمالي الأعضاء"      value={stats.total_members} icon={Users} />
-        <StatCard label="مجموعات الشبيبة"      value={stats.youth_groups}  icon={Building2} />
+        <StatCard label="فرق الشبيبة"          value={stats.youth_groups}  icon={Building2} />
         <StatCard label="سجلات التعليم العالي" value={stats.higher_ed}     icon={GraduationCap} />
         <StatCard label="سجلات التوظيف"        value={stats.employed}      icon={Briefcase} />
         <StatCard label="المحافظات"             value={stats.governorates}  icon={MapPin} />
@@ -112,9 +112,9 @@ export default function Dashboard() {
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20 }}>
         <div className="card">
           <div className="card-header">
-            <span className="card-title">أعلى مجموعات الشبيبة (أعضاءً)</span>
+            <span className="card-title">أعلى فرق الشبيبة (أعضاءً)</span>
             <span style={{ fontSize: 12, color: '#9ba5bc', fontFamily: 'Tajawal' }}>
-              {ygData.length} مجموعة
+              {ygData.length} فرقة
             </span>
           </div>
           <div className="card-body" style={{ maxHeight: 480, overflowY: 'auto', paddingLeft: 4 }}>

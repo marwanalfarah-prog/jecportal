@@ -191,7 +191,7 @@ export default function YouthGroupAdmin({ toast }) {
         setGroups(list)
         if (list[0]?.group_id) setSelected(list[0].group_id)
       })
-      .catch(() => toast?.('فشل تحميل مجموعات الشبيبة', 'error'))
+      .catch(() => toast?.('فشل تحميل فرق الشبيبة', 'error'))
       .finally(() => setLoadingGroups(false))
 
     api.listParishes()
@@ -238,7 +238,7 @@ export default function YouthGroupAdmin({ toast }) {
         setSpecialLogoStartDate('')
         setSpecialLogoEndDate('')
         setSpecialLogoIsCurrent(true)
-        toast?.('تعذر تحميل تفاصيل المجموعة', 'error')
+        toast?.('تعذر تحميل تفاصيل الفرقة', 'error')
       })
       .finally(() => setLoadingDetails(false))
   }, [selected, logoBust])
@@ -308,11 +308,11 @@ export default function YouthGroupAdmin({ toast }) {
         toast?.('تم رفع شعار الرعية بنجاح', 'success')
       } else {
         await api.uploadYouthGroupLogo(selected, file)
-        toast?.('تم رفع شعار المجموعة بنجاح', 'success')
+        toast?.('تم رفع شعار الفرقة بنجاح', 'success')
       }
       setLogoBust(bust)
     } catch {
-      toast?.(useParishLogo ? 'فشل رفع شعار الرعية' : 'فشل رفع شعار المجموعة', 'error')
+      toast?.(useParishLogo ? 'فشل رفع شعار الرعية' : 'فشل رفع شعار الفرقة', 'error')
     } finally {
       setLogoUploading(false)
     }
@@ -408,7 +408,7 @@ export default function YouthGroupAdmin({ toast }) {
       })) }
       const res = await api.updateYouthGroupPromotionLimits(selected, payload)
       setAgeRules(res?.age_rules || payload.age_rules)
-      toast?.('تم حفظ حدود الترفيع الخاصة بالمجموعة', 'success')
+      toast?.('تم حفظ حدود الترفيع الخاصة بالفرقة', 'success')
     } catch {
       toast?.('فشل حفظ حدود الترفيع', 'error')
     } finally {
@@ -453,9 +453,9 @@ export default function YouthGroupAdmin({ toast }) {
         }
       })
       setLogoBust(Date.now())
-      toast?.('تم حفظ الرعية التابعة للمجموعة', 'success')
+      toast?.('تم حفظ الرعية التابعة للفرقة', 'success')
     } catch {
-      toast?.('فشل حفظ الرعية التابعة للمجموعة', 'error')
+      toast?.('فشل حفظ الرعية التابعة للفرقة', 'error')
     } finally {
       setSavingParish(false)
     }
@@ -575,7 +575,7 @@ export default function YouthGroupAdmin({ toast }) {
       })
       if (successToast) toast?.(successToast, 'success')
     } catch {
-      toast?.('تعذر حفظ روابط التواصل الخاصة بالمجموعة', 'error')
+      toast?.('تعذر حفظ روابط التواصل الخاصة بالفرقة', 'error')
     } finally {
       setSavingSocialMedia(false)
     }
@@ -635,9 +635,9 @@ export default function YouthGroupAdmin({ toast }) {
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       <div className="card" style={{ padding: 16, display: 'grid', gap: 10 }}>
-        <div style={{ fontWeight: 800, color: 'var(--navy)', fontSize: '1rem' }}>ملف مجموعة الشبيبة</div>
+        <div style={{ fontWeight: 800, color: 'var(--navy)', fontSize: '1rem' }}>ملف فرقة الشبيبة</div>
         <div style={{ color: 'var(--gray-500)', fontSize: '0.86rem' }}>
-          يعرض كل المعلومات الخاصة بالمجموعة المختارة، مع إمكانية رفع شعار خاص بها ليظهر لأعضائها عند تسجيل الدخول.
+          يعرض كل المعلومات الخاصة بالفرقة المختارة، مع إمكانية رفع شعار خاص بها ليظهر لأعضائها عند تسجيل الدخول.
         </div>
         <select
           value={selected}
@@ -661,7 +661,7 @@ export default function YouthGroupAdmin({ toast }) {
         <div className="loading-center"><div className="spinner" /></div>
       ) : !group ? (
         <div className="card" style={{ padding: 24, textAlign: 'center', color: 'var(--gray-500)' }}>
-          لا توجد بيانات متاحة لهذه المجموعة.
+          لا توجد بيانات متاحة لهذه الفرقة.
         </div>
       ) : (
         <>
@@ -773,7 +773,7 @@ export default function YouthGroupAdmin({ toast }) {
                   })}
                 </div>
                 <label className="btn btn-gold btn-sm" style={{ width: 'fit-content', marginTop: 4, cursor: logoUploading ? 'wait' : 'pointer' }}>
-                  <Upload size={14} /> {logoUploading ? 'جاري الرفع...' : useParishLogo ? 'رفع شعار الرعية' : 'رفع شعار المجموعة'}
+                  <Upload size={14} /> {logoUploading ? 'جاري الرفع...' : useParishLogo ? 'رفع شعار الرعية' : 'رفع شعار الفرقة'}
                   <input type="file" accept="image/*" onChange={onUploadLogo} style={{ display: 'none' }} disabled={logoUploading} />
                 </label>
                 <label
@@ -793,7 +793,7 @@ export default function YouthGroupAdmin({ toast }) {
                     onChange={(e) => onToggleUseParishLogo(e.target.checked)}
                     disabled={logoUploading || savingParish}
                   />
-                  استخدام شعار الرعية بدلاً من شعار المجموعة
+                  استخدام شعار الرعية بدلاً من شعار الفرقة
                 </label>
               </div>
 
@@ -954,7 +954,7 @@ export default function YouthGroupAdmin({ toast }) {
 
           {activeTab === 'social' ? (
           <div className="card" style={{ padding: 16 }}>
-            <div style={{ color: 'var(--gray-700)', fontSize: '0.92rem', fontWeight: 800, marginBottom: 10 }}>وسائل تواصل المجموعة</div>
+            <div style={{ color: 'var(--gray-700)', fontSize: '0.92rem', fontWeight: 800, marginBottom: 10 }}>وسائل تواصل الفرقة</div>
             <div style={{ display: 'grid', gap: 10, maxWidth: 860 }}>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--gray-600)', fontSize: '0.84rem' }}>
                 <input
@@ -1014,7 +1014,7 @@ export default function YouthGroupAdmin({ toast }) {
               </div>
 
               {socialMediaEntries.length === 0 ? (
-                <div style={{ color: 'var(--gray-500)', fontSize: '0.82rem' }}>لا توجد روابط خاصة بالمجموعة حالياً.</div>
+                <div style={{ color: 'var(--gray-500)', fontSize: '0.82rem' }}>لا توجد روابط خاصة بالفرقة حالياً.</div>
               ) : (
                 <div style={{ display: 'grid', gap: 6 }}>
                   {socialMediaEntries.map((item) => {
@@ -1054,7 +1054,7 @@ export default function YouthGroupAdmin({ toast }) {
           <div className="card" style={{ padding: 16 }}>
             <div style={{ fontWeight: 800, color: 'var(--navy)', marginBottom: 6 }}>شعارات المناسبات الخاصة</div>
             <div style={{ color: 'var(--gray-500)', fontSize: '0.82rem', marginBottom: 12 }}>
-              يمكن رفع أكثر من شعار مناسبة لنفس المجموعة. يسمح النظام بتفعيل شعار واحد فقط في نفس الوقت.
+              يمكن رفع أكثر من شعار مناسبة لنفس الفرقة. يسمح النظام بتفعيل شعار واحد فقط في نفس الوقت.
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
               <div style={{ border: '1px solid var(--gray-200)', borderRadius: 10, padding: 10, background: 'var(--gray-50)', display: 'grid', gap: 8, alignContent: 'start' }}>
@@ -1187,7 +1187,7 @@ export default function YouthGroupAdmin({ toast }) {
           {activeTab === 'members' ? (
           <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 0.85fr', gap: 16 }}>
             <div className="card" style={{ padding: 16 }}>
-              <div style={{ fontWeight: 800, color: 'var(--navy)', marginBottom: 10 }}>أعضاء المجموعة</div>
+              <div style={{ fontWeight: 800, color: 'var(--navy)', marginBottom: 10 }}>أعضاء الفرقة</div>
               <div style={{ maxHeight: 360, overflowY: 'auto', border: '1px solid var(--gray-200)', borderRadius: 10 }}>
                 {members.length === 0 ? (
                   <div style={{ padding: 16, color: 'var(--gray-500)' }}>لا يوجد أعضاء حالياً.</div>
@@ -1248,9 +1248,9 @@ export default function YouthGroupAdmin({ toast }) {
               </div>
 
               <div className="card" style={{ padding: 16 }}>
-                <div style={{ fontWeight: 800, color: 'var(--navy)', marginBottom: 6 }}>حدود الترفيع حسب المجموعة</div>
+                <div style={{ fontWeight: 800, color: 'var(--navy)', marginBottom: 6 }}>حدود الترفيع حسب الفرقة</div>
                 <div style={{ color: 'var(--gray-500)', fontSize: '0.8rem', marginBottom: 10 }}>
-                  يتم فحص كل عضو حسب سنة الميلاد والفئة الحالية. هذه الحدود تخص المجموعة الحالية فقط.
+                  يتم فحص كل عضو حسب سنة الميلاد والفئة الحالية. هذه الحدود تخص الفرقة الحالية فقط.
                 </div>
                 <div style={{ display: 'grid', gap: 8 }}>
                   {uiAgeRules.map((rule) => {

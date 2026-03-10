@@ -267,7 +267,7 @@ function MemberYouthGroupLogoTile({ groupId, label }) {
             textOverflow: 'ellipsis',
           }}
         >
-          مجموعة الشبيبة
+          فرقة الشبيبة
         </div>
         <div
           style={{
@@ -295,7 +295,7 @@ const PAGE_TITLES = {
   council_members:     'أعضاء فئتي',
   general_secretariat: 'الأمانة العامة للشبيبة المسيحيّة',
   config:              'الإعدادات والتهيئة',
-  youth_groups:        'ملف مجموعات الشبيبة',
+  youth_groups:        'ملف فرق الشبيبة',
   churches:            'الكنائس',
   churches_map:        'خريطة الكنائس',
 }
@@ -433,7 +433,7 @@ export default function App() {
     { id: 'general_secretariat', label: 'الأمانة العامة',              icon: GitBranch },
     { id: 'users',               label: 'إدارة المستخدمين',            icon: ShieldCheck },
     { id: 'questionnaires',       label: 'إدارة الاستبيانات',           icon: ClipboardList },
-    { id: 'youth_groups',         label: 'ملف مجموعات الشبيبة',          icon: Building2 },
+    { id: 'youth_groups',         label: 'ملف فرق الشبيبة',              icon: Building2 },
     { id: 'churches',             label: 'الكنائس',                       icon: MapPin },
     { id: 'churches_map',         label: 'خريطة الكنائس',                 icon: MapPin },
     { id: 'config',               label: 'الإعدادات',                    icon: Settings },

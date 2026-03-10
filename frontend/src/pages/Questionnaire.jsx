@@ -259,8 +259,8 @@ function YouthGroupPicker({ youthGroups, selected, onChange }) {
     return hit ? getLbl(hit) : v
   })
 
-  const label = selected.length === 0                ? '— اختر مجموعة شبيبة —'
-              : selected.length === youthGroups.length ? 'جميع مجموعات الشبيبة'
+  const label = selected.length === 0                ? '— اختر فرقة شبيبة —'
+              : selected.length === youthGroups.length ? 'جميع فرق الشبيبة'
               : selected.length === 1                 ? selectedLabels[0]
               : `${selected.length} مجموعات مختارة`
 
@@ -299,8 +299,8 @@ function YouthGroupPicker({ youthGroups, selected, onChange }) {
   return (
     <div>
       <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4a5568', display: 'block', marginBottom: 5 }}>
-        مجموعة الشبيبة *
-        <span style={{ fontSize: '0.72rem', fontWeight: 500, color: '#9ba5bc', marginRight: 6 }}>(يجب اختيار مجموعة واحدة على الأقل)</span>
+        فرقة الشبيبة *
+        <span style={{ fontSize: '0.72rem', fontWeight: 500, color: '#9ba5bc', marginRight: 6 }}>(يجب اختيار فرقة واحدة على الأقل)</span>
       </label>
 
       <button ref={triggerRef} type="button" onClick={handleOpen}
@@ -364,7 +364,7 @@ function YouthGroupPicker({ youthGroups, selected, onChange }) {
             {filtered.length === 0 && <div style={{ padding: '20px', textAlign: 'center', color: '#9ba5bc', fontSize: '0.82rem' }}>لا توجد نتائج</div>}
           </div>
           <div style={{ padding: '7px 14px', borderTop: '1px solid #e2e6ef', fontSize: '0.74rem', color: '#9ba5bc', textAlign: 'center', flexShrink: 0 }}>
-            {selected.length} من {youthGroups.length} مجموعة مختارة
+            {selected.length} من {youthGroups.length} فرقة مختارة
           </div>
         </div>,
         document.body
@@ -631,7 +631,7 @@ function QuestionnaireForm({ initial, youthGroups, persons, onSave, onCancel, to
   const submit = async () => {
     if (!form.title.trim())                                        { toast('يرجى إدخال عنوان الاستبيان','error'); return }
     if (form.target_type==='role' && !form.role?.tab)              { toast('يرجى اختيار نوع المسؤولية','error'); return }
-    if (form.target_type==='role' && form.target_youth_groups.length===0) { toast('يرجى اختيار مجموعة شبيبة واحدة على الأقل','error'); return }
+    if (form.target_type==='role' && form.target_youth_groups.length===0) { toast('يرجى اختيار فرقة شبيبة واحدة على الأقل','error'); return }
     if (form.target_type==='person' && !form.target_person_id)    { toast('يرجى اختيار الشخص المستهدف','error'); return }
     if (form.questions.length===0)                                 { toast('يرجى إضافة سؤال واحد على الأقل','error'); return }
     setSaving(true)

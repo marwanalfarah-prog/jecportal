@@ -519,7 +519,7 @@ export default function CouncilMembers({ councilAccess, currentUser, onSelectPer
 
     // If it is already a readable name, keep it formatted; if it is a raw ID with no
     // known mapping, avoid showing the raw technical identifier in UI.
-    if (/^YG\d{3,}$/i.test(text) || text === 'GS') return 'مجموعة غير معرّفة'
+    if (/^YG\d{3,}$/i.test(text) || text === 'GS') return 'فرقة غير معرّفة'
     return api.formatYouthGroupLabel(text)
   }, [groupNameById])
 
@@ -662,7 +662,7 @@ export default function CouncilMembers({ councilAccess, currentUser, onSelectPer
     }
 
     const name = fullName(row) || 'هذا العضو'
-    if (!confirm(`هل تريد أرشفة "${name}" ضمن مجموعة ${resolveGroupLabel(youthGroupId)}؟`)) return
+    if (!confirm(`هل تريد أرشفة "${name}" ضمن فرقة ${resolveGroupLabel(youthGroupId)}؟`)) return
 
     try {
       if (row?._isUnreg) {
@@ -773,7 +773,7 @@ export default function CouncilMembers({ councilAccess, currentUser, onSelectPer
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.87rem' }}>
                 <thead>
                   <tr style={{ background: '#f8f9fb', borderBottom: '1px solid #e2e6ef' }}>
-                    {['الاسم الكامل','سنة الميلاد','الجنس','الفئة الحالية','مجموعة الشبيبة','المحافظة',''].map(h => (
+                    {['الاسم الكامل','سنة الميلاد','الجنس','الفئة الحالية','فرقة الشبيبة','المحافظة',''].map(h => (
                       <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#4a5568', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -968,7 +968,7 @@ export default function CouncilMembers({ councilAccess, currentUser, onSelectPer
 
                     {/* Youth group */}
                     <div style={{ flex: '1 1 140px', fontSize: '0.8rem', color: '#6b778f' }}>
-                      <div style={{ fontWeight: 700, color: '#4a5568', marginBottom: 2 }}>مجموعة الشبيبة</div>
+                      <div style={{ fontWeight: 700, color: '#4a5568', marginBottom: 2 }}>فرقة الشبيبة</div>
                       {resolveGroupLabel(pr.youth_group)}
                     </div>
 

@@ -206,7 +206,7 @@ const COL_DEFS = [
   { key: 'governorate',     label: 'المحافظة',               filterKey: 'governorate',     dataKey: 'governorate' },
   { key: 'birth_year',      label: 'سنة الميلاد',           filterKey: 'birth_year',      dataKey: 'birth_year' },
   { key: 'nationality',     label: 'الجنسية',                filterKey: 'nationality',     dataKey: p => p._nationalities },
-  { key: 'youth_group',     label: 'مجموعة الشبيبة',        filterKey: 'youth_group',     dataKey: p => p._youth_groups },
+  { key: 'youth_group',     label: 'فرقة الشبيبة',          filterKey: 'youth_group',     dataKey: p => p._youth_groups },
   { key: 'age_group',       label: 'الفئة العمرية',          filterKey: 'age_group',       dataKey: p => p._age_groups },
   { key: 'youth_join_year', label: 'سنة الانتساب',           filterKey: 'youth_join_year', dataKey: p => p._youth_join_years },
   { key: 'responsibility_youth_group', label: 'مسؤولية في',     filterKey: 'responsibility_youth_group', dataKey: p => p._responsibility_youth_groups },
@@ -518,10 +518,10 @@ function ArchiveMembershipDialog({ open, name, options, selectedId, onChange, on
         boxShadow: 'var(--shadow-lg)', direction: 'rtl',
       }} onClick={e => e.stopPropagation()}>
         <div style={{ fontFamily: 'var(--font-head)', fontWeight: 700, fontSize: '1.08rem', color: 'var(--navy)', marginBottom: 8 }}>
-          اختيار مجموعة الأرشفة
+          اختيار فرقة الأرشفة
         </div>
         <div style={{ fontSize: '0.9rem', color: 'var(--gray-600)', marginBottom: 14, lineHeight: 1.7 }}>
-          اختر مجموعة الشبيبة التي تريد أرشفة <strong>"{name}"</strong> ضمنها.
+          اختر فرقة الشبيبة التي تريد أرشفة <strong>"{name}"</strong> ضمنها.
         </div>
 
         <div style={{ marginBottom: 18 }}>
@@ -538,7 +538,7 @@ function ArchiveMembershipDialog({ open, name, options, selectedId, onChange, on
               background: 'white',
             }}
           >
-            <option value="">اختر مجموعة الشبيبة…</option>
+            <option value="">اختر فرقة الشبيبة…</option>
             {(options || []).map(opt => (
               <option key={opt.id} value={opt.id}>{opt.label}</option>
             ))}
@@ -816,7 +816,7 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
     const { type, id, selectedId } = archivePrompt
     const youthGroupId = String(selectedId || '').trim()
     if (!youthGroupId) {
-      toast?.('يرجى اختيار مجموعة الشبيبة', 'error')
+      toast?.('يرجى اختيار فرقة الشبيبة', 'error')
       return
     }
     try {
@@ -1134,7 +1134,7 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
                 minWidth: 170,
               }}
             >
-              <option value="all">كل مجموعات الشبيبة</option>
+              <option value="all">كل فرق الشبيبة</option>
               {archiveGroupOptions.map(opt => (
                 <option key={opt.id} value={opt.id}>{opt.label}</option>
               ))}

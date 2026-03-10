@@ -2832,11 +2832,11 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
             <GitBranch size={32} color="var(--gold)" />
           </div>
           <h2 style={{ fontFamily:'var(--font-head)', color:'var(--navy)', fontSize:'1.6rem', marginBottom:8 }}>الهيكل التنظيمي</h2>
-          <p style={{ color:'var(--gray-500)', marginBottom:32, fontSize:'0.95rem' }}>اختر مجموعة الشبيبة لعرض هيكلها التنظيمي أو إنشائه</p>
+          <p style={{ color:'var(--gray-500)', marginBottom:32, fontSize:'0.95rem' }}>اختر فرقة الشبيبة لعرض هيكلها التنظيمي أو إنشائه</p>
 
           <div style={{ position:'relative', marginBottom:12 }}>
             <Search size={16} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', color:'var(--gray-400)' }}/>
-            <input value={groupSearch} onChange={e => setGSearch(e.target.value)} placeholder="ابحث عن مجموعة…"
+            <input value={groupSearch} onChange={e => setGSearch(e.target.value)} placeholder="ابحث عن فرقة…"
               style={{ width:'100%', padding:'10px 40px 10px 16px', border:'1.5px solid var(--gray-200)', borderRadius:'var(--radius-md)', fontFamily:'var(--font-body)', fontSize:'0.9rem', direction:'rtl', textAlign:'right' }}
             />
           </div>
