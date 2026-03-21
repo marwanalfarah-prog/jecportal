@@ -28,6 +28,7 @@ export const api = {
   me:           ()             => req('/auth/me'),
   listUsers:    ()             => req('/auth/users'),
   listUsersBasic: ()           => req('/auth/users/basic'),
+  exportUsers:  ()             => req('/auth/users/export'),
   createUser:   (body)         => req('/auth/users', { method: 'POST', body }),
   updateUser:   (username, body) => req(`/auth/users/${encodeURIComponent(username)}`, { method: 'PUT', body }),
   deleteUser:   (username)     => req(`/auth/users/${encodeURIComponent(username)}`, { method: 'DELETE' }),
@@ -114,6 +115,29 @@ export const api = {
   getConfig:          ()           => req('/config'),
   putConfig:          (body)       => req('/config', { method: 'PUT', body }),
   resetConfig:        ()           => req('/config/reset', { method: 'PUT' }),
+  getMottosMeta:      ()           => req('/config/mottos/meta'),
+  listMottos:         ()           => req('/config/mottos'),
+  listActiveMottos:   ({ youthGroupIds = [], includeJecJordan = true } = {}) => {
+    const qs = new URLSearchParams()
+    if (Array.isArray(youthGroupIds) && youthGroupIds.length) qs.set('youth_group_ids', youthGroupIds.join(','))
+    qs.set('include_jec_jordan', includeJecJordan ? 'true' : 'false')
+    return req(`/config/mottos/active?${qs.toString()}`)
+  },
+  createMotto:        (body)       => req('/config/mottos', { method: 'POST', body }),
+  updateMotto:        (id, body)   => req(`/config/mottos/${encodeURIComponent(id)}`, { method: 'PUT', body }),
+  deleteMotto:        (id)         => req(`/config/mottos/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  uploadMottoLogo: async (id, file) => {
+    const form = new FormData()
+    form.append('logo', file)
+    const res = await fetch(`${BASE}/config/mottos/${encodeURIComponent(id)}/logo`, {
+      method: 'POST',
+      body: form,
+      credentials: 'include',
+    })
+    if (!res.ok) throw new Error(`API error ${res.status}`)
+    return res.json()
+  },
+  mottoLogoUrl: (id, bust) => `${BASE}/config/mottos/${encodeURIComponent(id)}/logo${bust ? `?t=${bust}` : ''}`,
 
   // ── Youth Groups (config) ───────────────────────────────────────────────────
   listYouthGroups:    ()           => req('/config/youth-groups'),
@@ -203,4 +227,8 @@ export const api = {
   youthGroupSpecialLogoUrl: (groupRef, bust) => `${BASE}/youth-groups/${encodeURIComponent(groupRef)}/special-logo${bust ? `?t=${bust}` : ''}`,
   youthGroupSpecialLogoByIdUrl: (groupRef, logoId, bust) => `${BASE}/youth-groups/${encodeURIComponent(groupRef)}/special-logo/${encodeURIComponent(logoId)}${bust ? `?t=${bust}` : ''}`,
   youthGroupActiveSpecialLogoUrl: (groupRef, bust) => `${BASE}/youth-groups/${encodeURIComponent(groupRef)}/special-logo-active${bust ? `?t=${bust}` : ''}`,
+
+  // ── Bible Reader ───────────────────────────────────────────────────────────
+  listBibleReaderBooks: () => req('/bible-reader/books'),
+  getBibleReaderBook: (bookId) => req(`/bible-reader/books/${encodeURIComponent(bookId)}`),
 }

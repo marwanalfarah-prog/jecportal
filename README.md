@@ -171,6 +171,7 @@ Base path: `/api`
 ## Data & Persistence Notes
 
 - Core person data is stored in `backend/data/JECJordanData.xlsx`.
+- Member addresses are persisted in the `addresses` sheet, including the primary address selection.
 - Auth users are persisted in an Excel sheet (`auth_users`) in the same workbook.
 - Some modules persist to JSON files (`promotions`, `questionnaires`, `notifications`, org tree files).
 - Profile photos are stored in `backend/data/photos/profile_pictures/`.

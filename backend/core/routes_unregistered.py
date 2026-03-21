@@ -24,7 +24,10 @@ def _unreg_sub(sheet, uid):
 
 
 def _unreg_build_record(uid):
-    persons_df = S.unreg_store.get("persons", pd.DataFrame())
+    persons_df = S._project_primary_addresses(
+        S.unreg_store.get("persons", pd.DataFrame()),
+        S.unreg_store.get("addresses", pd.DataFrame()),
+    )
     if persons_df.empty or "person_id" not in persons_df.columns:
         return None
     row = persons_df[persons_df["person_id"].astype(str) == str(uid)]
@@ -38,6 +41,7 @@ def _unreg_build_record(uid):
         "photo": f"/api/unregistered/{uid}/photo" if ext else None,
         "nationality": _unreg_sub("nationality", uid),
         "mobile_numbers": _unreg_sub("mobile_numbers", uid),
+        "addresses": _unreg_sub("addresses", uid),
         "schools": _unreg_sub("schools", uid),
         "higher_education": _unreg_sub("higher_education", uid),
         "jobs": _unreg_sub("jobs", uid),
@@ -69,7 +73,10 @@ def register_unregistered_routes(app):
     @app.get("/api/unregistered")
     def get_unregistered():
         with S.unreg_lock:
-            persons_df = S.unreg_store.get("persons", pd.DataFrame()).replace({np.nan: None})
+            persons_df = S._project_primary_addresses(
+                S.unreg_store.get("persons", pd.DataFrame()),
+                S.unreg_store.get("addresses", pd.DataFrame()),
+            ).replace({np.nan: None})
             pyg = S.unreg_store.get("person_youth_group", pd.DataFrame())
             resp = S.unreg_store.get("responsibilities", pd.DataFrame())
             nat = S.unreg_store.get("nationality", pd.DataFrame())
@@ -175,7 +182,11 @@ def register_unregistered_routes(app):
                 if str(new_uid) in existing["person_id"].astype(str).values:
                     record = _unreg_build_record(new_uid)
                     return jsonify({"ok": True, "person_id": new_uid, "record": record})
-            p = S.normalize_person_birth_fields(body.get("person") or {})
+            raw_person = body.get("person") or {}
+            p = S.normalize_person_birth_fields(raw_person)
+            addresses_rows = body.get("addresses") if "addresses" in body else S.address_rows_from_legacy_person_payload(raw_person)
+            for legacy_col in ("governorate", "city", "country", "address"):
+                p.pop(legacy_col, None)
             if not p.get("first_name"):
                 raw_name = body.get("name", "")
                 parts = raw_name.strip().split() if raw_name else []
@@ -195,6 +206,8 @@ def register_unregistered_routes(app):
                 if col not in new_row.columns:
                     new_row[col] = None
             S.unreg_store["persons"] = pd.concat([persons_df, new_row], ignore_index=True)
+            if addresses_rows:
+                _unreg_replace_sub("addresses", new_uid, addresses_rows)
             for sheet in ("nationality", "mobile_numbers", "schools", "higher_education", "jobs", "responsibilities", "person_youth_group", "hobbies_skills"):
                 rows = body.get(sheet, [])
                 if rows:
@@ -213,9 +226,19 @@ def register_unregistered_routes(app):
             idx = persons_df[persons_df["person_id"].astype(str) == str(uid)].index
             if idx.empty:
                 return jsonify({"error": "not found"}), 404
-            p = S.normalize_person_birth_fields(body.get("person", {}))
+            raw_person = body.get("person", {})
+            p = S.normalize_person_birth_fields(raw_person)
+            addresses_rows = body.get("addresses") if "addresses" in body else None
+            if addresses_rows is None:
+                legacy_addresses = S.address_rows_from_legacy_person_payload(raw_person)
+                if legacy_addresses:
+                    addresses_rows = legacy_addresses
+            for legacy_col in ("governorate", "city", "country", "address"):
+                p.pop(legacy_col, None)
             for k, v in p.items():
                 S.unreg_store["persons"].at[idx[0], k] = v
+            if addresses_rows is not None:
+                _unreg_replace_sub("addresses", uid, addresses_rows)
             for sheet in ("nationality", "mobile_numbers", "schools", "higher_education", "jobs", "responsibilities", "person_youth_group", "hobbies_skills"):
                 if sheet in body:
                     _unreg_replace_sub(sheet, uid, body[sheet])
@@ -276,7 +299,7 @@ def register_unregistered_routes(app):
             p["registered"] = True
             S.store["persons"] = pd.concat([S.store["persons"], pd.DataFrame([p])], ignore_index=True)
 
-            for sheet in ("nationality", "mobile_numbers", "schools", "higher_education", "jobs", "responsibilities", "person_youth_group", "hobbies_skills"):
+            for sheet in ("nationality", "mobile_numbers", "addresses", "schools", "higher_education", "jobs", "responsibilities", "person_youth_group", "hobbies_skills"):
                 rows = record.get(sheet, [])
                 if rows:
                     ndf = pd.DataFrame(rows)

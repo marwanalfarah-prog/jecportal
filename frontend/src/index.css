@@ -1106,6 +1106,97 @@ tbody td {
   margin-top: 6px;
 }
 
+.am-address-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.am-address-card {
+  padding: 0 0 12px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.am-address-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.am-address-card-title {
+  font-size: 0.9rem;
+  font-family: var(--font-head);
+  font-weight: 700;
+  color: var(--gray-700);
+  margin-bottom: 3px;
+}
+
+.am-address-card-subtitle {
+  font-size: 0.78rem;
+  color: var(--gray-400);
+  font-family: var(--font-body);
+}
+
+.am-address-card-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.am-address-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--gray-100);
+}
+
+.am-address-field {
+  min-width: 0;
+}
+
+.am-address-field-wide {
+  grid-column: 1 / -1;
+}
+
+.am-address-label {
+  margin-bottom: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--gray-500);
+}
+
+.am-address-field .form-control,
+.am-address-field .am-select-trigger,
+.am-address-field .combo-trigger {
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  min-height: 42px;
+}
+
+.am-address-field .combo-trigger {
+  padding: 9px 13px;
+  color: var(--gray-700);
+  background: var(--white);
+}
+
+@media (max-width: 640px) {
+  .am-address-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .am-address-field-wide {
+    grid-column: auto;
+  }
+}
+
 /* ── Radio / checkbox option list ── */
 .am-option-list {
   display: flex;

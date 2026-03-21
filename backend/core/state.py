@@ -18,20 +18,33 @@ os.makedirs(PROFILE_PHOTOS_DIR, exist_ok=True)
 SHEETS = [
     "persons", "nationality", "mobile_numbers", "schools",
     "higher_education", "jobs", "timestamps", "responsibilities",
-    "person_youth_group", "hobbies_skills", "youth_groups",
+    "person_youth_group", "hobbies_skills", "addresses", "youth_groups",
 ]
 
 UNREG_SHEETS = [
     "persons", "nationality", "mobile_numbers", "schools",
     "higher_education", "jobs", "responsibilities",
-    "person_youth_group", "hobbies_skills",
+    "person_youth_group", "hobbies_skills", "addresses",
 ]
+
+ADDRESS_SHEET = "addresses"
+ADDRESS_COLUMNS = ["person_id", "country", "governorate", "city", "address", "is_primary"]
+DEFAULT_COUNTRY = "الأردن"
 
 UNREG_PERSONS_COLS = [
     "person_id", "title",
     "first_name", "second_name", "third_name", "last_name",
-    "gender", "governorate", "birth_year", "birth_day", "birth_month",
+    "english_first_name", "english_second_name", "english_third_name", "english_last_name",
+    "gender", "birth_year", "birth_day", "birth_month",
     "registered",
+]
+
+PERSON_NAME_COLS = [
+    "first_name", "second_name", "third_name", "last_name",
+]
+
+PERSON_ENGLISH_NAME_COLS = [
+    "english_first_name", "english_second_name", "english_third_name", "english_last_name",
 ]
 
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "gif"}
@@ -130,6 +143,123 @@ def _to_bool(v) -> bool:
         return False
     text = str(v).strip().lower()
     return text in ("1", "true", "yes", "y", "t")
+
+
+def _normalize_country(v) -> str:
+    text = _normalize_text(v)
+    if not text:
+        return DEFAULT_COUNTRY
+
+    english_key = re.sub(r"\s+", " ", text).strip().lower()
+    arabic_key = re.sub(r"\s+", " ", text).strip()
+    arabic_key = arabic_key.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+
+    if english_key in {"jordan", "the hashemite kingdom of jordan"}:
+        return DEFAULT_COUNTRY
+
+    if arabic_key in {"الاردن", "المملكة الاردنية الهاشمية"}:
+        return DEFAULT_COUNTRY
+
+    return text
+
+
+def normalize_address_rows(rows) -> list[dict]:
+    normalized = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        person_id = _normalize_person_id(row.get("person_id"))
+        governorate = _normalize_text(row.get("governorate"))
+        city = _normalize_text(row.get("city"))
+        address = _normalize_text(row.get("address"))
+        country = _normalize_country(row.get("country"))
+        is_primary = _to_bool(row.get("is_primary"))
+        if person_id in (None, "") and not (governorate or city or address):
+            continue
+        if not governorate and not city and not address:
+            continue
+        normalized.append({
+            "person_id": person_id,
+            "country": country,
+            "governorate": governorate,
+            "city": city,
+            "address": address,
+            "is_primary": is_primary,
+        })
+
+    grouped: dict[str, list[dict]] = {}
+    for row in normalized:
+        key = str(row.get("person_id"))
+        grouped.setdefault(key, []).append(row)
+
+    result = []
+    for entries in grouped.values():
+        primary_index = next((index for index, entry in enumerate(entries) if entry.get("is_primary")), 0)
+        for index, entry in enumerate(entries):
+            entry["is_primary"] = index == primary_index
+            result.append(entry)
+    return result
+
+
+def address_rows_from_legacy_person_payload(person: dict | None) -> list[dict]:
+    payload = person or {}
+    governorate = _normalize_text(payload.get("governorate"))
+    city = _normalize_text(payload.get("city"))
+    address = _normalize_text(payload.get("address"))
+    country = _normalize_country(payload.get("country"))
+    if not governorate and not city and not address:
+        return []
+    return [{
+        "country": country,
+        "governorate": governorate,
+        "city": city,
+        "address": address,
+        "is_primary": True,
+    }]
+
+
+def _primary_address_rows(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame(columns=ADDRESS_COLUMNS)
+
+    working = df.copy()
+    for col in ADDRESS_COLUMNS:
+        if col not in working.columns:
+            working[col] = None
+
+    working["_person_key"] = working["person_id"].apply(lambda value: str(_normalize_person_id(value)))
+    working["_primary_rank"] = working["is_primary"].apply(lambda value: 0 if _to_bool(value) else 1)
+    working = working.sort_values(by=["_person_key", "_primary_rank"], kind="stable")
+    primary = working.drop_duplicates(subset=["_person_key"], keep="first")
+    return primary.drop(columns=["_person_key", "_primary_rank"])
+
+
+def _project_primary_addresses(persons_df: pd.DataFrame, addresses_df: pd.DataFrame | None = None) -> pd.DataFrame:
+    working = persons_df.copy()
+    for col in ("country", "governorate", "city", "address"):
+        if col not in working.columns:
+            working[col] = None
+
+    if working.empty or "person_id" not in working.columns:
+        return working
+
+    source_addresses = addresses_df if addresses_df is not None else store.get(ADDRESS_SHEET, pd.DataFrame())
+    primary_rows = _primary_address_rows(source_addresses)
+    if primary_rows.empty or "person_id" not in primary_rows.columns:
+        return working
+
+    indexed = working.reset_index().rename(columns={"index": "_store_index"})
+    merged = indexed.merge(
+        primary_rows[["person_id", "country", "governorate", "city", "address"]],
+        on="person_id",
+        how="left",
+        suffixes=("", "_primary"),
+    )
+    for col in ("country", "governorate", "city", "address"):
+        primary_col = f"{col}_primary"
+        merged[col] = merged[primary_col].where(merged[primary_col].notna(), merged[col])
+        merged = merged.drop(columns=[primary_col])
+    return merged.set_index("_store_index")
 
 
 def _is_group_id(value: str | None) -> bool:
@@ -546,8 +676,61 @@ def _ensure_youth_group_schema() -> bool:
     return changed
 
 
+def _ensure_addresses_schema() -> bool:
+    changed = False
+    persons = store.get("persons", pd.DataFrame()).copy()
+    addresses = store.get(ADDRESS_SHEET, pd.DataFrame()).copy()
+
+    if addresses.empty:
+        addresses = pd.DataFrame(columns=ADDRESS_COLUMNS)
+        changed = True
+    else:
+        for col in ADDRESS_COLUMNS:
+            if col not in addresses.columns:
+                addresses[col] = None
+                changed = True
+
+    existing_rows = addresses.replace({np.nan: None}).to_dict(orient="records") if not addresses.empty else []
+    normalized_rows = normalize_address_rows(existing_rows)
+
+    if not persons.empty and "person_id" in persons.columns:
+        existing_ids = {str(row.get("person_id")) for row in normalized_rows if row.get("person_id") not in (None, "")}
+        for row in persons.replace({np.nan: None}).to_dict(orient="records"):
+            pid = _normalize_person_id(row.get("person_id"))
+            if pid in (None, "") or str(pid) in existing_ids:
+                continue
+            legacy_governorate = _normalize_text(row.get("governorate"))
+            legacy_city = _normalize_text(row.get("city"))
+            legacy_address = _normalize_text(row.get("address"))
+            legacy_country = _normalize_country(row.get("country"))
+            if not legacy_governorate and not legacy_city and not legacy_address:
+                continue
+            normalized_rows.append({
+                "person_id": pid,
+                "country": legacy_country,
+                "governorate": legacy_governorate,
+                "city": legacy_city,
+                "address": legacy_address,
+                "is_primary": True,
+            })
+            changed = True
+
+    normalized_rows = normalize_address_rows(normalized_rows)
+    if normalized_rows != existing_rows:
+        changed = True
+    store[ADDRESS_SHEET] = pd.DataFrame(normalized_rows, columns=ADDRESS_COLUMNS)
+
+    for legacy_col in ("governorate", "city", "country", "address"):
+        if legacy_col in persons.columns:
+            persons = persons.drop(columns=[legacy_col])
+            changed = True
+    store["persons"] = persons
+    return changed
+
+
 def save():
     _ensure_youth_group_schema()
+    _ensure_addresses_schema()
     db.save_excel_sheets(store)
     invalidate_enriched_cache()
     print("💾 Saved to Excel.")
@@ -691,9 +874,18 @@ def _ensure_persons_schema():
         persons["title"] = None
         changed = True
 
+    for col in PERSON_NAME_COLS + PERSON_ENGLISH_NAME_COLS:
+        if col not in persons.columns:
+            persons[col] = None
+            changed = True
+
     if "archived" in persons.columns:
         persons = persons.drop(columns=["archived"])
         changed = True
+
+    for legacy_col in ("governorate", "country", "address"):
+        if legacy_col in persons.columns:
+            changed = True
 
     before_registered = persons["registered"].copy() if "registered" in persons.columns else None
     persons["registered"] = persons["registered"].apply(_bool_registered)
@@ -707,13 +899,13 @@ def _ensure_persons_schema():
 def _registered_persons_df() -> pd.DataFrame:
     _ensure_persons_schema()
     persons = store["persons"]
-    return persons[persons["registered"] == True]
+    return _project_primary_addresses(persons[persons["registered"] == True])
 
 
 def _unregistered_persons_df() -> pd.DataFrame:
     _ensure_persons_schema()
     persons = store["persons"]
-    return persons[persons["registered"] == False]
+    return _project_primary_addresses(persons[persons["registered"] == False])
 
 
 def _next_person_id() -> int:
@@ -995,6 +1187,7 @@ def init_state():
     load()
     schema_changed = _ensure_persons_schema()
     group_schema_changed = _ensure_youth_group_schema()
-    if schema_changed or group_schema_changed:
+    address_schema_changed = _ensure_addresses_schema()
+    if schema_changed or group_schema_changed or address_schema_changed:
         save()
     _load_unreg_store()

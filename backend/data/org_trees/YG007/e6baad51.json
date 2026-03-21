@@ -1,0 +1,31 @@
+{
+  "nodes": [
+    {
+      "id": "n1773745820687_1",
+      "x": 80,
+      "y": 130,
+      "role": "المسؤول العام",
+      "personId": 1621,
+      "inCouncil": true,
+      "inGroup": false
+    },
+    {
+      "id": "n1773745849394_2",
+      "x": 300,
+      "y": 130,
+      "role": "المرشد الروحي",
+      "personId": 3111,
+      "inCouncil": true,
+      "inGroup": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "auto_n1773745820687_1_n1773745849394_2_peer",
+      "from": "n1773745820687_1",
+      "to": "n1773745849394_2",
+      "type": "peer",
+      "auto": true
+    }
+  ]
+}

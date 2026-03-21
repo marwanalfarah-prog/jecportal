@@ -1,13 +1,41 @@
 import os
+import re
+import uuid
+from datetime import datetime
 
-from flask import jsonify, request
+from flask import jsonify, request, send_from_directory
+from werkzeug.utils import secure_filename
 
 from core import state as S
 from core.routes_auth import exports as auth_exports
 
 
+MOTTO_LOGOS_DIR = os.path.join(S.PHOTOS_ROOT_DIR, "logos", "mottos")
+os.makedirs(MOTTO_LOGOS_DIR, exist_ok=True)
+
+
+def _bible_books_tree_path() -> str:
+    return os.path.join(S.db.data_dir, "bible_books_tree.json")
+
+
+def _load_bible_books_tree() -> list[dict]:
+    raw = S.db.load_json_file(_bible_books_tree_path(), [])
+    if not isinstance(raw, list):
+        return []
+    return raw
+
+
+CATHOLIC_BIBLE_BOOK_TREE = _load_bible_books_tree()
+
+VERSE_SEGMENT_RE = re.compile(r"^\s*(\d+)\s*:\s*(\d+)\s*(?:-\s*(?:(\d+)\s*:\s*)?(\d+))?\s*$")
+
+
 def _config_path() -> str:
     return os.path.join(S.db.data_dir, "config.json")
+
+
+def _mottos_path() -> str:
+    return os.path.join(S.db.data_dir, "mottos.json")
 
 
 def _clean_text(value):
@@ -77,6 +105,518 @@ def _default_config():
     }
 
 
+def _default_mottos_payload():
+    return {"mottos": []}
+
+
+def _now_iso() -> str:
+    return datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+
+def _parse_iso_date(value: str | None):
+    text = _clean_text(value)
+    if not text:
+        return None
+    try:
+        return datetime.strptime(text, "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
+def _normalize_year_label(value) -> str:
+    text = _clean_text(value)
+    if not text:
+        return ""
+    if re.fullmatch(r"\d{4}", text):
+        return text
+    return ""
+
+
+def _book_index() -> dict[tuple[str, str, str], dict]:
+    out = {}
+
+    def _visit_section(testament_id, testament_name, section_row):
+        section = section_row if isinstance(section_row, dict) else {}
+        section_id = _clean_text(section.get("id"))
+        section_name = _clean_text(section.get("name"))
+
+        books = section.get("books") if isinstance(section.get("books"), list) else []
+        for book in books:
+            if not isinstance(book, dict):
+                continue
+            book_id = _clean_text(book.get("id"))
+            book_name = _clean_text(book.get("name"))
+            book_abbr = _clean_text(book.get("abbr"))
+            if not (testament_id and section_id and book_id):
+                continue
+            out[(testament_id, section_id, book_id)] = {
+                "testament_id": testament_id,
+                "testament_name": testament_name,
+                "section_id": section_id,
+                "section_name": section_name,
+                "book_id": book_id,
+                "book_name": book_name,
+                "book_abbr": book_abbr,
+            }
+
+        subsections = section.get("subsections") if isinstance(section.get("subsections"), list) else []
+        for subsection in subsections:
+            _visit_section(testament_id, testament_name, subsection)
+
+    for testament in CATHOLIC_BIBLE_BOOK_TREE:
+        if not isinstance(testament, dict):
+            continue
+        testament_id = _clean_text(testament.get("id"))
+        testament_name = _clean_text(testament.get("name"))
+        sections = testament.get("sections") if isinstance(testament.get("sections"), list) else []
+        for section in sections:
+            _visit_section(testament_id, testament_name, section)
+
+    return out
+
+
+BOOK_INDEX = _book_index()
+
+
+def _book_index_by_testament_book_id() -> dict[tuple[str, str], dict]:
+    out = {}
+    for _, meta in BOOK_INDEX.items():
+        testament_id = _clean_text(meta.get("testament_id"))
+        book_id = _clean_text(meta.get("book_id"))
+        if not (testament_id and book_id):
+            continue
+        out.setdefault((testament_id, book_id), meta)
+    return out
+
+
+BOOK_INDEX_BY_TESTAMENT_BOOK_ID = _book_index_by_testament_book_id()
+
+
+def _book_index_by_book_id() -> dict[str, dict]:
+    out = {}
+    for _, meta in BOOK_INDEX.items():
+        book_id = _clean_text(meta.get("book_id"))
+        if not book_id:
+            continue
+        out.setdefault(book_id, meta)
+    return out
+
+
+BOOK_INDEX_BY_BOOK_ID = _book_index_by_book_id()
+
+
+def _parse_verse_segment(raw_segment: str) -> dict | None:
+    text = _clean_text(raw_segment)
+    if not text:
+        return None
+    m = VERSE_SEGMENT_RE.match(text)
+    if not m:
+        return None
+
+    start_chapter = int(m.group(1))
+    start_verse = int(m.group(2))
+    end_chapter = int(m.group(3)) if m.group(3) else start_chapter
+    end_verse = int(m.group(4)) if m.group(4) else start_verse
+
+    if min(start_chapter, start_verse, end_chapter, end_verse) <= 0:
+        return None
+    if end_chapter < start_chapter:
+        return None
+    if end_chapter == start_chapter and end_verse < start_verse:
+        return None
+
+    return {
+        "start": {
+            "chapter": start_chapter,
+            "verse": start_verse,
+        },
+        "end": {
+            "chapter": end_chapter,
+            "verse": end_verse,
+        },
+    }
+
+
+def _verse_segment_to_text(segment: dict) -> str:
+    row = segment if isinstance(segment, dict) else {}
+    start = row.get("start") if isinstance(row.get("start"), dict) else {}
+    end = row.get("end") if isinstance(row.get("end"), dict) else {}
+
+    try:
+        start_chapter = int(start.get("chapter"))
+        start_verse = int(start.get("verse"))
+        end_chapter = int(end.get("chapter"))
+        end_verse = int(end.get("verse"))
+    except Exception:
+        return ""
+
+    if min(start_chapter, start_verse, end_chapter, end_verse) <= 0:
+        return ""
+
+    if start_chapter == end_chapter and start_verse == end_verse:
+        return f"{start_chapter}: {start_verse}"
+    if start_chapter == end_chapter:
+        return f"{start_chapter}: {start_verse}-{end_verse}"
+    return f"{start_chapter}: {start_verse}-{end_chapter}: {end_verse}"
+
+
+def _verse_reference_text(value) -> str:
+    if isinstance(value, str):
+        return _clean_text(value).replace(":", ": ")
+
+    row = value if isinstance(value, dict) else {}
+    direct_raw = _clean_text(row.get("raw"))
+    if direct_raw:
+        return direct_raw.replace(":", ": ")
+
+    segments = row.get("segments") if isinstance(row.get("segments"), list) else []
+    rendered = []
+    for segment in segments:
+        part = _verse_segment_to_text(segment)
+        if part:
+            rendered.append(part)
+    return ", ".join(rendered)
+
+
+def _normalize_verse_reference(raw_reference) -> dict:
+    raw = _verse_reference_text(raw_reference)
+    if not raw:
+        return {
+            "segments": [],
+            "all_segments_structured": False,
+        }
+
+    parts = [p.strip() for p in re.split(r"[,،;؛]\s*", raw) if p.strip()]
+    segments = []
+    all_structured = True
+
+    for part in parts:
+        parsed = _parse_verse_segment(part)
+        if parsed is None:
+            all_structured = False
+            continue
+        segments.append(parsed)
+
+    return {
+        "segments": segments,
+        "all_segments_structured": all_structured and len(segments) > 0,
+    }
+
+
+def _normalize_targets(raw_targets) -> dict:
+    targets = raw_targets if isinstance(raw_targets, dict) else {}
+    jec_jordan = bool(targets.get("jec_jordan") or False)
+
+    group_values = targets.get("youth_groups")
+    if isinstance(group_values, str):
+        values = [group_values]
+    elif isinstance(group_values, list):
+        values = group_values
+    else:
+        values = []
+
+    resolved = []
+    seen = set()
+    for item in values:
+        gid = S.youth_group_id(item)
+        if not gid or gid == "GS" or gid in seen:
+            continue
+        seen.add(gid)
+        resolved.append(gid)
+
+    return {
+        "jec_jordan": jec_jordan,
+        "youth_groups": sorted(resolved),
+    }
+
+
+def _normalize_bible_reference(raw_reference: dict) -> dict | None:
+    row = raw_reference if isinstance(raw_reference, dict) else {}
+    book_row = row.get("book") if isinstance(row.get("book"), dict) else row
+
+    book_id = _clean_text(book_row.get("book_id"))
+    testament_id = _clean_text(book_row.get("testament_id"))
+    section_id = _clean_text(book_row.get("section_id"))
+
+    if not book_id:
+        return None
+
+    # Validate against the canonical bible tree even when only book_id is provided.
+    book_meta = None
+    if testament_id and section_id:
+        book_meta = BOOK_INDEX.get((testament_id, section_id, book_id))
+    if book_meta is None and testament_id:
+        # Backward compatibility: resolve old section IDs by testament + book.
+        book_meta = BOOK_INDEX_BY_TESTAMENT_BOOK_ID.get((testament_id, book_id))
+    if book_meta is None:
+        book_meta = BOOK_INDEX_BY_BOOK_ID.get(book_id)
+    if book_meta is None:
+        return None
+
+    verse = _normalize_verse_reference(
+        row.get("verses") or row.get("reference") or row.get("raw") or row.get("verse")
+    )
+    if not verse.get("segments"):
+        return None
+
+    return {
+        # Persist only the canonical id and hydrate metadata when serializing.
+        "book": {
+            "book_id": book_id,
+        },
+        "verse": verse,
+    }
+
+
+def _normalize_motto(raw_motto: dict, existing: dict | None = None, touch_updated: bool = False) -> dict:
+    row = raw_motto if isinstance(raw_motto, dict) else {}
+    current = existing if isinstance(existing, dict) else {}
+
+    motto_id = _clean_text(current.get("id") or row.get("id")) or uuid.uuid4().hex[:12]
+    title = _clean_text(row.get("title") or current.get("title"))
+    year_label = _normalize_year_label(row.get("year_label") if "year_label" in row else current.get("year_label"))
+    application_from_date = _clean_text(row.get("application_from_date") if "application_from_date" in row else current.get("application_from_date"))
+    application_to_date = _clean_text(row.get("application_to_date") if "application_to_date" in row else current.get("application_to_date"))
+    application_is_present = bool(
+        row.get("application_is_present")
+        if "application_is_present" in row
+        else current.get("application_is_present")
+    )
+
+    if not application_is_present and not application_to_date:
+        application_to_date = _clean_text(current.get("application_to_date"))
+    if application_is_present:
+        application_to_date = ""
+
+    targets = _normalize_targets(row.get("targets") if "targets" in row else current.get("targets"))
+    bible_raw = row.get("bible_references") if "bible_references" in row else current.get("bible_references")
+
+    bible_references = []
+    if isinstance(bible_raw, list):
+        for item in bible_raw:
+            normalized = _normalize_bible_reference(item)
+            if normalized is None:
+                continue
+            bible_references.append(normalized)
+    if len(bible_references) > 1:
+        bible_references = [bible_references[0]]
+
+    created_at = _clean_text(current.get("created_at")) or _now_iso()
+    existing_updated = _clean_text(current.get("updated_at") or row.get("updated_at"))
+    updated_at = _now_iso() if touch_updated else (existing_updated or created_at)
+    logo_file_name = _clean_text(current.get("logo_file_name") or row.get("logo_file_name"))
+
+    return {
+        "id": motto_id,
+        "title": title,
+        "year_label": year_label,
+        "application_from_date": application_from_date,
+        "application_to_date": application_to_date,
+        "application_is_present": application_is_present,
+        "targets": targets,
+        "bible_references": bible_references,
+        "logo_file_name": logo_file_name,
+        "created_at": created_at,
+        "updated_at": updated_at,
+    }
+
+
+def _motto_logo_filename(motto_id: str) -> str | None:
+    mid = _clean_text(motto_id)
+    if not mid:
+        return None
+    for ext in S.ALLOWED_EXTENSIONS:
+        file_name = f"{mid}.{ext}"
+        path = os.path.join(MOTTO_LOGOS_DIR, file_name)
+        if os.path.exists(path):
+            return file_name
+    return None
+
+
+def _motto_logo_url(motto_id: str, file_name: str | None = None) -> str | None:
+    mid = _clean_text(motto_id)
+    if not mid:
+        return None
+    if not file_name:
+        file_name = _motto_logo_filename(mid)
+    if not file_name:
+        return None
+    return f"/api/config/mottos/{mid}/logo"
+
+
+def _serialize_motto(row: dict) -> dict:
+    item = dict(row or {})
+
+    refs_raw = item.get("bible_references") if isinstance(item.get("bible_references"), list) else []
+    refs = []
+    for ref in refs_raw:
+        if not isinstance(ref, dict):
+            continue
+        ref_book = ref.get("book") if isinstance(ref.get("book"), dict) else {}
+        book_id = _clean_text(ref_book.get("book_id"))
+        hydrated_book = dict(BOOK_INDEX_BY_BOOK_ID.get(book_id) or {})
+        if not hydrated_book and ref_book:
+            hydrated_book = dict(ref_book)
+        if book_id and not hydrated_book.get("book_id"):
+            hydrated_book["book_id"] = book_id
+
+        verse_obj = ref.get("verse") if isinstance(ref.get("verse"), dict) else _normalize_verse_reference(ref.get("verse"))
+        verse_raw = _verse_reference_text(verse_obj)
+        verse_payload = dict(verse_obj or {})
+        if verse_raw:
+            # Expose display text without storing it in mottos.json.
+            verse_payload["raw"] = verse_raw
+
+        refs.append({
+            "book": hydrated_book,
+            "verse": verse_payload,
+        })
+    item["bible_references"] = refs
+
+    item["logo_url"] = _motto_logo_url(item.get("id"), item.get("logo_file_name"))
+    item["is_active_now"] = _is_motto_active_now(item)
+
+    target = item.get("targets") if isinstance(item.get("targets"), dict) else {}
+    youth_groups = []
+    for gid in target.get("youth_groups", []):
+        name = S.youth_group_name(gid) or gid
+        youth_groups.append({"group_id": gid, "group_name": name})
+    item["targets_meta"] = {
+        "jec_jordan": bool(target.get("jec_jordan") or False),
+        "youth_groups": youth_groups,
+    }
+    return item
+
+
+def _is_motto_active_now(row: dict) -> bool:
+    item = row if isinstance(row, dict) else {}
+    from_date = _parse_iso_date(item.get("application_from_date"))
+    if from_date is None:
+        return False
+
+    today = datetime.utcnow().date()
+    if today < from_date:
+        return False
+
+    if bool(item.get("application_is_present") or False):
+        return True
+
+    to_date = _parse_iso_date(item.get("application_to_date"))
+    if to_date is None:
+        return False
+    return today <= to_date
+
+
+def _is_motto_applicable_to_groups(row: dict, group_ids: list[str], include_jec_jordan: bool) -> bool:
+    item = row if isinstance(row, dict) else {}
+    targets = item.get("targets") if isinstance(item.get("targets"), dict) else {}
+    if include_jec_jordan and bool(targets.get("jec_jordan") or False):
+        return True
+
+    target_group_ids = set(targets.get("youth_groups") if isinstance(targets.get("youth_groups"), list) else [])
+    return len(target_group_ids.intersection(set(group_ids))) > 0
+
+
+def _load_mottos_payload() -> dict:
+    raw = S.db.load_json_file(_mottos_path(), _default_mottos_payload())
+    if not isinstance(raw, dict):
+        return _default_mottos_payload()
+
+    items = raw.get("mottos") if isinstance(raw.get("mottos"), list) else []
+    normalized = []
+    for item in items:
+        row = _normalize_motto(item)
+        if not row.get("title"):
+            continue
+        normalized.append(row)
+    return {"mottos": normalized}
+
+
+def _save_mottos_payload(payload: dict) -> dict:
+    rows = payload.get("mottos") if isinstance(payload, dict) else []
+    if not isinstance(rows, list):
+        rows = []
+    normalized = []
+    for row in rows:
+        item = _normalize_motto(row)
+        if not item.get("title"):
+            continue
+        normalized.append(item)
+    result = {"mottos": normalized}
+    S.db.save_json_file(_mottos_path(), result)
+    return result
+
+
+def _list_mottos_serialized() -> list[dict]:
+    payload = _load_mottos_payload()
+    rows = payload.get("mottos", [])
+    rows_sorted = sorted(rows, key=lambda x: _clean_text(x.get("updated_at")) or "", reverse=True)
+    return [_serialize_motto(row) for row in rows_sorted]
+
+
+def _validate_motto_scope(targets: dict) -> bool:
+    if not isinstance(targets, dict):
+        return False
+    if bool(targets.get("jec_jordan") or False):
+        return True
+    youth_groups = targets.get("youth_groups") if isinstance(targets.get("youth_groups"), list) else []
+    return len(youth_groups) > 0
+
+
+def _validate_motto_period(motto: dict) -> tuple[bool, str | None]:
+    item = motto if isinstance(motto, dict) else {}
+    from_date = _parse_iso_date(item.get("application_from_date"))
+    if from_date is None:
+        return False, "application from date is required and must be YYYY-MM-DD"
+
+    is_present = bool(item.get("application_is_present") or False)
+    if is_present:
+        return True, None
+
+    to_date = _parse_iso_date(item.get("application_to_date"))
+    if to_date is None:
+        return False, "application to date is required when motto is not present"
+    if to_date < from_date:
+        return False, "application to date must be >= from date"
+    return True, None
+
+
+def _validate_motto_single_reference(motto: dict) -> tuple[bool, str | None]:
+    refs = motto.get("bible_references") if isinstance(motto, dict) else []
+    if not isinstance(refs, list) or len(refs) != 1:
+        return False, "exactly one bible reference is required"
+
+    ref = refs[0] if isinstance(refs[0], dict) else {}
+    verse = ref.get("verse") if isinstance(ref.get("verse"), dict) else {}
+    segments = verse.get("segments") if isinstance(verse.get("segments"), list) else []
+    if not segments or not bool(verse.get("all_segments_structured")):
+        return False, "invalid verses format; use chapter:verse or ranges like 3:15-16"
+    return True, None
+
+
+def _validate_motto_year(motto: dict) -> tuple[bool, str | None]:
+    year_label = _clean_text((motto or {}).get("year_label"))
+    if not year_label:
+        return True, None
+    if not re.fullmatch(r"\d{4}", year_label):
+        return False, "year must be a 4-digit value"
+    return True, None
+
+
+def _youth_group_scope_options() -> list[dict]:
+    options = []
+    for item in S.youth_group_options():
+        gid = _clean_text(item.get("value"))
+        label = _clean_text(item.get("label"))
+        if not gid or gid == "GS":
+            continue
+        options.append({
+            "group_id": gid,
+            "group_name": label or gid,
+        })
+    return options
+
+
 def _load_config():
     data = S.db.load_json_file(_config_path(), _default_config())
     if not isinstance(data, dict):
@@ -101,6 +641,220 @@ def register_config_routes(app):
         if err:
             return err
         return jsonify({"ok": True, "config": _load_config()})
+
+    @app.get("/api/config/mottos/meta")
+    def get_mottos_meta():
+        err = auth_exports["_require_auth"]()
+        if err:
+            return err
+        return jsonify({
+            "ok": True,
+            "scopes": {
+                "jec_jordan": {
+                    "id": "JEC_JORDAN",
+                    "label": "JECJordan",
+                },
+                "youth_groups": _youth_group_scope_options(),
+            },
+            "bible_books_tree": CATHOLIC_BIBLE_BOOK_TREE,
+        })
+
+    @app.get("/api/config/mottos")
+    def get_mottos():
+        err = auth_exports["_require_auth"]()
+        if err:
+            return err
+        return jsonify({"ok": True, "mottos": _list_mottos_serialized()})
+
+    @app.get("/api/config/mottos/active")
+    def get_active_mottos():
+        err = auth_exports["_require_auth"]()
+        if err:
+            return err
+
+        raw_group_ids = _clean_text(request.args.get("youth_group_ids"))
+        include_jec_jordan = str(request.args.get("include_jec_jordan", "true")).strip().lower() not in ("0", "false", "no")
+
+        group_ids = []
+        if raw_group_ids:
+            for token in [x.strip() for x in raw_group_ids.split(",") if x.strip()]:
+                gid = S.youth_group_id(token)
+                if not gid or gid == "GS":
+                    continue
+                if gid not in group_ids:
+                    group_ids.append(gid)
+
+        all_rows = _list_mottos_serialized()
+        active_rows = [
+            row for row in all_rows
+            if _is_motto_active_now(row) and _is_motto_applicable_to_groups(row, group_ids, include_jec_jordan)
+        ]
+        return jsonify({"ok": True, "mottos": active_rows})
+
+    @app.post("/api/config/mottos")
+    def create_motto():
+        err = auth_exports["_require_admin"]()
+        if err:
+            return err
+
+        body = request.json or {}
+        if not isinstance(body, dict):
+            return jsonify({"error": "invalid payload"}), 400
+
+        with S.lock:
+            payload = _load_mottos_payload()
+            motto = _normalize_motto(body, touch_updated=True)
+
+            if not motto.get("title"):
+                return jsonify({"error": "motto title is required"}), 400
+            if not _validate_motto_scope(motto.get("targets")):
+                return jsonify({"error": "at least one target is required"}), 400
+            period_ok, period_message = _validate_motto_period(motto)
+            if not period_ok:
+                return jsonify({"error": period_message}), 400
+            ref_ok, ref_message = _validate_motto_single_reference(motto)
+            if not ref_ok:
+                return jsonify({"error": ref_message}), 400
+            year_ok, year_message = _validate_motto_year(motto)
+            if not year_ok:
+                return jsonify({"error": year_message}), 400
+
+            payload["mottos"].append(motto)
+            saved = _save_mottos_payload(payload)
+
+        created = next((row for row in saved.get("mottos", []) if row.get("id") == motto.get("id")), motto)
+        return jsonify({"ok": True, "motto": _serialize_motto(created)})
+
+    @app.put("/api/config/mottos/<motto_id>")
+    def update_motto(motto_id):
+        err = auth_exports["_require_admin"]()
+        if err:
+            return err
+
+        body = request.json or {}
+        if not isinstance(body, dict):
+            return jsonify({"error": "invalid payload"}), 400
+
+        with S.lock:
+            payload = _load_mottos_payload()
+            rows = payload.get("mottos", [])
+            idx = next((i for i, row in enumerate(rows) if _clean_text(row.get("id")) == _clean_text(motto_id)), -1)
+            if idx < 0:
+                return jsonify({"error": "motto not found"}), 404
+
+            merged = dict(rows[idx])
+            merged.update(body)
+            merged["id"] = rows[idx].get("id")
+            updated = _normalize_motto(merged, existing=rows[idx], touch_updated=True)
+
+            if not updated.get("title"):
+                return jsonify({"error": "motto title is required"}), 400
+            if not _validate_motto_scope(updated.get("targets")):
+                return jsonify({"error": "at least one target is required"}), 400
+            period_ok, period_message = _validate_motto_period(updated)
+            if not period_ok:
+                return jsonify({"error": period_message}), 400
+            ref_ok, ref_message = _validate_motto_single_reference(updated)
+            if not ref_ok:
+                return jsonify({"error": ref_message}), 400
+            year_ok, year_message = _validate_motto_year(updated)
+            if not year_ok:
+                return jsonify({"error": year_message}), 400
+
+            rows[idx] = updated
+            payload["mottos"] = rows
+            saved = _save_mottos_payload(payload)
+
+        saved_row = next((row for row in saved.get("mottos", []) if row.get("id") == rows[idx].get("id")), rows[idx])
+        return jsonify({"ok": True, "motto": _serialize_motto(saved_row)})
+
+    @app.delete("/api/config/mottos/<motto_id>")
+    def delete_motto(motto_id):
+        err = auth_exports["_require_admin"]()
+        if err:
+            return err
+
+        with S.lock:
+            payload = _load_mottos_payload()
+            rows = payload.get("mottos", [])
+            filtered = [row for row in rows if _clean_text(row.get("id")) != _clean_text(motto_id)]
+
+            if len(filtered) == len(rows):
+                return jsonify({"error": "motto not found"}), 404
+
+            payload["mottos"] = filtered
+            _save_mottos_payload(payload)
+
+            for ext in S.ALLOWED_EXTENSIONS:
+                logo_path = os.path.join(MOTTO_LOGOS_DIR, f"{motto_id}.{ext}")
+                if os.path.exists(logo_path):
+                    try:
+                        os.remove(logo_path)
+                    except OSError:
+                        pass
+
+        return jsonify({"ok": True})
+
+    @app.post("/api/config/mottos/<motto_id>/logo")
+    def upload_motto_logo(motto_id):
+        err = auth_exports["_require_admin"]()
+        if err:
+            return err
+
+        file = request.files.get("logo")
+        if not file or not file.filename:
+            return jsonify({"error": "logo file is required"}), 400
+
+        original_name = secure_filename(file.filename)
+        if "." not in original_name:
+            return jsonify({"error": "file extension is required"}), 400
+        ext = original_name.rsplit(".", 1)[1].lower()
+        if ext not in S.ALLOWED_EXTENSIONS:
+            return jsonify({"error": "unsupported logo type"}), 400
+
+        with S.lock:
+            payload = _load_mottos_payload()
+            rows = payload.get("mottos", [])
+            idx = next((i for i, row in enumerate(rows) if _clean_text(row.get("id")) == _clean_text(motto_id)), -1)
+            if idx < 0:
+                return jsonify({"error": "motto not found"}), 404
+
+            for existing_ext in S.ALLOWED_EXTENSIONS:
+                existing = os.path.join(MOTTO_LOGOS_DIR, f"{motto_id}.{existing_ext}")
+                if os.path.exists(existing):
+                    try:
+                        os.remove(existing)
+                    except OSError:
+                        pass
+
+            file_name = f"{motto_id}.{ext}"
+            file_path = os.path.join(MOTTO_LOGOS_DIR, file_name)
+            file.save(file_path)
+
+            updated = _normalize_motto({
+                **rows[idx],
+                "logo_file_name": file_name,
+            }, existing=rows[idx], touch_updated=True)
+            rows[idx] = updated
+            payload["mottos"] = rows
+            _save_mottos_payload(payload)
+
+        return jsonify({
+            "ok": True,
+            "logo_url": _motto_logo_url(motto_id, file_name),
+            "motto": _serialize_motto(updated),
+        })
+
+    @app.get("/api/config/mottos/<motto_id>/logo")
+    def get_motto_logo(motto_id):
+        err = auth_exports["_require_auth"]()
+        if err:
+            return err
+
+        file_name = _motto_logo_filename(motto_id)
+        if not file_name:
+            return jsonify({"error": "logo not found"}), 404
+        return send_from_directory(MOTTO_LOGOS_DIR, file_name)
 
     @app.put("/api/config")
     def put_config():

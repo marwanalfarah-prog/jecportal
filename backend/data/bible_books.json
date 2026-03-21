@@ -1,0 +1,100 @@
+{
+  "books": [
+    {
+      "book_id": "matthew",
+      "file": "new_testament/gospels/matthew.json"
+    },
+    {
+      "book_id": "mark",
+      "file": "new_testament/gospels/mark.json"
+    },
+    {
+      "book_id": "luke",
+      "file": "new_testament/gospels/luke.json"
+    },
+    {
+      "book_id": "john",
+      "file": "new_testament/gospels/john.json"
+    },
+    {
+      "book_id": "acts_of_the_apostles",
+      "file": "new_testament/acts/acts_of_the_apostles.json"
+    },
+    {
+      "book_id": "galatians",
+      "file": "new_testament/epistles/pauline/galatians.json"
+    },
+    {
+      "book_id": "ephesians",
+      "file": "new_testament/epistles/pauline/ephesians.json"
+    },
+    {
+      "book_id": "philippians",
+      "file": "new_testament/epistles/pauline/philippians.json"
+    },
+    {
+      "book_id": "colossians",
+      "file": "new_testament/epistles/pauline/colossians.json"
+    },
+    {
+      "book_id": "1_thessalonians",
+      "file": "new_testament/epistles/pauline/1_thessalonians.json"
+    },
+    {
+      "book_id": "2_thessalonians",
+      "file": "new_testament/epistles/pauline/2_thessalonians.json"
+    },
+    {
+      "book_id": "1_timothy",
+      "file": "new_testament/epistles/pauline/1_timothy.json"
+    },
+    {
+      "book_id": "2_timothy",
+      "file": "new_testament/epistles/pauline/2_timothy.json"
+    },
+    {
+      "book_id": "titus",
+      "file": "new_testament/epistles/pauline/titus.json"
+    },
+    {
+      "book_id": "philemon",
+      "file": "new_testament/epistles/pauline/philemon.json"
+    },
+    {
+      "book_id": "hebrews",
+      "file": "new_testament/epistles/pauline/hebrews.json"
+    },
+    {
+      "book_id": "james",
+      "file": "new_testament/epistles/general/james.json"
+    },
+    {
+      "book_id": "1_peter",
+      "file": "new_testament/epistles/general/1_peter.json"
+    },
+    {
+      "book_id": "2_peter",
+      "file": "new_testament/epistles/general/2_peter.json"
+    },
+    {
+      "book_id": "1_john",
+      "file": "new_testament/epistles/general/1_john.json"
+    },
+    {
+      "book_id": "2_john",
+      "file": "new_testament/epistles/general/2_john.json"
+    },
+    {
+      "book_id": "3_john",
+      "file": "new_testament/epistles/general/3_john.json"
+    },
+    {
+      "book_id": "jude",
+      "file": "new_testament/epistles/general/jude.json"
+    },
+    {
+      "book_id": "revelation",
+      "file": "new_testament/apocalypse/revelation.json"
+    }
+  ]
+}

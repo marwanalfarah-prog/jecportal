@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import {
   ArrowRight, Pencil, Trash2, Plus, Camera, UserX,
   GraduationCap, Briefcase, Heart, Users, Shield,
-  Phone, Globe, School, GitBranch, Archive, ArchiveRestore
+  Phone, Globe, School, GitBranch, Archive, ArchiveRestore, MapPin
 } from 'lucide-react'
 import { api } from '../api.js'
 
@@ -142,6 +142,27 @@ const MONTHS = [
   { en: 'Nov', ar: 'تشرين الثاني', num: 11 },
   { en: 'Dec', ar: 'كانون الأول',  num: 12 },
 ]
+
+function normalizeCountryValue(value) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  if (!text) return 'الأردن'
+
+  const englishKey = text.toLowerCase()
+  const arabicKey = text.replace(/[أإآ]/g, 'ا')
+
+  if (
+    englishKey === 'jordan'
+    || englishKey === 'the hashemite kingdom of jordan'
+    || arabicKey === 'الاردن'
+    || arabicKey === 'المملكة الاردنية الهاشمية'
+  ) {
+    return 'الأردن'
+  }
+
+  return text
+}
+
+const DEFAULT_ADDRESS_ROW = { country: 'الأردن', governorate: '', city: '', address: '', is_primary: true }
 
 function parseLegacyBirthDate(str) {
   if (!str) return { month: '', day: '' }
@@ -339,6 +360,88 @@ function SubTable({ rows, setRows, columns }) {
         </table>
       )}
       <button type="button" className="add-row-btn" onClick={addRow}><Plus size={14} /> إضافة سطر</button>
+    </div>
+  )
+}
+
+function normalizeAddressEditorRows(rows) {
+  const source = Array.isArray(rows) && rows.length ? rows : [{ ...DEFAULT_ADDRESS_ROW }]
+  const normalized = source.map((row, index) => ({
+    country: normalizeCountryValue(row?.country),
+    governorate: String(row?.governorate || '').trim(),
+    city: String(row?.city || '').trim(),
+    address: String(row?.address || '').trim(),
+    is_primary: Boolean(row?.is_primary),
+  }))
+  const primaryIndex = normalized.findIndex(row => row.is_primary)
+  normalized.forEach((row, index) => { row.is_primary = index === (primaryIndex >= 0 ? primaryIndex : 0) })
+  return normalized
+}
+
+function AddressRowsEditor({ rows, onChange, governorateOptions }) {
+  const normalizedRows = normalizeAddressEditorRows(rows)
+
+  const commit = (nextRows) => onChange(normalizeAddressEditorRows(nextRows))
+  const updateRow = (index, key, value) => commit(normalizedRows.map((row, rowIndex) => (
+    rowIndex === index ? { ...row, [key]: value } : row
+  )))
+  const setPrimary = (index) => commit(normalizedRows.map((row, rowIndex) => ({ ...row, is_primary: rowIndex === index })))
+  const addRow = () => commit([...normalizedRows, { ...DEFAULT_ADDRESS_ROW, is_primary: false }])
+  const removeRow = (index) => {
+    const nextRows = normalizedRows.filter((_, rowIndex) => rowIndex !== index)
+    commit(nextRows.length ? nextRows : [{ ...DEFAULT_ADDRESS_ROW }])
+  }
+
+  return (
+    <div className="am-address-stack">
+      {normalizedRows.map((row, index) => (
+        <div key={index} className="am-address-card">
+          <div className="am-address-card-header">
+            <div>
+              <div className="am-address-card-title">عنوان {index + 1}</div>
+              <div className="am-address-card-subtitle">أدخل المحافظة ثم المدينة ثم العنوان التفصيلي</div>
+            </div>
+            <div className="am-address-card-actions">
+              {!row.is_primary && (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPrimary(index)}>
+                  تعيين كرئيسي
+                </button>
+              )}
+              {row.is_primary && (
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#15803d' }}>العنوان الرئيسي</span>
+              )}
+              {normalizedRows.length > 1 && (
+                <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => removeRow(index)}>
+                  حذف
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="am-address-grid">
+            <div className="am-address-field">
+              <div className="am-field-hint am-address-label">البلد</div>
+              <input className="form-control" value={normalizeCountryValue(row.country)} onChange={e => updateRow(index, 'country', normalizeCountryValue(e.target.value))} placeholder="الأردن" />
+            </div>
+
+            <div className="am-address-field">
+              <div className="am-field-hint am-address-label">المحافظة / الولاية</div>
+              <ComboDropdown value={row.governorate} onChange={value => updateRow(index, 'governorate', value)} options={governorateOptions} placeholder="—" />
+            </div>
+
+            <div className="am-address-field">
+              <div className="am-field-hint am-address-label">المدينة</div>
+              <input className="form-control" value={row.city || ''} onChange={e => updateRow(index, 'city', e.target.value)} placeholder="مثال: عمّان" />
+            </div>
+
+            <div className="am-address-field am-address-field-wide">
+              <div className="am-field-hint am-address-label">العنوان التفصيلي</div>
+              <input className="form-control" value={row.address || ''} onChange={e => updateRow(index, 'address', e.target.value)} placeholder="مثال: جبل الحسين، قرب الكنيسة اللاتينية، شارع 12" />
+            </div>
+          </div>
+        </div>
+      ))}
+      <button type="button" className="add-row-btn" onClick={addRow}><Plus size={14} /> إضافة عنوان</button>
     </div>
   )
 }
@@ -1657,6 +1760,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       if (!d.person)             d.person = {}
       if (!d.nationality)        d.nationality = []
       if (!d.mobile_numbers)     d.mobile_numbers = []
+      if (!d.addresses)          d.addresses = []
       if (!d.schools)            d.schools = []
       if (!d.higher_education)   d.higher_education = []
       if (!d.jobs)               d.jobs = []
@@ -1674,6 +1778,19 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       if (Object.prototype.hasOwnProperty.call(personData, 'birth_date')) {
         delete personData.birth_date
       }
+      if (!Array.isArray(d.addresses) || d.addresses.length === 0) {
+        const legacyLocation = [personData.address, personData.city, personData.governorate, personData.country].some(Boolean)
+        d.addresses = legacyLocation
+          ? [{
+              country: normalizeCountryValue(personData.country),
+              governorate: personData.governorate || '',
+              city: personData.city || '',
+              address: personData.address || '',
+              is_primary: true,
+            }]
+          : [{ ...DEFAULT_ADDRESS_ROW }]
+      }
+      d.addresses = normalizeAddressEditorRows(d.addresses)
       d.person = personData
       setData(d)
       setPhoto(d.photo ?? null)
@@ -1689,15 +1806,19 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
         // Build a clean payload: strip person_id from sub-table rows to avoid
         // primary-key conflicts, and only send fields the backend understands.
         const SUB_KEYS = ['nationality', 'mobile_numbers', 'schools', 'higher_education',
-                          'jobs', 'responsibilities', 'person_youth_group', 'hobbies_skills']
+                          'jobs', 'responsibilities', 'person_youth_group', 'hobbies_skills', 'addresses']
         const stripId = (rows) =>
           Array.isArray(rows)
             ? rows.map(row => { const { person_id, ...rest } = row; return rest })
             : []
         const payload = {
-          person: newData.person || {},
+          person: {
+            ...(newData.person || {}),
+            country: normalizeCountryValue(newData.person?.country),
+          },
           ...Object.fromEntries(SUB_KEYS.map(k => [k, stripId(newData[k])])),
         }
+        payload.addresses = normalizeAddressEditorRows(payload.addresses)
         if (isUnregistered) {
           await api.updateUnregistered(personId, payload)
         } else {
@@ -1783,7 +1904,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   if (loading) return <div className="loading-center"><div className="spinner" /></div>
   if (!data)   return <div>لم يُعثر على العضو</div>
 
-  const { person, nationality, mobile_numbers, schools, higher_education, jobs, hobbies_skills, person_youth_group, responsibilities } = data
+  const { person, nationality, mobile_numbers, addresses, schools, higher_education, jobs, hobbies_skills, person_youth_group, responsibilities } = data
 
   const youthGroupName = (groupId) => {
     const gid = String(groupId || '').trim()
@@ -1815,6 +1936,8 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
 
   const fullName = [person?.first_name, person?.second_name, person?.third_name, person?.last_name]
     .filter(Boolean).join(' ') || 'بلا اسم'
+  const englishFullName = [person?.english_first_name, person?.english_second_name, person?.english_third_name, person?.english_last_name]
+    .filter(Boolean).join(' ')
   const initials = firstNameInitial(person?.first_name)
   const editableYouthRows = (person_youth_group || []).map(row => ({
     ...row,
@@ -1915,12 +2038,18 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
             onPhotoChange={setPhoto} toast={toast} />
         )}
         <div className="profile-details">
-          <div className="profile-name">
-            {displayName}
-
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <div className="profile-name">
+              {displayName}
+            </div>
           </div>
+          {englishFullName && (
+            <div style={{ marginTop: 4, fontSize: '0.96rem', color: 'var(--gray-500)', direction: 'ltr', textAlign: 'right' }}>
+              {englishFullName}
+            </div>
+          )}
           <div className="profile-sub">
-            {person?.governorate && <span>📍 {person.governorate}</span>}
+            {(person?.address || person?.city || person?.governorate || person?.country) && <span>📍 {[person.address, person.city, person.governorate, person.country].filter(Boolean).join('، ')}</span>}
             {person?.gender      && <span>{person.gender}</span>}
             {person?.birth_year  && <span>🗓 {person.birth_year}</span>}
             {nationality?.[0]    && <span>🌍 {nationality[0].nationality}</span>}
@@ -1961,8 +2090,12 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
               <InlineComboField label="الاسم الثاني"  value={person?.second_name} onChange={v => updateField('second_name', v)} options={opts('second_name')} />
               <InlineComboField label="الاسم الثالث"  value={person?.third_name}  onChange={v => updateField('third_name', v)}  options={opts('third_name')} />
               <InlineComboField label="اسم العائلة"   value={person?.last_name}   onChange={v => updateField('last_name', v)}   options={opts('last_name')} />
+              <div style={{ margin: '10px 0 2px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--gray-400)' }}>الاسم بالإنجليزية</div>
+              <InlineField label="First Name"  value={person?.english_first_name}  onChange={v => updateField('english_first_name', v)} />
+              <InlineField label="Second Name" value={person?.english_second_name} onChange={v => updateField('english_second_name', v)} />
+              <InlineField label="Third Name"  value={person?.english_third_name}  onChange={v => updateField('english_third_name', v)} />
+              <InlineField label="Last Name"   value={person?.english_last_name}   onChange={v => updateField('english_last_name', v)} />
               <InlineSelectField label="الجنس"        value={person?.gender}      onChange={v => updateField('gender', v)}       options={opts('gender')} />
-              <InlineSelectField label="المحافظة"     value={person?.governorate} onChange={v => updateField('governorate', v)}  options={opts('governorate')} />
               <InlineYearField   label="سنة الميلاد"  value={person?.birth_year}  onChange={updateBirthYear} />
               <InlineBirthDateField
                 label="تاريخ الميلاد"
@@ -1992,6 +2125,12 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                 <TagField items={mobile_numbers} valueKey="mobile_number" placeholder="أضف رقم هاتف…"
                   onAdd={v => updateSub('mobile_numbers', [...mobile_numbers, { mobile_number: v }])}
                   onRemove={i => updateSub('mobile_numbers', mobile_numbers.filter((_, idx) => idx !== i))} />
+              </div>
+            </div>
+            <div className="card">
+              <div className="card-header"><span className="card-title"><MapPin size={15} /> العناوين</span></div>
+              <div className="card-body">
+                <AddressRowsEditor rows={addresses} onChange={rows => updateSub('addresses', rows)} governorateOptions={opts('governorate')} />
               </div>
             </div>
             <div className="card">

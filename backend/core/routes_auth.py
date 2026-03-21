@@ -45,6 +45,18 @@ def _hash_pw(pw: str) -> str:
     return hashlib.sha256(pw.encode()).hexdigest()
 
 
+def _compose_person_full_name(row) -> str:
+    """Build a full person name from all available name components."""
+    parts = []
+    for key in ("first_name", "second_name", "third_name", "last_name"):
+        value = row.get(key, "") if hasattr(row, "get") else ""
+        if pd.notna(value):
+            text = str(value).strip()
+            if text:
+                parts.append(text)
+    return " ".join(parts)
+
+
 def _person_type_from_person_id(pid):
     if pid is None or str(pid).strip() == "":
         return None
@@ -96,11 +108,7 @@ def _load_auth() -> dict:
             pid_key = row.get("pid_key")
             if pid_key is None:
                 continue
-            display = " ".join(
-                str(row.get(k))
-                for k in ("first_name", "last_name")
-                if pd.notna(row.get(k, "")) and row.get(k, "")
-            ).strip()
+            display = _compose_person_full_name(row)
             if display:
                 reg_name_by_pid[str(pid_key)] = display
 
@@ -108,11 +116,7 @@ def _load_auth() -> dict:
             pid_key = row.get("pid_key")
             if pid_key is None:
                 continue
-            display = " ".join(
-                str(row.get(k))
-                for k in ("first_name", "last_name")
-                if pd.notna(row.get(k, "")) and row.get(k, "")
-            ).strip()
+            display = _compose_person_full_name(row)
             if display:
                 unreg_name_by_pid[str(pid_key)] = display
 
@@ -194,13 +198,15 @@ def _get_person_name(person_type: str, pid) -> str:
             row = reg_persons[reg_persons["person_id"] == int(pid)]
             if not row.empty:
                 r = row.iloc[0]
-                return " ".join(str(r[k]) for k in ("first_name", "last_name") if pd.notna(r.get(k, "")) and r.get(k, ""))
+                full_name = _compose_person_full_name(r)
+                return full_name or str(pid)
         elif person_type == "unregistered":
             df = S.unreg_store.get("persons", pd.DataFrame())
             row = df[df["person_id"].astype(str) == str(pid)]
             if not row.empty:
                 r = row.iloc[0]
-                return " ".join(str(r[k]) for k in ("first_name", "last_name") if pd.notna(r.get(k, "")) and r.get(k, ""))
+                full_name = _compose_person_full_name(r)
+                return full_name or str(pid)
     except Exception:
         pass
     return str(pid)
@@ -227,6 +233,44 @@ def _get_person_youth_groups(person_type: str, pid) -> list:
     except Exception:
         pass
     return []
+
+
+def _get_person_memberships(person_type: str, pid) -> tuple[list[str], list[str]]:
+    """Return parallel lists of youth-group labels and age-group labels for a person."""
+    try:
+        if person_type is None and pid is not None:
+            person_type = _person_type_from_person_id(pid)
+
+        if person_type == "registered":
+            df = S.store.get("person_youth_group", pd.DataFrame())
+            if df.empty or "person_id" not in df.columns:
+                return ([], [])
+            rows = df[df["person_id"] == int(pid)]
+        elif person_type == "unregistered":
+            df = S.unreg_store.get("person_youth_group", pd.DataFrame())
+            if df.empty or "person_id" not in df.columns:
+                return ([], [])
+            rows = df[df["person_id"].astype(str) == str(pid)]
+        else:
+            return ([], [])
+
+        if rows.empty:
+            return ([], [])
+
+        youth_group_ids = rows.get(S.YOUTH_GROUP_ID_COL, pd.Series(dtype=str)).fillna("").astype(str).tolist()
+        age_groups = rows.get("age_group", pd.Series(dtype=str)).fillna("").astype(str).tolist()
+
+        youth_groups = []
+        for gid in youth_group_ids:
+            gid = gid.strip()
+            if not gid:
+                youth_groups.append("")
+                continue
+            youth_groups.append(S.youth_group_name(gid) or gid)
+
+        return (youth_groups, age_groups)
+    except Exception:
+        return ([], [])
 
 
 AGE_GROUPS_PY = ['البراعم', 'الإعدادي', 'الثانوي', 'الجامعيّة', 'العاملة']
@@ -428,6 +472,37 @@ def register_auth_routes(app):
             })
         return jsonify({"users": users})
 
+    @app.get("/api/auth/users/export")
+    def auth_export_users():
+        err = _require_admin()
+        if err:
+            return err
+
+        data = _load_auth()
+        rows = []
+        for u in data["users"]:
+            person_type = u.get("person_type")
+            person_id = S._normalize_person_id(u.get("person_id"))
+            youth_groups, age_groups = _get_person_memberships(person_type, person_id)
+
+            resolved_name = ""
+            if _has_person_link(u):
+                resolved_name = _get_person_name(person_type, person_id)
+            if not resolved_name:
+                resolved_name = str(u.get("display_name") or u.get("username") or "")
+
+            username = str(u.get("username") or "").strip().lower()
+            rows.append({
+                "full_name": resolved_name,
+                "youth_groups": youth_groups,
+                "age_groups": age_groups,
+                "username": username,
+                # Source directly from JECJordanData auth sheet.
+                "password": str(u.get("password_hash") or ""),
+            })
+
+        return jsonify({"users": rows, "passwords_reset": False})
+
     @app.post("/api/auth/users")
     def auth_create_user():
         err = _require_admin()
@@ -618,16 +693,26 @@ def register_auth_routes(app):
                 uname = _make_username(fn, ln, existing_usernames)
                 pw = _make_password(fn, ln, pid)
                 existing_usernames.add(uname)
+                display_name = _compose_person_full_name(row)
+                youth_groups, age_groups = _get_person_memberships("registered", pid)
                 new_user = {
                     "username": uname,
                     "password_hash": _hash_pw(pw),
                     "role": "member",
                     "person_type": "registered",
                     "person_id": int(pid),
-                    "display_name": f"{fn} {ln}".strip(),
+                    "display_name": display_name or f"{fn} {ln}".strip(),
                 }
                 data["users"].append(new_user)
-                created.append({"username": uname, "password": pw, "person_id": int(pid), "person_type": "registered", "display_name": new_user["display_name"]})
+                created.append({
+                    "username": uname,
+                    "password": pw,
+                    "person_id": int(pid),
+                    "person_type": "registered",
+                    "display_name": new_user["display_name"],
+                    "youth_groups": youth_groups,
+                    "age_groups": age_groups,
+                })
 
             unreg_df = S.unreg_store.get("persons", pd.DataFrame()).replace({np.nan: None})
             existing_pids_unreg = {
@@ -646,13 +731,15 @@ def register_auth_routes(app):
                     uname = _make_username(fn, ln, existing_usernames)
                     pw = _make_password(fn, ln, pid)
                     existing_usernames.add(uname)
+                    display_name = _compose_person_full_name(row)
+                    youth_groups, age_groups = _get_person_memberships("unregistered", pid)
                     new_user = {
                         "username": uname,
                         "password_hash": _hash_pw(pw),
                         "role": "member",
                         "person_type": "unregistered",
                         "person_id": S._normalize_person_id(pid),
-                        "display_name": f"{fn} {ln}".strip(),
+                        "display_name": display_name or f"{fn} {ln}".strip(),
                     }
                     data["users"].append(new_user)
                     created.append({
@@ -661,6 +748,8 @@ def register_auth_routes(app):
                         "person_id": S._normalize_person_id(pid),
                         "person_type": "unregistered",
                         "display_name": new_user["display_name"],
+                        "youth_groups": youth_groups,
+                        "age_groups": age_groups,
                     })
 
             _save_auth(data)

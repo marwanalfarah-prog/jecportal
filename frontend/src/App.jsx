@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, Users, GitBranch, UserPlus, LogOut, ShieldCheck, User as UserIcon, Eye, X, Search, ClipboardList, Settings, Building2, ImageOff, Key, MapPin } from 'lucide-react'
+import { LayoutDashboard, Users, GitBranch, UserPlus, LogOut, ShieldCheck, User as UserIcon, Eye, X, Search, ClipboardList, Settings, Building2, ImageOff, Key, MapPin, BookOpenText } from 'lucide-react'
 import Dashboard from './pages/Dashboard.jsx'
 import Members from './pages/Members.jsx'
 import Profile from './pages/Profile.jsx'
@@ -17,6 +17,7 @@ import Config from './pages/Config.jsx'
 import YouthGroupAdmin from './pages/YouthGroupAdmin.jsx'
 import ChurchesAdmin from './pages/ChurchesAdmin.jsx'
 import ChurchesMap from './pages/ChurchesMap.jsx'
+import BibleReader from './pages/BibleReader.jsx'
 import { api } from './api.js'
 
 // ── ViewAsPicker Modal ────────────────────────────────────────────────────────
@@ -253,6 +254,7 @@ function MemberYouthGroupLogoTile({ groupId, label }) {
             onError={() => setSpecialMissing(true)}
           />
         ) : null}
+
       </div>
 
       <div style={{ minWidth: 0 }}>
@@ -286,6 +288,127 @@ function MemberYouthGroupLogoTile({ groupId, label }) {
   )
 }
 
+function MemberMottoTile({ logoUrl, verseText, scopeLabel }) {
+  const [missing, setMissing] = useState(false)
+
+  useEffect(() => {
+    setMissing(false)
+  }, [logoUrl, verseText, scopeLabel])
+
+  return (
+    <div
+      style={{
+        minWidth: 142,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '8px 10px',
+        border: '1px solid var(--gray-200)',
+        borderRadius: 10,
+        background: '#fffdf7',
+      }}
+      title={verseText || scopeLabel}
+    >
+      {missing ? (
+        <div
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 8,
+            border: '1px dashed var(--gray-300)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--gray-400)',
+            background: 'var(--gray-50)',
+            flexShrink: 0,
+          }}
+        >
+          <ImageOff size={14} />
+        </div>
+      ) : (
+        <img
+          src={logoUrl}
+          alt={verseText || scopeLabel}
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 8,
+            objectFit: 'contain',
+            border: '1px solid var(--gray-200)',
+            background: 'var(--gray-50)',
+            flexShrink: 0,
+          }}
+          onError={() => setMissing(true)}
+        />
+      )}
+
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: '0.78rem',
+            color: 'var(--navy)',
+            lineHeight: 1.25,
+            marginBottom: 2,
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          }}
+        >
+          {verseText || '—'}
+        </div>
+        <div
+          style={{
+            fontSize: '0.84rem',
+            color: 'var(--gold)',
+            fontWeight: 700,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {scopeLabel}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function formatMottoSource(ref) {
+  if (!ref || typeof ref !== 'object') return ''
+  const abbr = String(ref?.book?.book_abbr || ref?.book?.abbr || ref?.book?.book_name || '').trim()
+  const verseObj = ref?.verse && typeof ref.verse === 'object' ? ref.verse : {}
+  let verseRaw = String(verseObj?.raw || '').trim()
+  if (!verseRaw) {
+    const segments = Array.isArray(verseObj?.segments) ? verseObj.segments : []
+    const rendered = segments.map((seg) => {
+      const start = seg?.start || {}
+      const end = seg?.end || {}
+      const sc = Number(start?.chapter)
+      const sv = Number(start?.verse)
+      const ec = Number(end?.chapter)
+      const ev = Number(end?.verse)
+      if (!sc || !sv || !ec || !ev) return ''
+      if (sc === ec && sv === ev) return `${sc}: ${sv}`
+      if (sc === ec) return `${sc}: ${sv}-${ev}`
+      return `${sc}: ${sv}-${ec}: ${ev}`
+    }).filter(Boolean)
+    verseRaw = rendered.join(', ')
+  }
+  verseRaw = verseRaw.replace(/:\s*/g, ': ')
+  if (!abbr || !verseRaw) return ''
+  return `(${abbr} ${verseRaw})`
+}
+
+function formatMottoTextWithSource(motto) {
+  const title = String(motto?.title || '').trim()
+  if (!title) return '—'
+  const references = Array.isArray(motto?.bible_references) ? motto.bible_references : []
+  const source = formatMottoSource(references[0])
+  return source ? `${title} ${source}` : title
+}
+
 const PAGE_TITLES = {
   dashboard:           'لوحة المعلومات',
   members:             'الأعضاء',
@@ -298,6 +421,7 @@ const PAGE_TITLES = {
   youth_groups:        'ملف فرق الشبيبة',
   churches:            'الكنائس',
   churches_map:        'خريطة الكنائس',
+  bible_reader:        'قارئ الكتاب المقدس',
 }
 
 export default function App() {
@@ -317,6 +441,7 @@ export default function App() {
   const [credPasswordConfirm, setCredPasswordConfirm] = useState('')
   const [savingCreds, setSavingCreds] = useState(false)
   const [youthGroupLabels, setYouthGroupLabels] = useState({})
+  const [memberMottoByGroup, setMemberMottoByGroup] = useState({})
   const { toasts, toast }               = useToast()
 
   useEffect(() => {
@@ -406,9 +531,31 @@ export default function App() {
   const councilAccess  = effectiveUser?.council_access || {}
   const isCouncil      = isMember && Object.keys(councilAccess).length > 0
   const memberYouthGroups = [...new Set((effectiveUser?.youth_groups || []).filter(Boolean))]
+  const memberYouthGroupsKey = memberYouthGroups.join('|')
+
+  const buildMemberMottoLabel = (groupLabel, sameAsJecJordan, yearLabel) => {
+    const buildWithYear = (base) => {
+      const year = String(yearLabel || '').trim()
+      return year ? `${base} لعام ${year}` : base
+    }
+
+    if (sameAsJecJordan) return buildWithYear('شعار شبيبة الأردن')
+    const raw = String(groupLabel || '').trim()
+    const withoutPrefix = raw.replace(/^\s*شبيبة\s*/u, '').trim()
+    const suffix = withoutPrefix || raw || '—'
+    return buildWithYear(`شعار شبيبة ${suffix}`)
+  }
+
   const memberYouthGroupCards = memberYouthGroups.map(gid => ({
     id: gid,
     label: youthGroupLabels[gid] || api.formatYouthGroupLabel(gid) || gid,
+    mottoLogoUrl: memberMottoByGroup[gid]?.logoUrl || '',
+    mottoScopeLabel: buildMemberMottoLabel(
+      youthGroupLabels[gid] || api.formatYouthGroupLabel(gid) || gid,
+      !!memberMottoByGroup[gid]?.sameAsJecJordan,
+      memberMottoByGroup[gid]?.yearLabel,
+    ),
+    mottoVerseText: memberMottoByGroup[gid]?.mottoText || '',
   }))
 
   useEffect(() => {
@@ -425,6 +572,64 @@ export default function App() {
       .catch(() => {})
   }, [])
 
+  useEffect(() => {
+    if (!isMember) {
+      setMemberMottoByGroup({})
+      return
+    }
+
+    const groupIds = memberYouthGroups
+      .map((gid) => String(gid || '').trim())
+      .filter(Boolean)
+
+    let cancelled = false
+    api.listActiveMottos({ youthGroupIds: groupIds, includeJecJordan: true })
+      .then((res) => {
+        if (cancelled) return
+        const rows = Array.isArray(res?.mottos) ? res.mottos : []
+        const globalRow = rows.find((row) => row?.targets?.jec_jordan && row?.logo_url)
+        const globalLogo = String(globalRow?.logo_url || '').trim()
+        const globalId = String(globalRow?.id || '').trim()
+
+        const byGroup = {}
+        for (const gid of groupIds) {
+          const directRow = rows.find((row) => {
+            const logoUrl = String(row?.logo_url || '').trim()
+            if (!logoUrl) return false
+            const targets = row?.targets && typeof row.targets === 'object' ? row.targets : {}
+            const targetGroups = Array.isArray(targets.youth_groups) ? targets.youth_groups : []
+            return targetGroups.map((x) => String(x || '').trim()).includes(gid)
+          })
+
+          const directLogo = String(directRow?.logo_url || '').trim()
+          const logoUrl = directLogo || globalLogo
+          if (!logoUrl) continue
+
+          const sourceRow = directLogo ? directRow : globalRow
+          const yearLabel = String(sourceRow?.year_label || '').trim()
+          const mottoText = formatMottoTextWithSource(sourceRow)
+
+          const sameAsJecJordan = !!globalLogo && (
+            !directRow
+            || (String(directRow?.id || '').trim() && String(directRow?.id || '').trim() === globalId)
+            || directLogo === globalLogo
+          )
+
+          byGroup[gid] = { logoUrl, sameAsJecJordan, yearLabel, mottoText }
+        }
+
+        setMemberMottoByGroup(byGroup)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setMemberMottoByGroup({})
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isMember, memberYouthGroupsKey])
+
   // ── Navigation ──────────────────────────────────────────────────────────────
   const NAV = isAdmin ? [
     { id: 'dashboard',           label: 'لوحة المعلومات',              icon: LayoutDashboard },
@@ -436,11 +641,13 @@ export default function App() {
     { id: 'youth_groups',         label: 'ملف فرق الشبيبة',              icon: Building2 },
     { id: 'churches',             label: 'الكنائس',                       icon: MapPin },
     { id: 'churches_map',         label: 'خريطة الكنائس',                 icon: MapPin },
+    { id: 'bible_reader',         label: 'قارئ الكتاب المقدس',            icon: BookOpenText },
     { id: 'config',               label: 'الإعدادات',                    icon: Settings },
   ] : [
     { id: 'profile',         label: 'ملفي الشخصي',       icon: UserIcon },
     { id: 'orgtree',         label: 'الهيكل التنظيمي',   icon: GitBranch },
     ...(isCouncil ? [{ id: 'council_members', label: 'أعضاء فئتي', icon: Users }] : []),
+    { id: 'bible_reader', label: 'قارئ الكتاب المقدس', icon: BookOpenText },
     { id: 'my_questions', label: 'استبياناتي', icon: ClipboardList },
   ]
 
@@ -478,8 +685,8 @@ export default function App() {
 
   const navigate = (p) => {
     const allowed = isAdmin
-      ? ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches', 'churches_map', 'config']
-      : ['profile', 'orgtree', 'council_members', 'my_questions']
+      ? ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches', 'churches_map', 'bible_reader', 'config']
+      : ['profile', 'orgtree', 'council_members', 'bible_reader', 'my_questions']
     if (!allowed.includes(p)) return
     setPage(p)
     if (p !== 'profile') { setSelected(null); setOrgContext(null); setIsUnreg(false) }
@@ -716,7 +923,16 @@ export default function App() {
           >
             <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
               {memberYouthGroupCards.map((g) => (
-                <MemberYouthGroupLogoTile key={g.id} groupId={g.id} label={g.label} />
+                <div key={g.id} style={{ display: 'flex', gap: 8 }}>
+                  <MemberYouthGroupLogoTile groupId={g.id} label={g.label} />
+                  {g.mottoLogoUrl ? (
+                    <MemberMottoTile
+                      logoUrl={g.mottoLogoUrl}
+                      verseText={g.mottoVerseText}
+                      scopeLabel={g.mottoScopeLabel}
+                    />
+                  ) : null}
+                </div>
               ))}
             </div>
           </div>
@@ -801,6 +1017,10 @@ export default function App() {
 
           {isAdmin && page === 'churches_map' && (
             <ChurchesMap toast={toast} />
+          )}
+
+          {page === 'bible_reader' && (
+            <BibleReader toast={toast} />
           )}
 
           {isAdmin && page === 'config' && (

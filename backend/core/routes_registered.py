@@ -147,6 +147,7 @@ def register_registered_routes(app):
             "photo": f"/api/person/{pid}/photo" if ext else None,
             "nationality": sub("nationality"),
             "mobile_numbers": sub("mobile_numbers"),
+            "addresses": sub("addresses"),
             "schools": sub("schools"),
             "higher_education": sub("higher_education"),
             "jobs": sub("jobs"),
@@ -200,7 +201,15 @@ def register_registered_routes(app):
     def update_person(pid):
         body = request.json
         with S.lock:
-            p = S.normalize_person_birth_fields(body.get("person", {}))
+            raw_person = body.get("person", {})
+            p = S.normalize_person_birth_fields(raw_person)
+            addresses_rows = body.get("addresses") if "addresses" in body else None
+            if addresses_rows is None:
+                legacy_addresses = S.address_rows_from_legacy_person_payload(raw_person)
+                if legacy_addresses:
+                    addresses_rows = legacy_addresses
+            for legacy_col in ("governorate", "city", "country", "address"):
+                p.pop(legacy_col, None)
             persons = S._registered_persons_df()
             idx = persons[persons["person_id"] == pid].index
             if not idx.empty:
@@ -223,6 +232,8 @@ def register_registered_routes(app):
 
             replace_sub("nationality", body.get("nationality", []))
             replace_sub("mobile_numbers", body.get("mobile_numbers", []))
+            if addresses_rows is not None:
+                replace_sub("addresses", addresses_rows)
             replace_sub("schools", body.get("schools", []))
             replace_sub("higher_education", body.get("higher_education", []))
             replace_sub("jobs", body.get("jobs", []))
@@ -237,7 +248,11 @@ def register_registered_routes(app):
         body = request.json
         with S.lock:
             new_id = S._next_person_id()
-            p = S.normalize_person_birth_fields(body.get("person", {}))
+            raw_person = body.get("person", {})
+            p = S.normalize_person_birth_fields(raw_person)
+            addresses_rows = body.get("addresses") if "addresses" in body else S.address_rows_from_legacy_person_payload(raw_person)
+            for legacy_col in ("governorate", "city", "country", "address"):
+                p.pop(legacy_col, None)
             p["person_id"] = new_id
             p["registered"] = True
             if "title" not in p:
@@ -256,6 +271,7 @@ def register_registered_routes(app):
 
             add_sub("nationality", body.get("nationality", []))
             add_sub("mobile_numbers", body.get("mobile_numbers", []))
+            add_sub("addresses", addresses_rows)
             add_sub("schools", body.get("schools", []))
             add_sub("higher_education", body.get("higher_education", []))
             add_sub("jobs", body.get("jobs", []))

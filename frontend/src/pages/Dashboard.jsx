@@ -5,6 +5,49 @@ import { api } from '../api.js'
 
 const COLORS = ['#0f2744','#1a3a5c','#2d5986','#c9963c','#e8b55a','#4a7fb5','#3d6a99','#9ba5bc','#6b778f','#4a5568']
 
+function formatMottoSource(ref) {
+  if (!ref || typeof ref !== 'object') return ''
+  const abbr = String(ref?.book?.book_abbr || ref?.book?.abbr || ref?.book?.book_name || '').trim()
+  const verseObj = ref?.verse && typeof ref.verse === 'object' ? ref.verse : {}
+  let verseRaw = String(verseObj?.raw || '').trim()
+  if (!verseRaw) {
+    const segments = Array.isArray(verseObj?.segments) ? verseObj.segments : []
+    const rendered = segments.map((seg) => {
+      const start = seg?.start || {}
+      const end = seg?.end || {}
+      const sc = Number(start?.chapter)
+      const sv = Number(start?.verse)
+      const ec = Number(end?.chapter)
+      const ev = Number(end?.verse)
+      if (!sc || !sv || !ec || !ev) return ''
+      if (sc === ec && sv === ev) return `${sc}: ${sv}`
+      if (sc === ec) return `${sc}: ${sv}-${ev}`
+      return `${sc}: ${sv}-${ec}: ${ev}`
+    }).filter(Boolean)
+    verseRaw = rendered.join(', ')
+  }
+  verseRaw = verseRaw.replace(/:\s*/g, ': ')
+  if (!abbr || !verseRaw) return ''
+  return `(${abbr} ${verseRaw})`
+}
+
+function formatMottoTextWithSource(motto) {
+  const title = String(motto?.title || '').trim()
+  if (!title) return '—'
+  const references = Array.isArray(motto?.bible_references) ? motto.bible_references : []
+  const source = formatMottoSource(references[0])
+  return source ? `${title} ${source}` : title
+}
+
+function buildScopeLabel(targets, yearLabel) {
+  const groups = Array.isArray(targets?.youth_groups) ? targets.youth_groups : []
+  const base = targets?.jec_jordan
+    ? 'شعار شبيبة الأردن'
+    : (groups.length ? `شعار شبيبة ${groups.join('، ')}` : 'شعار الشبيبة')
+  const year = String(yearLabel || '').trim()
+  return year ? `${base} لعام ${year}` : base
+}
+
 function StatCard({ label, value, icon: Icon }) {
   return (
     <div className="stat-card">
@@ -55,14 +98,16 @@ export default function Dashboard() {
   const [genderData, setGender] = useState([])
   const [ygData, setYg]         = useState([])
   const [ageData, setAge]       = useState([])
+  const [mottoData, setMottoData] = useState([])
   const [loading, setLoading]   = useState(true)
   const [animateCharts, setAnimateCharts] = useState(false)
 
   useEffect(() => {
     Promise.all([
-      api.stats(), api.chartGov(), api.chartGender(), api.chartYG(), api.chartAge()
-    ]).then(([s, g, ge, y, a]) => {
+      api.stats(), api.chartGov(), api.chartGender(), api.chartYG(), api.chartAge(), api.listActiveMottos({ includeJecJordan: true })
+    ]).then(([s, g, ge, y, a, m]) => {
       setStats(s); setGovData(g); setGender(ge); setYg(y); setAge(a)
+      setMottoData(Array.isArray(m?.mottos) ? m.mottos : [])
       setLoading(false)
       requestAnimationFrame(() => setAnimateCharts(true))
     })
@@ -80,6 +125,55 @@ export default function Dashboard() {
         <StatCard label="المحافظات"             value={stats.governorates}  icon={MapPin} />
         <StatCard label="الجنسيات"              value={stats.nationalities} icon={Globe} />
       </div>
+
+      {mottoData.length > 0 && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="card-header">
+            <span className="card-title">الشعار النشط</span>
+          </div>
+          <div className="card-body" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {mottoData.map((motto) => {
+              const targets = motto?.targets && typeof motto.targets === 'object' ? motto.targets : {}
+              const scopeLabel = buildScopeLabel(targets, motto?.year_label)
+
+              return (
+                <div
+                  key={motto.id || `${motto.title}-${motto.year_label}`}
+                  style={{
+                    minWidth: 220,
+                    maxWidth: 320,
+                    border: '1px solid #e2e6ef',
+                    borderRadius: 12,
+                    padding: '10px 12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    background: '#fff',
+                  }}
+                >
+                  {motto.logo_url ? (
+                    <img
+                      src={motto.logo_url}
+                      alt={motto.title || 'Motto Logo'}
+                      style={{ width: 44, height: 44, borderRadius: 8, objectFit: 'contain', border: '1px solid #e2e6ef', background: '#f8f9fb', flexShrink: 0 }}
+                    />
+                  ) : (
+                    <div style={{ width: 44, height: 44, borderRadius: 8, border: '1px dashed #c8cfe0', background: '#f8f9fb', flexShrink: 0 }} />
+                  )}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#0f2744', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {formatMottoTextWithSource(motto)}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#9ba5bc', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {scopeLabel}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
         <div className="card">

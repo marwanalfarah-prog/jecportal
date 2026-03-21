@@ -15,6 +15,33 @@ function normalizeAr(str) {
   return stripToArabic(str).replace(/\s+/g, ' ').trim()
 }
 
+function normalizeEn(str) {
+  return String(str || '').replace(/\s+/g, ' ').trim()
+}
+
+function normalizeLoose(str) {
+  return String(str || '').replace(/\s+/g, ' ').trim()
+}
+
+function normalizeCountryValue(str) {
+  const text = normalizeLoose(str)
+  if (!text) return 'الأردن'
+
+  const englishKey = text.toLowerCase()
+  const arabicKey = text.replace(/[أإآ]/g, 'ا')
+
+  if (
+    englishKey === 'jordan'
+    || englishKey === 'the hashemite kingdom of jordan'
+    || arabicKey === 'الاردن'
+    || arabicKey === 'المملكة الاردنية الهاشمية'
+  ) {
+    return 'الأردن'
+  }
+
+  return text
+}
+
 
 // ─────────────────────────────────────────────────────────────────
 // Static data  (mirrors Google Form exactly)
@@ -79,6 +106,8 @@ const MONTHS_DATA = [
   {en:'Sep',ar:'أيلول',num:9},{en:'Oct',ar:'تشرين الأول',num:10},
   {en:'Nov',ar:'تشرين الثاني',num:11},{en:'Dec',ar:'كانون الأول',num:12},
 ]
+
+const DEFAULT_ADDRESS = { country: 'الأردن', governorate: '', city: '', address: '', is_primary: true }
 
 // ─────────────────────────────────────────────────────────────────
 // Small reusable input atoms
@@ -346,6 +375,127 @@ function NationalitiesPicker({ values, onChange, knownOptions }) {
   )
 }
 
+function AddressEntriesField({ entries, onChange, governorateOptions = [], errors = {} }) {
+  const rows = Array.isArray(entries) && entries.length ? entries : [{ ...DEFAULT_ADDRESS }]
+
+  const setRows = (nextRows) => {
+    const normalized = nextRows.length ? nextRows.map((row) => ({
+      country: normalizeCountryValue(row.country),
+      governorate: normalizeLoose(row.governorate),
+      city: normalizeLoose(row.city),
+      address: normalizeLoose(row.address),
+      is_primary: Boolean(row.is_primary),
+    })) : [{ ...DEFAULT_ADDRESS }]
+
+    const primaryIndex = normalized.findIndex(row => row.is_primary)
+    normalized.forEach((row, index) => {
+      row.is_primary = index === (primaryIndex >= 0 ? primaryIndex : 0)
+    })
+    onChange(normalized)
+  }
+
+  const updateRow = (index, key, value) => setRows(rows.map((row, rowIndex) => (
+    rowIndex === index ? { ...row, [key]: value } : row
+  )))
+
+  const setPrimary = (index) => setRows(rows.map((row, rowIndex) => ({ ...row, is_primary: rowIndex === index })))
+
+  const addRow = () => setRows([...rows, { ...DEFAULT_ADDRESS, is_primary: false }])
+
+  const removeRow = (index) => {
+    const next = rows.filter((_, rowIndex) => rowIndex !== index)
+    if (!next.length) {
+      onChange([{ ...DEFAULT_ADDRESS }])
+      return
+    }
+    if (!next.some(row => row.is_primary)) next[0].is_primary = true
+    setRows(next)
+  }
+
+  return (
+    <div className="am-address-stack">
+      {rows.map((row, index) => (
+        <div key={index} className="am-address-card">
+          <div className="am-address-card-header">
+            <div>
+              <div className="am-address-card-title">عنوان {index + 1}</div>
+              <div className="am-address-card-subtitle">أدخل المحافظة ثم المدينة ثم العنوان التفصيلي</div>
+            </div>
+            <div className="am-address-card-actions">
+              {!row.is_primary && (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPrimary(index)}>
+                  تعيين كرئيسي
+                </button>
+              )}
+              {row.is_primary && (
+                <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--green, #15803d)' }}>العنوان الرئيسي</span>
+              )}
+              {rows.length > 1 && (
+                <button type="button" className="btn btn-ghost btn-sm"
+                  style={{ color: 'var(--red, #dc2626)' }}
+                  onClick={() => removeRow(index)}>
+                  حذف
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="am-address-grid">
+            <div className="am-address-field">
+              <div className="am-field-hint am-address-label">البلد</div>
+              <input
+                className="form-control"
+                value={normalizeCountryValue(row.country)}
+                onChange={e => updateRow(index, 'country', normalizeCountryValue(e.target.value))}
+                placeholder="الأردن"
+              />
+            </div>
+
+            <div className="am-address-field">
+              <div className="am-field-hint am-address-label">المحافظة / الولاية</div>
+              <SearchSelect
+                value={row.governorate}
+                onChange={value => updateRow(index, 'governorate', value)}
+                options={governorateOptions}
+                allowOther={true}
+                placeholder="اختر أو اكتب المحافظة / الولاية…"
+              />
+              {errors[`address_governorate_${index}`] && <div className="am-field-error"><AlertCircle size={13} style={{ flexShrink: 0 }} /> {errors[`address_governorate_${index}`]}</div>}
+            </div>
+
+            <div className="am-address-field">
+              <div className="am-field-hint am-address-label">المدينة</div>
+              <input
+                className="form-control"
+                value={row.city || ''}
+                onChange={e => updateRow(index, 'city', e.target.value)}
+                placeholder="مثال: عمّان"
+              />
+            </div>
+
+            <div className="am-address-field am-address-field-wide">
+              <div className="am-field-hint am-address-label">العنوان التفصيلي</div>
+              <input
+                className="form-control"
+                value={row.address || ''}
+                onChange={e => updateRow(index, 'address', e.target.value)}
+                placeholder="مثال: جبل الحسين، قرب الكنيسة اللاتينية، شارع 12"
+              />
+              {errors[`address_text_${index}`] && <div className="am-field-error"><AlertCircle size={13} style={{ flexShrink: 0 }} /> {errors[`address_text_${index}`]}</div>}
+            </div>
+          </div>
+        </div>
+      ))}
+
+      <button type="button" className="am-select-trigger"
+        style={{ borderStyle: 'dashed', background: 'var(--gray-50)' }}
+        onClick={addRow}>
+        <span className="am-select-value am-placeholder">＋ إضافة عنوان آخر</span>
+      </button>
+    </div>
+  )
+}
+
 /** Form field wrapper — label, hint, children, error */
 function Field({ label, required, hint, error, children }) {
   return (
@@ -392,8 +542,9 @@ function StepBar({ steps, current }) {
 const BLANK = {
   // step 0
   first_name: '', second_name: '', third_name: '', last_name: '',
+  english_first_name: '', english_second_name: '', english_third_name: '', english_last_name: '',
   gender: '', birth_year: '', birth_day: '', birth_month: '',
-  nationalities: [], mobile: '', governorate: '',
+  nationalities: [], mobile: '', addresses: [{ ...DEFAULT_ADDRESS }],
   // step 1
   youth_groups: [{ youth_group: '', join_year: '', age_group: '' }],
   // step 2 – school
@@ -478,7 +629,16 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
           e.mobile = 'رقم غير صحيح — يجب أن يكون رقمًا أردنيًّا (07X XXXXXXX) أو دوليًّا (00... بدون 00962)'
         }
       }
-      if (!form.governorate)                                 e.governorate = 'هذا الحقل مطلوب'
+      if (!Array.isArray(form.addresses) || form.addresses.length === 0) {
+        e.addresses = 'يرجى إدخال عنوان واحد على الأقل'
+      } else {
+        form.addresses.forEach((entry, index) => {
+          if (!normalizeLoose(entry?.governorate)) e[`address_governorate_${index}`] = 'هذا الحقل مطلوب'
+          if (!normalizeLoose(entry?.address)) e[`address_text_${index}`] = 'هذا الحقل مطلوب'
+        })
+        const primaryCount = form.addresses.filter(entry => entry?.is_primary).length
+        if (primaryCount !== 1) e.addresses = 'يجب تحديد عنوان رئيسي واحد فقط'
+      }
     }
     if (s === 1) {
       const yg = form.youth_groups
@@ -534,18 +694,32 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
         ? form.youth_groups.map(g => ({ youth_group_id: g.youth_group, responsibility: form.resp_text, time: form.has_resp })).filter(r => r.youth_group_id)
         : []
 
+      const addresses = (Array.isArray(form.addresses) ? form.addresses : [])
+        .map((entry, index) => ({
+          country: normalizeCountryValue(entry.country),
+          governorate: normalizeLoose(entry.governorate) || null,
+          city: normalizeLoose(entry.city) || null,
+          address: normalizeLoose(entry.address) || null,
+          is_primary: Boolean(entry.is_primary) || index === 0,
+        }))
+        .filter(entry => entry.governorate || entry.city || entry.address)
+
       const body = {
         person: {
           first_name:  normalizeAr(form.first_name), second_name: normalizeAr(form.second_name) || null,
           third_name:  normalizeAr(form.third_name) || null, last_name: normalizeAr(form.last_name) || null,
+          english_first_name: normalizeEn(form.english_first_name) || null,
+          english_second_name: normalizeEn(form.english_second_name) || null,
+          english_third_name: normalizeEn(form.english_third_name) || null,
+          english_last_name: normalizeEn(form.english_last_name) || null,
           gender:      form.gender || null,
-          governorate: form.governorate || null,
           birth_year:  form.birth_year ? parseInt(form.birth_year, 10) : null,
           birth_day:   form.birth_day ? parseInt(form.birth_day, 10) : null,
           birth_month: form.birth_month ? parseInt(form.birth_month, 10) : null,
         },
         nationality:        form.nationalities.map(n => ({ nationality: n })),
         mobile_numbers:     form.mobile.trim() ? [{ mobile_number: form.mobile.trim() }] : [],
+        addresses,
         schools:            school ? [{ school }] : [],
         person_youth_group: form.youth_groups.filter(g => g.youth_group).map(g => ({
           youth_group_id:   g.youth_group,
@@ -635,6 +809,30 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
                 placeholder="مثال: حنّا" />
             </Field>
 
+            <div className="am-field-hint" style={{ marginBottom: 8, fontStyle: 'italic', color: 'var(--gray-500)', fontSize: '0.82rem', direction: 'ltr', textAlign: 'left' }}>
+              English name is optional
+            </div>
+            <Field label="English First Name">
+              <input className="form-control" value={form.english_first_name} dir="ltr"
+                onChange={e => set('english_first_name', e.target.value)}
+                placeholder="Example: George" />
+            </Field>
+            <Field label="English Second Name">
+              <input className="form-control" value={form.english_second_name} dir="ltr"
+                onChange={e => set('english_second_name', e.target.value)}
+                placeholder="Example: Michel" />
+            </Field>
+            <Field label="English Third Name">
+              <input className="form-control" value={form.english_third_name} dir="ltr"
+                onChange={e => set('english_third_name', e.target.value)}
+                placeholder="Example: Najib" />
+            </Field>
+            <Field label="English Last Name">
+              <input className="form-control" value={form.english_last_name} dir="ltr"
+                onChange={e => set('english_last_name', e.target.value)}
+                placeholder="Example: Hanna" />
+            </Field>
+
             <Field label="الجنس" required error={errors.gender}>
               <RadioList options={GENDER_OPTIONS} value={form.gender}
                 onChange={v => set('gender', v)} />
@@ -675,9 +873,14 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
                 }} />
             </Field>
 
-            <Field label="المحافظة (مكان الإقامة)" required error={errors.governorate}>
-              <SearchSelect value={form.governorate} onChange={v => set('governorate', v)}
-                options={govOpts} allowOther={false} />
+            <Field label="العنوان / مكان الإقامة" required error={errors.addresses}
+              hint="يمكنك إضافة أكثر من عنوان مع تحديد عنوان رئيسي واحد فقط">
+              <AddressEntriesField
+                entries={form.addresses}
+                onChange={value => set('addresses', value)}
+                governorateOptions={govOpts}
+                errors={errors}
+              />
             </Field>
           </>}
 

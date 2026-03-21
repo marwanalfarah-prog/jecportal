@@ -13,6 +13,7 @@ from core.routes_unregistered import register_unregistered_routes
 from core.routes_config import register_config_routes
 from core.routes_youth_groups import register_youth_group_routes
 from core.routes_parishes import register_churches_routes
+from core.routes_bible_reader import register_bible_reader_routes
 
 
 app = Flask(__name__)
@@ -33,6 +34,7 @@ register_questionnaires_notifications_routes(app)
 register_config_routes(app)
 register_youth_group_routes(app)
 register_churches_routes(app)
+register_bible_reader_routes(app)
 
 
 @app.get("/api/logo")
@@ -50,4 +52,4 @@ def get_lpj_logo():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5000, use_reloader=False)

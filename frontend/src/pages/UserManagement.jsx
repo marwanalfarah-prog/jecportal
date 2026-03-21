@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { Users, Plus, Trash2, RefreshCw, X, Search, ShieldCheck, User, Download, Copy, Check, Pencil } from 'lucide-react'
 import { api } from '../api.js'
 
@@ -56,14 +56,120 @@ const inputStyle = {
   direction: 'rtl', textAlign: 'right', outline: 'none',
 }
 
+function normalizeWord(word) {
+  let normalized = String(word)
+  normalized = normalized.replace(/[\u0617-\u061A\u064B-\u0652]/g, '')
+  normalized = normalized.replace(/\u0640/g, '')
+  normalized = normalized.replace(/[إأآا]/g, 'ا')
+  normalized = normalized.replace(/[يى]/g, 'ي')
+  normalized = normalized.replace(/ؤ/g, 'و')
+  normalized = normalized.replace(/ئ/g, 'ي')
+  normalized = normalized.replace(/ة/g, 'ه')
+  normalized = normalized.replace(/^ال/, '')
+  return normalized.toLowerCase().trim()
+}
+
+function normalizeArabic(text) {
+  if (!text) return ''
+  return String(text).replace(/\s+/g, ' ').trim().split(' ').map(normalizeWord).join(' ')
+}
+
+function normalizeNameVariations(raw) {
+  const out = {}
+  if (!raw) return out
+
+  const entries = []
+  if (Array.isArray(raw)) {
+    for (const row of raw) {
+      if (!row || typeof row !== 'object') continue
+      entries.push([row.name, row.variations])
+    }
+  } else if (typeof raw === 'object') {
+    for (const [base, variations] of Object.entries(raw)) entries.push([base, variations])
+  }
+
+  for (const [baseRaw, variationsRaw] of entries) {
+    const base = normalizeArabic(baseRaw)
+    if (!base) continue
+    const source = Array.isArray(variationsRaw) ? variationsRaw : (typeof variationsRaw === 'string' ? [variationsRaw] : [])
+    const values = [...new Set(source.map(v => normalizeArabic(v)).filter(v => v && v !== base))]
+    out[base] = values
+  }
+
+  return out
+}
+
+function buildNameAliasLookup(variationMap) {
+  const map = new Map()
+  const ensure = (word) => {
+    if (!map.has(word)) map.set(word, new Set([word]))
+    return map.get(word)
+  }
+
+  for (const [base, vars] of Object.entries(variationMap || {})) {
+    if (!base) continue
+    const baseSet = ensure(base)
+    for (const v of vars || []) {
+      if (!v) continue
+      baseSet.add(v)
+      const vSet = ensure(v)
+      vSet.add(base)
+      for (const sibling of vars || []) {
+        if (sibling) vSet.add(sibling)
+      }
+    }
+  }
+
+  return map
+}
+
+function expandQueryWords(words, aliasLookup) {
+  return words.map((w) => {
+    const expanded = new Set([w])
+
+    const exact = aliasLookup.get(w)
+    if (exact && exact.size) {
+      exact.forEach(v => expanded.add(v))
+    }
+
+    for (const [key, values] of aliasLookup.entries()) {
+      if (!key || !values?.size) continue
+      if (key.includes(w) || w.includes(key)) {
+        values.forEach(v => expanded.add(v))
+      }
+    }
+
+    return [...expanded]
+  })
+}
+
+function nameMatches(parts, queryWordGroups) {
+  if (!queryWordGroups.length) return true
+  const partMatches = (part, alternatives) => alternatives.some(alt => part.includes(alt))
+
+  if (queryWordGroups.every(group => parts.some(p => partMatches(p, group)))) return true
+
+  let pi = 0
+  let qi = 0
+  while (pi < parts.length && qi < queryWordGroups.length) {
+    if (partMatches(parts[pi], queryWordGroups[qi])) qi += 1
+    pi += 1
+  }
+
+  return qi === queryWordGroups.length
+}
+
 export default function UserManagement({ toast }) {
   const [users,   setUsers]   = useState([])
   const [loading, setLoading] = useState(true)
   const [search,  setSearch]  = useState('')
+  const deferredSearch = useDeferredValue(search)
   const [showAdd, setShowAdd] = useState(false)
   const [showCreds, setShowCreds] = useState(null) // { currentUsername, nextUsername }
   const [genResult, setGenResult] = useState(null)
+  const [exportingAll, setExportingAll] = useState(false)
   const [copied, setCopied] = useState(null)
+  const [nameVariations, setNameVariations] = useState({})
 
   // Add user form
   const [form, setForm] = useState({ username: '', password: '', role: 'member', person_type: 'registered', person_id: '' })
@@ -80,12 +186,43 @@ export default function UserManagement({ toast }) {
       .catch(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [])
+  const nameAliasLookup = useMemo(() => buildNameAliasLookup(nameVariations), [nameVariations])
 
-  const filtered = users.filter(u => {
-    const q = search.toLowerCase()
-    return !q || u.username.toLowerCase().includes(q) || (u.display_name || '').toLowerCase().includes(q)
-  })
+  useEffect(() => {
+    load()
+    let canceled = false
+    ;(async () => {
+      try {
+        const cfg = await api.getConfig()
+        if (!canceled) setNameVariations(normalizeNameVariations(cfg?.config?.name_variations || {}))
+      } catch {
+        if (!canceled) setNameVariations({})
+      }
+    })()
+    return () => { canceled = true }
+  }, [])
+
+  const filtered = useMemo(() => {
+    const q = normalizeArabic(deferredSearch)
+    if (!q) return users
+
+    const qWords = q.split(/\s+/).filter(Boolean)
+    const qWordGroups = expandQueryWords(qWords, nameAliasLookup)
+
+    return users.filter(u => {
+      const usernameNorm = normalizeArabic(u.username || '')
+      if (usernameNorm.includes(q)) return true
+
+      const displayNorm = normalizeArabic(u.display_name || '')
+      const displayParts = displayNorm.split(/\s+/).filter(Boolean)
+      if (displayNorm.includes(q) || nameMatches(displayParts, qWordGroups)) return true
+
+      const roleNorm = normalizeArabic(u.role || '')
+      const personTypeNorm = normalizeArabic(u.person_type || '')
+      const personIdNorm = normalizeArabic(String(u.person_id ?? ''))
+      return roleNorm.includes(q) || personTypeNorm.includes(q) || personIdNorm.includes(q)
+    })
+  }, [users, deferredSearch, nameAliasLookup])
 
   const handleAdd = async () => {
     if (!form.username.trim() || !form.password) { setFormErr('اسم المستخدم وكلمة المرور مطلوبان'); return }
@@ -166,23 +303,51 @@ export default function UserManagement({ toast }) {
     toast(`تم إنشاء ${res.created} حساب جديد`, 'success')
   }
 
+  const handleDownloadAllUsersExcel = async () => {
+    if (exportingAll) return
+    setExportingAll(true)
+    try {
+      const res = await api.exportUsers()
+      const rows = Array.isArray(res.users) ? res.users : []
+      downloadExcel(rows)
+      toast('تم تنزيل ملف Excel', 'success')
+    } catch {
+      toast('تعذر تنزيل ملف Excel', 'error')
+    } finally {
+      setExportingAll(false)
+    }
+  }
+
   const copyText = (text, key) => {
     navigator.clipboard.writeText(text)
     setCopied(key)
     setTimeout(() => setCopied(null), 2000)
   }
 
-  const downloadCSV = (accounts) => {
-    const header = 'الاسم,اسم المستخدم,كلمة المرور,نوع العضو,معرّف الشخص'
-    const rows = accounts.map(a =>
-      `"${a.display_name}","${a.username}","${a.password}","${a.person_type === 'registered' ? 'مسجّل' : 'غير مسجّل'}","${a.person_id}"`
-    )
-    const csv = [header, ...rows].join('\n')
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' })
+  const toExcelSafe = (value) => String(value ?? '').replace(/[\t\r\n]/g, ' ').trim()
+
+  const downloadExcel = (accounts) => {
+    const header = ['الاسم الكامل', 'فرق الشبيبة', 'الفئات العمرية', 'اسم المستخدم', 'كلمة المرور']
+    const rows = accounts.map(a => {
+      const youthGroups = (Array.isArray(a.youth_groups) ? a.youth_groups : []).filter(Boolean).join(' | ')
+      const ageGroups = (Array.isArray(a.age_groups) ? a.age_groups : []).filter(Boolean).join(' | ')
+      return [
+        toExcelSafe(a.full_name || a.display_name),
+        toExcelSafe(youthGroups),
+        toExcelSafe(ageGroups),
+        toExcelSafe(a.username),
+        toExcelSafe(a.password),
+      ].join('\t')
+    })
+
+    const tsv = [header.join('\t'), ...rows].join('\n')
+    const blob = new Blob(['\uFEFF' + tsv], { type: 'application/vnd.ms-excel;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url; a.download = 'jec-accounts.csv'
-    a.click(); URL.revokeObjectURL(url)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'jec-accounts.xls'
+    link.click()
+    URL.revokeObjectURL(url)
   }
 
   return (
@@ -197,6 +362,15 @@ export default function UserManagement({ toast }) {
         </div>
         <button className="btn btn-ghost btn-sm" onClick={handleGenerateAll} style={{ gap: 6, whiteSpace: 'nowrap' }}>
           <RefreshCw size={14}/> توليد تلقائي للكل
+        </button>
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={handleDownloadAllUsersExcel}
+          style={{ gap: 6, whiteSpace: 'nowrap' }}
+          disabled={exportingAll}
+          title="تنزيل جميع بيانات المستخدمين"
+        >
+          <Download size={14}/> {exportingAll ? 'جاري التحضير...' : 'تنزيل Excel'}
         </button>
         <button className="btn btn-gold btn-sm" onClick={() => setShowAdd(true)} style={{ gap: 6, whiteSpace: 'nowrap' }}>
           <Plus size={14}/> مستخدم جديد
@@ -349,16 +523,17 @@ export default function UserManagement({ toast }) {
       {/* Generate-all results modal */}
       {genResult && (
         <Modal title={`تم إنشاء ${genResult.created} حساب جديد`} onClose={() => setGenResult(null)}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+            <button className="btn btn-ghost btn-sm" style={{ gap: 6 }}
+              onClick={() => downloadExcel(genResult.accounts || [])}
+              disabled={!Array.isArray(genResult.accounts) || genResult.accounts.length === 0}>
+              <Download size={13}/> تنزيل Excel
+            </button>
+          </div>
           {genResult.created === 0 ? (
             <p style={{ color: '#6b778f', textAlign: 'center', padding: 16 }}>جميع الأعضاء لديهم حسابات مسبقاً</p>
           ) : (
             <>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-                <button className="btn btn-ghost btn-sm" style={{ gap: 6 }}
-                  onClick={() => downloadCSV(genResult.accounts)}>
-                  <Download size={13}/> تنزيل CSV
-                </button>
-              </div>
               <div style={{ maxHeight: 380, overflowY: 'auto', border: '1px solid #e2e6ef', borderRadius: 8 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                   <thead style={{ position: 'sticky', top: 0, background: '#f8f9fb', zIndex: 1 }}>
