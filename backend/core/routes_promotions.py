@@ -437,6 +437,8 @@ def register_promotions_routes(app):
 
                             _app_reg("higher_education", extra.get("higher_education", []))
                             _app_reg("jobs", extra.get("jobs", []))
+                            _app_reg("emails", extra.get("emails", []))
+                            _app_reg("social_media", extra.get("social_media", []))
                             _app_reg("responsibilities", extra.get("responsibilities", []))
                             _app_reg("hobbies_skills", extra.get("hobbies_skills", []))
                         S.save()
@@ -465,6 +467,8 @@ def register_promotions_routes(app):
 
                             _app_unreg("higher_education", extra.get("higher_education", []))
                             _app_unreg("jobs", extra.get("jobs", []))
+                            _app_unreg("emails", extra.get("emails", []))
+                            _app_unreg("social_media", extra.get("social_media", []))
                             _app_unreg("responsibilities", extra.get("responsibilities", []))
                             _app_unreg("hobbies_skills", extra.get("hobbies_skills", []))
                         S._save_unreg_store()

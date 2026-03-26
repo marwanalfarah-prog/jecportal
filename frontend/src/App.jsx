@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, Users, GitBranch, UserPlus, LogOut, ShieldCheck, User as UserIcon, Eye, X, Search, ClipboardList, Settings, Building2, ImageOff, Key, MapPin, BookOpenText } from 'lucide-react'
+import { LayoutDashboard, Users, GitBranch, UserPlus, LogOut, ShieldCheck, User as UserIcon, Eye, X, Search, ClipboardList, Settings, Building2, ImageOff, Key, MapPin, Map, BookOpenText } from 'lucide-react'
 import Dashboard from './pages/Dashboard.jsx'
 import Members from './pages/Members.jsx'
 import Profile from './pages/Profile.jsx'
@@ -17,6 +17,7 @@ import Config from './pages/Config.jsx'
 import YouthGroupAdmin from './pages/YouthGroupAdmin.jsx'
 import ChurchesAdmin from './pages/ChurchesAdmin.jsx'
 import ChurchesMap from './pages/ChurchesMap.jsx'
+import PeopleLocationsMap from './pages/PeopleLocationsMap.jsx'
 import BibleReader from './pages/BibleReader.jsx'
 import { api } from './api.js'
 
@@ -421,6 +422,7 @@ const PAGE_TITLES = {
   youth_groups:        'ملف فرق الشبيبة',
   churches:            'الكنائس',
   churches_map:        'خريطة الكنائس',
+  people_locations_map:'خريطة مواقع الأشخاص',
   bible_reader:        'قارئ الكتاب المقدس',
 }
 
@@ -641,6 +643,7 @@ export default function App() {
     { id: 'youth_groups',         label: 'ملف فرق الشبيبة',              icon: Building2 },
     { id: 'churches',             label: 'الكنائس',                       icon: MapPin },
     { id: 'churches_map',         label: 'خريطة الكنائس',                 icon: MapPin },
+    { id: 'people_locations_map', label: 'خريطة مواقع الأشخاص',           icon: Map },
     { id: 'bible_reader',         label: 'قارئ الكتاب المقدس',            icon: BookOpenText },
     { id: 'config',               label: 'الإعدادات',                    icon: Settings },
   ] : [
@@ -665,10 +668,13 @@ export default function App() {
 
   const goProfile = (pid, ctx = null, unreg = false, returnPage = 'members') => {
     if (!canViewProfile(pid, unreg)) return
+    const normalizedReturnPage = returnPage === 'profile'
+      ? (profileReturnPage === 'profile' ? 'members' : profileReturnPage)
+      : returnPage
     setSelected(pid)
     setOrgContext(ctx)
     setIsUnreg(unreg)
-    setProfileReturnPage(returnPage)
+    setProfileReturnPage(normalizedReturnPage)
     setPage('profile')
   }
 
@@ -685,7 +691,7 @@ export default function App() {
 
   const navigate = (p) => {
     const allowed = isAdmin
-      ? ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches', 'churches_map', 'bible_reader', 'config']
+      ? ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches', 'churches_map', 'people_locations_map', 'bible_reader', 'config']
       : ['profile', 'orgtree', 'council_members', 'bible_reader', 'my_questions']
     if (!allowed.includes(p)) return
     setPage(p)
@@ -993,7 +999,7 @@ export default function App() {
             <GeneralSecretariatTree
               toast={toast}
               onRegisterPerson={isAdmin ? handleRegisterPerson : undefined}
-              onViewProfile={(pid, ctx) => handleViewProfile(pid, ctx)}
+              onViewProfile={(pid, ctx) => goProfile(pid, ctx, false, 'general_secretariat')}
               onViewUnregisteredProfile={uid => {
                 goProfile(uid, null, true, 'general_secretariat')
               }}
@@ -1017,6 +1023,10 @@ export default function App() {
 
           {isAdmin && page === 'churches_map' && (
             <ChurchesMap toast={toast} />
+          )}
+
+          {isAdmin && page === 'people_locations_map' && (
+            <PeopleLocationsMap toast={toast} />
           )}
 
           {page === 'bible_reader' && (

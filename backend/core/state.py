@@ -1,6 +1,10 @@
+import json
 import os
 import re
 import threading
+import uuid
+from urllib.parse import unquote, urlparse
+from urllib.request import Request, urlopen
 
 import numpy as np
 import pandas as pd
@@ -16,25 +20,41 @@ PROFILE_PHOTOS_DIR = db.profile_pictures_dir
 os.makedirs(PROFILE_PHOTOS_DIR, exist_ok=True)
 
 SHEETS = [
-    "persons", "nationality", "mobile_numbers", "schools",
+    "persons", "nationality", "mobile_numbers", "emails", "social_media", "schools",
     "higher_education", "jobs", "timestamps", "responsibilities",
     "person_youth_group", "hobbies_skills", "addresses", "youth_groups",
+    "nationality_iso_codes",
 ]
 
 UNREG_SHEETS = [
-    "persons", "nationality", "mobile_numbers", "schools",
+    "persons", "nationality", "mobile_numbers", "emails", "social_media", "schools",
     "higher_education", "jobs", "responsibilities",
     "person_youth_group", "hobbies_skills", "addresses",
 ]
 
 ADDRESS_SHEET = "addresses"
-ADDRESS_COLUMNS = ["person_id", "country", "governorate", "city", "address", "is_primary"]
+ADDRESS_COLUMNS = ["person_id", "country", "governorate", "city", "address", "location_url", "lat", "lng", "is_primary"]
+PERSON_ADDRESS_PROJECTION_COLS = ["country", "governorate", "city", "address", "location_url", "lat", "lng"]
 DEFAULT_COUNTRY = "الأردن"
+MOBILE_NUMBER_SHEET = "mobile_numbers"
+MOBILE_NUMBER_COLUMNS = ["person_id", "mobile_number", "type", "phone_calls_flag", "whatsapp_flag", "linked_job_ids"]
+DEFAULT_MOBILE_NUMBER_TYPE = "personal"
+EMAIL_SHEET = "emails"
+EMAIL_COLUMNS = ["person_id", "email", "type", "is_primary", "linked_job_ids"]
+DEFAULT_EMAIL_TYPE = "personal"
+SOCIAL_MEDIA_SHEET = "social_media"
+SOCIAL_MEDIA_COLUMNS = ["person_id", "platform", "url", "is_primary"]
+SOCIAL_MEDIA_PLATFORMS = {"facebook", "instagram", "linkedin"}
+JOB_SHEET = "jobs"
+JOB_ID_COL = "job_id"
+JOB_BASE_COLUMNS = ["person_id", JOB_ID_COL, "job_title", "company", "start_date", "end_date", "is_current", "state"]
 
 UNREG_PERSONS_COLS = [
     "person_id", "title",
     "first_name", "second_name", "third_name", "last_name",
     "english_first_name", "english_second_name", "english_third_name", "english_last_name",
+    "mother_first_name", "mother_second_name", "mother_third_name",
+    "mother_english_first_name", "mother_english_second_name", "mother_english_third_name",
     "gender", "birth_year", "birth_day", "birth_month",
     "registered",
 ]
@@ -45,6 +65,14 @@ PERSON_NAME_COLS = [
 
 PERSON_ENGLISH_NAME_COLS = [
     "english_first_name", "english_second_name", "english_third_name", "english_last_name",
+]
+
+MOTHER_NAME_COLS = [
+    "mother_first_name", "mother_second_name", "mother_third_name",
+]
+
+MOTHER_ENGLISH_NAME_COLS = [
+    "mother_english_first_name", "mother_english_second_name", "mother_english_third_name",
 ]
 
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "gif"}
@@ -71,6 +99,7 @@ YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL = "inherit_parish_social_media"
 YOUTH_GROUP_SPECIAL_LOGO_ACTIVE_COL = "special_logo_active"
 YOUTH_GROUP_SPECIAL_LOGO_OCCASION_COL = "special_logo_occasion"
 YOUTH_GROUP_SHEET = "youth_groups"
+NATIONALITY_ISO_SHEET = "nationality_iso_codes"
 
 _youth_group_name_by_id: dict[str, str] = {}
 _youth_group_patron_by_id: dict[str, str | None] = {}
@@ -136,6 +165,11 @@ def _normalize_text(v) -> str | None:
     return text
 
 
+def _normalize_lookup_text(value) -> str:
+    text = _normalize_text(value) or ""
+    return re.sub(r"\s+", " ", text).strip().replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").lower()
+
+
 def _to_bool(v) -> bool:
     if isinstance(v, bool):
         return v
@@ -163,6 +197,200 @@ def _normalize_country(v) -> str:
     return text
 
 
+def _normalize_mobile_number_value(value) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if text in ("", "nan", "None", "null"):
+        return None
+    if text.endswith(".0") and text.replace(".", "", 1).replace("-", "", 1).isdigit():
+        text = text[:-2]
+    return text
+
+
+def _normalize_mobile_number_type(value) -> str:
+    text = _normalize_text(value)
+    if not text:
+        return DEFAULT_MOBILE_NUMBER_TYPE
+    lowered = text.lower()
+    known_types = {"personal", "work", "home", "family", "other"}
+    if lowered in known_types:
+        return lowered
+    return text
+
+
+def _normalize_email_type(value) -> str:
+    text = _normalize_text(value)
+    if not text:
+        return DEFAULT_EMAIL_TYPE
+    lowered = text.lower()
+    if lowered in {"personal", "work"}:
+        return lowered
+    return text
+
+
+def _normalize_social_media_platform(value) -> str:
+    text = _normalize_text(value)
+    if not text:
+        return "facebook"
+    lowered = text.lower()
+    if lowered in SOCIAL_MEDIA_PLATFORMS:
+        return lowered
+    return text
+
+
+def _generate_record_id(prefix: str) -> str:
+    return f"{prefix}_{uuid.uuid4().hex[:12]}"
+
+
+def _normalize_job_id(value) -> str:
+    text = _normalize_text(value)
+    return text or _generate_record_id("job")
+
+
+def _normalize_linked_job_ids(value) -> list[str]:
+    raw_ids = []
+    if isinstance(value, list):
+        raw_ids = value
+    elif isinstance(value, tuple):
+        raw_ids = list(value)
+    else:
+        text = _normalize_text(value)
+        if text:
+            try:
+                parsed = json.loads(text)
+                if isinstance(parsed, list):
+                    raw_ids = parsed
+                elif parsed is not None:
+                    raw_ids = [parsed]
+            except (TypeError, ValueError, json.JSONDecodeError):
+                raw_ids = re.split(r"\s*[,|]\s*", text)
+
+    normalized = []
+    seen = set()
+    for item in raw_ids:
+        job_id = _normalize_text(item)
+        if not job_id or job_id in seen:
+            continue
+        seen.add(job_id)
+        normalized.append(job_id)
+    return normalized
+
+
+def _serialize_linked_job_ids(value) -> str | None:
+    linked_job_ids = _normalize_linked_job_ids(value)
+    if not linked_job_ids:
+        return None
+    return json.dumps(linked_job_ids, ensure_ascii=False)
+
+
+def _to_bool_default_true(v) -> bool:
+    if v is None:
+        return True
+    if isinstance(v, str) and v.strip() in ("", "nan", "None", "null"):
+        return True
+    return _to_bool(v)
+
+
+def _normalize_coordinate(value, axis: str) -> float | None:
+    if value is None:
+        return None
+    try:
+        num = float(value)
+    except (TypeError, ValueError):
+        return None
+    if axis == "lat":
+        if num < -90 or num > 90:
+            return None
+    else:
+        if num < -180 or num > 180:
+            return None
+    return num
+
+
+def _is_placeholder_coordinate_pair(lat: float | None, lng: float | None) -> bool:
+    return lat == 0.0 and lng == 0.0
+
+
+def _is_allowed_google_maps_host(hostname: str | None) -> bool:
+    host = (hostname or "").strip().lower()
+    if not host:
+        return False
+    if host == "goo.gl" or host.endswith(".goo.gl"):
+        return True
+    return host == "google.com" or host.endswith(".google.com") or ".google." in host
+
+
+def _extract_coordinate_pair(text: str | None):
+    source = str(text or "")
+    patterns = [
+        (re.compile(r"!3d(-?\d{1,3}(?:\.\d+)?)!4d(-?\d{1,3}(?:\.\d+)?)"), False),
+        (re.compile(r"!4d(-?\d{1,3}(?:\.\d+)?)!3d(-?\d{1,3}(?:\.\d+)?)"), True),
+        (re.compile(r"@(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)"), False),
+        (re.compile(r"(-?\d{1,3}(?:\.\d+)?),\+(-?\d{1,3}(?:\.\d+)?)"), False),
+        (re.compile(r"(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)"), False),
+    ]
+
+    for pattern, reversed_order in patterns:
+        match = pattern.search(source)
+        if not match:
+            continue
+        lat_raw = match.group(2) if reversed_order else match.group(1)
+        lng_raw = match.group(1) if reversed_order else match.group(2)
+        lat = _normalize_coordinate(lat_raw, "lat")
+        lng = _normalize_coordinate(lng_raw, "lng")
+        if lat is not None and lng is not None:
+            return lat, lng
+    return None, None
+
+
+def resolve_google_maps_coordinates(raw_url: str):
+    text = str(raw_url or "").strip()
+    if not text:
+        return None, None
+
+    try:
+        parsed = urlparse(text)
+    except ValueError:
+        return None, None
+
+    if parsed.scheme not in {"http", "https"}:
+        return None, None
+    if not _is_allowed_google_maps_host(parsed.hostname):
+        return None, None
+
+    candidates = [text, unquote(text), parsed.path, unquote(parsed.path)]
+    query_pairs = parsed.query.split("&") if parsed.query else []
+    for pair in query_pairs:
+        if "=" not in pair:
+            continue
+        _, value = pair.split("=", 1)
+        if value:
+            candidates.append(value)
+            candidates.append(unquote(value))
+
+    for candidate in candidates:
+        lat, lng = _extract_coordinate_pair(candidate)
+        if lat is not None and lng is not None:
+            return lat, lng
+
+    request_obj = Request(text, headers={"User-Agent": "Mozilla/5.0"})
+    try:
+        with urlopen(request_obj, timeout=10) as response:
+            final_url = response.geturl()
+            if final_url != text and _is_allowed_google_maps_host(urlparse(final_url).hostname):
+                lat, lng = resolve_google_maps_coordinates(final_url)
+                if lat is not None and lng is not None:
+                    return lat, lng
+            try:
+                content = response.read(65536).decode("utf-8", errors="ignore")
+            except Exception:
+                return None, None
+            return _extract_coordinate_pair(content)
+    except Exception:
+        return None, None
+
+
 def normalize_address_rows(rows) -> list[dict]:
     normalized = []
     for row in rows or []:
@@ -173,10 +401,22 @@ def normalize_address_rows(rows) -> list[dict]:
         city = _normalize_text(row.get("city"))
         address = _normalize_text(row.get("address"))
         country = _normalize_country(row.get("country"))
+        lat = _normalize_coordinate(row.get("lat"), "lat")
+        lng = _normalize_coordinate(row.get("lng"), "lng")
+        location_url = _normalize_text(row.get("location_url"))
+        if (lat is None or lng is None) and location_url:
+            resolved_lat, resolved_lng = resolve_google_maps_coordinates(location_url)
+            lat = resolved_lat if resolved_lat is not None else lat
+            lng = resolved_lng if resolved_lng is not None else lng
+        if _is_placeholder_coordinate_pair(lat, lng):
+            lat = None
+            lng = None
         is_primary = _to_bool(row.get("is_primary"))
-        if person_id in (None, "") and not (governorate or city or address):
+        has_location = lat is not None or lng is not None
+        has_location_reference = has_location or bool(location_url)
+        if person_id in (None, "") and not (governorate or city or address or has_location_reference):
             continue
-        if not governorate and not city and not address:
+        if not governorate and not city and not address and not has_location_reference:
             continue
         normalized.append({
             "person_id": person_id,
@@ -184,6 +424,9 @@ def normalize_address_rows(rows) -> list[dict]:
             "governorate": governorate,
             "city": city,
             "address": address,
+            "location_url": location_url,
+            "lat": lat,
+            "lng": lng,
             "is_primary": is_primary,
         })
 
@@ -201,6 +444,120 @@ def normalize_address_rows(rows) -> list[dict]:
     return result
 
 
+def normalize_mobile_number_rows(rows) -> list[dict]:
+    normalized = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        mobile_number = _normalize_mobile_number_value(row.get("mobile_number"))
+        if not mobile_number:
+            continue
+        mobile_type = _normalize_mobile_number_type(row.get("type"))
+        linked_job_ids = _serialize_linked_job_ids(row.get("linked_job_ids")) if mobile_type == "work" else None
+        normalized.append({
+            "person_id": _normalize_person_id(row.get("person_id")),
+            "mobile_number": mobile_number,
+            "type": mobile_type,
+            "phone_calls_flag": _to_bool_default_true(row.get("phone_calls_flag")),
+            "whatsapp_flag": _to_bool_default_true(row.get("whatsapp_flag")),
+            "linked_job_ids": linked_job_ids,
+        })
+    return normalized
+
+
+def normalize_email_rows(rows) -> list[dict]:
+    normalized = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        email = _normalize_text(row.get("email"))
+        if not email:
+            continue
+        email_type = _normalize_email_type(row.get("type"))
+        is_primary = _to_bool(row.get("is_primary")) if email_type == "personal" else False
+        linked_job_ids = _serialize_linked_job_ids(row.get("linked_job_ids")) if email_type == "work" else None
+        normalized.append({
+            "person_id": _normalize_person_id(row.get("person_id")),
+            "email": email,
+            "type": email_type,
+            "is_primary": is_primary,
+            "linked_job_ids": linked_job_ids,
+        })
+
+    grouped: dict[str, list[dict]] = {}
+    for row in normalized:
+        key = str(row.get("person_id"))
+        grouped.setdefault(key, []).append(row)
+
+    result = []
+    for entries in grouped.values():
+        primary_seen = False
+        for entry in entries:
+            if entry.get("type") != "personal":
+                entry["is_primary"] = False
+            elif entry.get("is_primary") and not primary_seen:
+                primary_seen = True
+            else:
+                entry["is_primary"] = False
+            result.append(entry)
+    return result
+
+
+def normalize_social_media_rows(rows) -> list[dict]:
+    normalized = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        url = _normalize_text(row.get("url"))
+        if not url:
+            continue
+        normalized.append({
+            "person_id": _normalize_person_id(row.get("person_id")),
+            "platform": _normalize_social_media_platform(row.get("platform")),
+            "url": url,
+            "is_primary": _to_bool(row.get("is_primary")),
+        })
+
+    grouped: dict[tuple[str, str], list[dict]] = {}
+    for row in normalized:
+        key = (str(row.get("person_id")), str(row.get("platform")))
+        grouped.setdefault(key, []).append(row)
+
+    result = []
+    for entries in grouped.values():
+        primary_index = next((index for index, entry in enumerate(entries) if entry.get("is_primary")), 0)
+        for index, entry in enumerate(entries):
+            entry["is_primary"] = index == primary_index
+            result.append(entry)
+    return result
+
+
+def normalize_job_rows(rows) -> list[dict]:
+    normalized = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        job_title = _normalize_text(row.get("job_title"))
+        company = _normalize_text(row.get("company"))
+        start_date = _normalize_text(row.get("start_date"))
+        end_date = _normalize_text(row.get("end_date"))
+        state = _normalize_text(row.get("state"))
+        is_current = _to_bool(row.get("is_current")) if row.get("is_current") not in (None, "", "nan", "None", "null") else (not bool(end_date))
+        if not (job_title or company or start_date or end_date or state):
+            continue
+        normalized.append({
+            "person_id": _normalize_person_id(row.get("person_id")),
+            JOB_ID_COL: _normalize_job_id(row.get(JOB_ID_COL)),
+            "job_title": job_title,
+            "company": company,
+            "start_date": start_date,
+            "end_date": end_date,
+            "is_current": is_current,
+            "state": state,
+        })
+    return normalized
+
+
 def address_rows_from_legacy_person_payload(person: dict | None) -> list[dict]:
     payload = person or {}
     governorate = _normalize_text(payload.get("governorate"))
@@ -214,6 +571,9 @@ def address_rows_from_legacy_person_payload(person: dict | None) -> list[dict]:
         "governorate": governorate,
         "city": city,
         "address": address,
+        "location_url": None,
+        "lat": None,
+        "lng": None,
         "is_primary": True,
     }]
 
@@ -236,7 +596,7 @@ def _primary_address_rows(df: pd.DataFrame) -> pd.DataFrame:
 
 def _project_primary_addresses(persons_df: pd.DataFrame, addresses_df: pd.DataFrame | None = None) -> pd.DataFrame:
     working = persons_df.copy()
-    for col in ("country", "governorate", "city", "address"):
+    for col in ("country", "governorate", "city", "address", "location_url", "lat", "lng"):
         if col not in working.columns:
             working[col] = None
 
@@ -250,12 +610,12 @@ def _project_primary_addresses(persons_df: pd.DataFrame, addresses_df: pd.DataFr
 
     indexed = working.reset_index().rename(columns={"index": "_store_index"})
     merged = indexed.merge(
-        primary_rows[["person_id", "country", "governorate", "city", "address"]],
+        primary_rows[["person_id", "country", "governorate", "city", "address", "location_url", "lat", "lng"]],
         on="person_id",
         how="left",
         suffixes=("", "_primary"),
     )
-    for col in ("country", "governorate", "city", "address"):
+    for col in ("country", "governorate", "city", "address", "location_url", "lat", "lng"):
         primary_col = f"{col}_primary"
         merged[col] = merged[primary_col].where(merged[primary_col].notna(), merged[col])
         merged = merged.drop(columns=[primary_col])
@@ -703,7 +1063,12 @@ def _ensure_addresses_schema() -> bool:
             legacy_city = _normalize_text(row.get("city"))
             legacy_address = _normalize_text(row.get("address"))
             legacy_country = _normalize_country(row.get("country"))
-            if not legacy_governorate and not legacy_city and not legacy_address:
+            legacy_location_url = _normalize_text(row.get("location_url"))
+            legacy_lat = _normalize_coordinate(row.get("lat"), "lat")
+            legacy_lng = _normalize_coordinate(row.get("lng"), "lng")
+            has_text_address = bool(legacy_governorate or legacy_city or legacy_address)
+            has_location_reference = bool(legacy_location_url or legacy_lat is not None or legacy_lng is not None)
+            if not has_text_address and not has_location_reference:
                 continue
             normalized_rows.append({
                 "person_id": pid,
@@ -711,6 +1076,9 @@ def _ensure_addresses_schema() -> bool:
                 "governorate": legacy_governorate,
                 "city": legacy_city,
                 "address": legacy_address,
+                "location_url": legacy_location_url,
+                "lat": legacy_lat,
+                "lng": legacy_lng,
                 "is_primary": True,
             })
             changed = True
@@ -720,7 +1088,7 @@ def _ensure_addresses_schema() -> bool:
         changed = True
     store[ADDRESS_SHEET] = pd.DataFrame(normalized_rows, columns=ADDRESS_COLUMNS)
 
-    for legacy_col in ("governorate", "city", "country", "address"):
+    for legacy_col in PERSON_ADDRESS_PROJECTION_COLS:
         if legacy_col in persons.columns:
             persons = persons.drop(columns=[legacy_col])
             changed = True
@@ -728,8 +1096,101 @@ def _ensure_addresses_schema() -> bool:
     return changed
 
 
+def _ensure_mobile_numbers_schema() -> bool:
+    changed = False
+    mobile_numbers = store.get(MOBILE_NUMBER_SHEET, pd.DataFrame()).copy()
+
+    if mobile_numbers.empty:
+        mobile_numbers = pd.DataFrame(columns=MOBILE_NUMBER_COLUMNS)
+        changed = True
+    else:
+        for col in MOBILE_NUMBER_COLUMNS:
+            if col not in mobile_numbers.columns:
+                mobile_numbers[col] = None
+                changed = True
+
+    existing_rows = mobile_numbers.replace({np.nan: None}).to_dict(orient="records") if not mobile_numbers.empty else []
+    normalized_rows = normalize_mobile_number_rows(existing_rows)
+    if normalized_rows != existing_rows:
+        changed = True
+
+    store[MOBILE_NUMBER_SHEET] = pd.DataFrame(normalized_rows, columns=MOBILE_NUMBER_COLUMNS)
+    return changed
+
+
+def _ensure_emails_schema() -> bool:
+    changed = False
+    emails = store.get(EMAIL_SHEET, pd.DataFrame()).copy()
+
+    if emails.empty:
+        emails = pd.DataFrame(columns=EMAIL_COLUMNS)
+        changed = True
+    else:
+        for col in EMAIL_COLUMNS:
+            if col not in emails.columns:
+                emails[col] = None
+                changed = True
+
+    existing_rows = emails.replace({np.nan: None}).to_dict(orient="records") if not emails.empty else []
+    normalized_rows = normalize_email_rows(existing_rows)
+    if normalized_rows != existing_rows:
+        changed = True
+
+    store[EMAIL_SHEET] = pd.DataFrame(normalized_rows, columns=EMAIL_COLUMNS)
+    return changed
+
+
+def _ensure_social_media_schema() -> bool:
+    changed = False
+    social_media = store.get(SOCIAL_MEDIA_SHEET, pd.DataFrame()).copy()
+
+    if social_media.empty:
+        social_media = pd.DataFrame(columns=SOCIAL_MEDIA_COLUMNS)
+        changed = True
+    else:
+        for col in SOCIAL_MEDIA_COLUMNS:
+            if col not in social_media.columns:
+                social_media[col] = None
+                changed = True
+
+    existing_rows = social_media.replace({np.nan: None}).to_dict(orient="records") if not social_media.empty else []
+    normalized_rows = normalize_social_media_rows(existing_rows)
+    if normalized_rows != existing_rows:
+        changed = True
+
+    store[SOCIAL_MEDIA_SHEET] = pd.DataFrame(normalized_rows, columns=SOCIAL_MEDIA_COLUMNS)
+    return changed
+
+
+def _ensure_jobs_schema() -> bool:
+    changed = False
+    jobs = store.get(JOB_SHEET, pd.DataFrame()).copy()
+
+    if jobs.empty:
+        jobs = pd.DataFrame(columns=JOB_BASE_COLUMNS)
+        changed = True
+    else:
+        for col in JOB_BASE_COLUMNS:
+            if col not in jobs.columns:
+                jobs[col] = None
+                changed = True
+
+    existing_rows = jobs.replace({np.nan: None}).to_dict(orient="records") if not jobs.empty else []
+    normalized_rows = normalize_job_rows(existing_rows)
+    if normalized_rows != existing_rows:
+        changed = True
+
+    store[JOB_SHEET] = pd.DataFrame(normalized_rows)
+    return changed
+
+
 def save():
+    _ensure_persons_schema()
     _ensure_youth_group_schema()
+    _ensure_mobile_numbers_schema()
+    _ensure_emails_schema()
+    _ensure_social_media_schema()
+    _ensure_jobs_schema()
     _ensure_addresses_schema()
     db.save_excel_sheets(store)
     invalidate_enriched_cache()
@@ -737,7 +1198,7 @@ def save():
 
 
 def df_to_json(df: pd.DataFrame):
-    df = df.copy()
+    df = db.normalize_boolean_columns(df.copy())
     for col in df.columns:
         if pd.api.types.is_datetime64_any_dtype(df[col]):
             df[col] = df[col].dt.strftime('%Y-%m-%d').where(df[col].notna(), None)
@@ -874,7 +1335,7 @@ def _ensure_persons_schema():
         persons["title"] = None
         changed = True
 
-    for col in PERSON_NAME_COLS + PERSON_ENGLISH_NAME_COLS:
+    for col in PERSON_NAME_COLS + PERSON_ENGLISH_NAME_COLS + MOTHER_NAME_COLS + MOTHER_ENGLISH_NAME_COLS:
         if col not in persons.columns:
             persons[col] = None
             changed = True
@@ -883,8 +1344,9 @@ def _ensure_persons_schema():
         persons = persons.drop(columns=["archived"])
         changed = True
 
-    for legacy_col in ("governorate", "country", "address"):
+    for legacy_col in PERSON_ADDRESS_PROJECTION_COLS:
         if legacy_col in persons.columns:
+            persons = persons.drop(columns=[legacy_col])
             changed = True
 
     before_registered = persons["registered"].copy() if "registered" in persons.columns else None
@@ -928,6 +1390,37 @@ def _sheet_for_registered(sheet: str) -> pd.DataFrame:
         return df
     reg_ids = set(_registered_persons_df()["person_id"].astype(str))
     return df[df["person_id"].astype(str).isin(reg_ids)]
+
+
+def nationality_iso_lookup() -> dict[str, dict[str, str | None]]:
+    df = store.get(NATIONALITY_ISO_SHEET, pd.DataFrame())
+    if df.empty:
+        return {}
+
+    lookup: dict[str, dict[str, str | None]] = {}
+    for row in df.replace({np.nan: None}).to_dict(orient="records"):
+        nationality = _normalize_text(row.get("nationality_ar") or row.get("nationality"))
+        if not nationality:
+            continue
+        lookup[_normalize_lookup_text(nationality)] = {
+            "iso_alpha2": (_normalize_text(row.get("iso_alpha2")) or "").upper() or None,
+        }
+    return lookup
+
+
+def enrich_nationality_rows(rows: list[dict] | None) -> list[dict]:
+    lookup = nationality_iso_lookup()
+    enriched: list[dict] = []
+    for row in rows or []:
+        normalized = dict(row or {})
+        nationality = _normalize_text(normalized.get("nationality"))
+        if nationality:
+            match = lookup.get(_normalize_lookup_text(nationality), {})
+            normalized["iso_alpha2"] = match.get("iso_alpha2")
+        else:
+            normalized["iso_alpha2"] = None
+        enriched.append(normalized)
+    return enriched
 
 
 def normalize_word(word):
@@ -1187,7 +1680,11 @@ def init_state():
     load()
     schema_changed = _ensure_persons_schema()
     group_schema_changed = _ensure_youth_group_schema()
+    mobile_schema_changed = _ensure_mobile_numbers_schema()
+    email_schema_changed = _ensure_emails_schema()
+    social_media_schema_changed = _ensure_social_media_schema()
+    jobs_schema_changed = _ensure_jobs_schema()
     address_schema_changed = _ensure_addresses_schema()
-    if schema_changed or group_schema_changed or address_schema_changed:
+    if schema_changed or group_schema_changed or mobile_schema_changed or email_schema_changed or social_media_schema_changed or jobs_schema_changed or address_schema_changed:
         save()
     _load_unreg_store()

@@ -20,20 +20,21 @@ def _unreg_sub(sheet, uid):
             normalized["archived"] = bool(archived) if archived is not None and str(archived) not in ("nan", "None", "") else False
             out.append(normalized)
         return out
+    if sheet == "nationality":
+        return S.enrich_nationality_rows(rows)
     return rows
 
 
 def _unreg_build_record(uid):
-    persons_df = S._project_primary_addresses(
-        S.unreg_store.get("persons", pd.DataFrame()),
-        S.unreg_store.get("addresses", pd.DataFrame()),
-    )
+    persons_df = S.unreg_store.get("persons", pd.DataFrame())
     if persons_df.empty or "person_id" not in persons_df.columns:
         return None
     row = persons_df[persons_df["person_id"].astype(str) == str(uid)]
     if row.empty:
         return None
-    person_data = S.df_to_json(row)[0]
+    person_data = S.df_to_json(
+        S._project_primary_addresses(row, S.unreg_store.get("addresses", pd.DataFrame()))
+    )[0]
     _, ext = S.get_unreg_photo_path(uid)
     return {
         "person": person_data,
@@ -41,6 +42,8 @@ def _unreg_build_record(uid):
         "photo": f"/api/unregistered/{uid}/photo" if ext else None,
         "nationality": _unreg_sub("nationality", uid),
         "mobile_numbers": _unreg_sub("mobile_numbers", uid),
+        "emails": _unreg_sub("emails", uid),
+        "social_media": _unreg_sub("social_media", uid),
         "addresses": _unreg_sub("addresses", uid),
         "schools": _unreg_sub("schools", uid),
         "higher_education": _unreg_sub("higher_education", uid),
@@ -208,7 +211,7 @@ def register_unregistered_routes(app):
             S.unreg_store["persons"] = pd.concat([persons_df, new_row], ignore_index=True)
             if addresses_rows:
                 _unreg_replace_sub("addresses", new_uid, addresses_rows)
-            for sheet in ("nationality", "mobile_numbers", "schools", "higher_education", "jobs", "responsibilities", "person_youth_group", "hobbies_skills"):
+            for sheet in ("nationality", "mobile_numbers", "emails", "social_media", "schools", "higher_education", "jobs", "responsibilities", "person_youth_group", "hobbies_skills"):
                 rows = body.get(sheet, [])
                 if rows:
                     _unreg_replace_sub(sheet, new_uid, rows)
@@ -239,7 +242,7 @@ def register_unregistered_routes(app):
                 S.unreg_store["persons"].at[idx[0], k] = v
             if addresses_rows is not None:
                 _unreg_replace_sub("addresses", uid, addresses_rows)
-            for sheet in ("nationality", "mobile_numbers", "schools", "higher_education", "jobs", "responsibilities", "person_youth_group", "hobbies_skills"):
+            for sheet in ("nationality", "mobile_numbers", "emails", "social_media", "schools", "higher_education", "jobs", "responsibilities", "person_youth_group", "hobbies_skills"):
                 if sheet in body:
                     _unreg_replace_sub(sheet, uid, body[sheet])
             S._save_unreg_store()
@@ -299,7 +302,7 @@ def register_unregistered_routes(app):
             p["registered"] = True
             S.store["persons"] = pd.concat([S.store["persons"], pd.DataFrame([p])], ignore_index=True)
 
-            for sheet in ("nationality", "mobile_numbers", "addresses", "schools", "higher_education", "jobs", "responsibilities", "person_youth_group", "hobbies_skills"):
+            for sheet in ("nationality", "mobile_numbers", "emails", "social_media", "addresses", "schools", "higher_education", "jobs", "responsibilities", "person_youth_group", "hobbies_skills"):
                 rows = record.get(sheet, [])
                 if rows:
                     ndf = pd.DataFrame(rows)

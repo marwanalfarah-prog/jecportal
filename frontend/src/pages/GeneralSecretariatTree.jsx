@@ -44,6 +44,21 @@ function normalizeNameVariations(raw) {
   return out
 }
 
+function normalizePersonTitles(raw) {
+  const entries = Array.isArray(raw) ? raw : []
+  const seen = new Set()
+  const titles = []
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object') continue
+    const arabicTitle = String(entry.arabic_title || entry.arabic || entry.title || entry.name || '').replace(/\s+/g, ' ').trim()
+    const englishTitle = String(entry.english_title || entry.english || '').replace(/\s+/g, ' ').trim()
+    if (!arabicTitle || seen.has(arabicTitle)) continue
+    seen.add(arabicTitle)
+    titles.push({ arabic_title: arabicTitle, english_title: englishTitle })
+  }
+  return titles
+}
+
 function buildNameAliasLookup(variationMap) {
   const map = new Map()
   const ensure = (word) => {
@@ -1067,9 +1082,21 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
   const [laqab, setLaqab]       = useState(node.laqab || '')
   const [baseName, setBaseName] = useState(node.baseName || node.name || '')
   const [nameVariations, setNameVariations] = useState({})
+  const [personTitles, setPersonTitles] = useState([])
   const fileRef = useRef(null)
 
   const nameAliasLookup = useMemo(() => buildNameAliasLookup(nameVariations), [nameVariations])
+  const personTitleOptions = useMemo(() => {
+    const options = personTitles.map((row) => ({ value: row.arabic_title, label: row.arabic_title }))
+    const current = String(laqab || '').trim()
+    if (current && !options.some((option) => option.value === current)) {
+      options.push({ value: current, label: current })
+    }
+    return options
+  }, [personTitles, laqab])
+  const unregisteredNodeId = node.unregisteredId || (node.unregistered ? node.personId : null)
+  const isUnregisteredNode = Boolean(node.unregistered || unregisteredNodeId)
+  const hasLinkedIdentity = Boolean(node.personId || unregisteredNodeId)
 
   useEffect(() => { setPhotoErr(false) }, [node.photo])
 
@@ -1084,10 +1111,16 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
     let cancelled = false
     api.getConfig()
       .then((cfg) => {
-        if (!cancelled) setNameVariations(normalizeNameVariations(cfg?.config?.name_variations || {}))
+        if (!cancelled) {
+          setNameVariations(normalizeNameVariations(cfg?.config?.name_variations || {}))
+          setPersonTitles(normalizePersonTitles(cfg?.config?.person_titles || []))
+        }
       })
       .catch(() => {
-        if (!cancelled) setNameVariations({})
+        if (!cancelled) {
+          setNameVariations({})
+          setPersonTitles([])
+        }
       })
     return () => { cancelled = true }
   }, [])
@@ -1117,7 +1150,7 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
     const base = [p.first_name, p.second_name, p.third_name, p.last_name].filter(Boolean).join(' ')
     const combined = (personType === 'مكرّس' && laqab.trim()) ? `${laqab.trim()} ${base}` : base
     setBaseName(base)
-    onUpdate({ personId: p.person_id, name: combined, photo: p._photo || null, unregistered: false, personType, laqab, baseName: base })
+    onUpdate({ personId: p.person_id, unregisteredId: null, name: combined, photo: p._photo || null, unregistered: false, personType, laqab, baseName: base })
     setNameQ(''); setRes([])
   }
 
@@ -1126,7 +1159,7 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
     const uLaqab = u.title || ''
     setBaseName(base); setPersonType('علماني'); setLaqab(uLaqab)
     const combined = uLaqab ? `${uLaqab} ${base}` : base
-    onUpdate({ name: combined, baseName: base, laqab: uLaqab, personType: 'علماني', photo: u._photo || null, unregistered: true, personId: String(u.person_id) })
+    onUpdate({ name: combined, baseName: base, laqab: uLaqab, personType: 'علماني', photo: u._photo || null, unregistered: true, personId: String(u.person_id), unregisteredId: String(u.person_id) })
     setNameQ(''); setRes([])
   }
 
@@ -1135,8 +1168,8 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
     if (!file) return
     if (node.personId && !node.unregistered) {
       try { await api.uploadPhoto(node.personId, file); onUpdate({ photo: api.photoUrl(node.personId, Date.now()) }) } catch {}
-    } else if (node.unregistered && node.personId) {
-      try { await api.uploadUnregisteredPhoto(node.personId, file); onUpdate({ photo: api.unregisteredPhotoUrl(node.personId, Date.now()) }) } catch {}
+    } else if (isUnregisteredNode && unregisteredNodeId) {
+      try { await api.uploadUnregisteredPhoto(unregisteredNodeId, file); onUpdate({ photo: api.unregisteredPhotoUrl(unregisteredNodeId, Date.now()) }) } catch {}
     } else {
       const reader = new FileReader()
       reader.onload = ev => onUpdate({ photo: ev.target.result })
@@ -1187,13 +1220,13 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
         </div>
         <style>{`.photo-hover-ov:hover{opacity:1!important}`}</style>
 
-        {node.personId && !node.unregistered && (
+        {node.personId && !isUnregisteredNode && (
           <button onClick={() => { onViewProfile(node.personId); onClose() }} style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'9px', marginBottom:14, borderRadius:'var(--radius-md)', background:'#eef4ff', border:'1.5px solid #b3ccff', color:'#1a3a5c', fontFamily:'var(--font-body)', fontSize:'0.85rem', fontWeight:700, cursor:'pointer' }}>
             <ExternalLink size={14}/> عرض الملف الشخصي
           </button>
         )}
-        {node.unregistered && node.personId && (
-          <button onClick={() => { onViewUnregisteredProfile && onViewUnregisteredProfile(node.personId); onClose() }} style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'9px', marginBottom:14, borderRadius:'var(--radius-md)', background:'#fffbeb', border:'1.5px solid #e8b55a', color:'#92400e', fontFamily:'var(--font-body)', fontSize:'0.85rem', fontWeight:700, cursor:'pointer' }}>
+        {isUnregisteredNode && unregisteredNodeId && (
+          <button onClick={() => { onViewUnregisteredProfile && onViewUnregisteredProfile(unregisteredNodeId); onClose() }} style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'9px', marginBottom:14, borderRadius:'var(--radius-md)', background:'#fffbeb', border:'1.5px solid #e8b55a', color:'#92400e', fontFamily:'var(--font-body)', fontSize:'0.85rem', fontWeight:700, cursor:'pointer' }}>
             <ExternalLink size={14}/> عرض ملف غير المسجّل
           </button>
         )}
@@ -1211,14 +1244,19 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
         {personType === 'مكرّس' && (
           <div style={{ marginBottom:12 }}>
             <label style={{ fontSize:'0.78rem', fontWeight:700, color:'var(--gray-500)', display:'block', marginBottom:4 }}>اللقب</label>
-            <input value={laqab} onChange={e=>setLaqab(e.target.value)} placeholder="مثال: الأخ، الأخت، الأب…" style={{ width:'100%', padding:'7px 10px', border:'1.5px solid var(--navy)', borderRadius:'var(--radius-md)', fontFamily:'var(--font-body)', fontSize:'0.85rem', direction:'rtl', textAlign:'right', color:'var(--gray-700)', boxSizing:'border-box', background:'#f8f9ff' }}/>
+            <select value={laqab} onChange={e=>setLaqab(e.target.value)} style={{ width:'100%', padding:'7px 10px', border:'1.5px solid var(--navy)', borderRadius:'var(--radius-md)', fontFamily:'var(--font-body)', fontSize:'0.85rem', direction:'rtl', textAlign:'right', color:'var(--gray-700)', boxSizing:'border-box', background:'#f8f9ff' }}>
+              <option value="">اختر لقبًا</option>
+              {personTitleOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
           </div>
         )}
 
         {/* Search */}
         <div style={{ marginBottom:12 }}>
           <label style={{ fontSize:'0.78rem', fontWeight:700, color:'var(--gray-500)', display:'block', marginBottom:4 }}>
-            {node.personId ? 'تغيير الشخص المرتبط' : 'ربط بشخص مسجّل أو غير مسجّل'}
+            {hasLinkedIdentity ? 'تغيير الشخص المرتبط' : 'ربط بشخص مسجّل أو غير مسجّل'}
           </label>
           <div style={{ position:'relative' }}>
             <input value={nameQ} onChange={e=>search(e.target.value)} placeholder="ابحث بالاسم…" style={{ width:'100%', padding:'7px 10px 7px 32px', border:'1.5px solid var(--gray-200)', borderRadius:'var(--radius-md)', fontFamily:'var(--font-body)', fontSize:'0.85rem', direction:'rtl', textAlign:'right', color:'var(--gray-700)', boxSizing:'border-box' }}/>
@@ -1260,9 +1298,9 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
               return normalizeArabic(uBase.trim()) === norm
             }) : null
             if (existing) {
-              onUpdate({ unregistered:true, baseName:newBase, unregisteredId:existing.person_id, laqab:existing.title||laqab })
+              onUpdate({ unregistered:true, baseName:newBase, personId:String(existing.person_id), unregisteredId:String(existing.person_id), laqab:existing.title||laqab })
             } else {
-              onUpdate({ unregistered:!node.personId, baseName:newBase })
+              onUpdate({ unregistered:isUnregisteredNode || !hasLinkedIdentity, baseName:newBase })
             }
           }} placeholder="أدخل الاسم يدوياً…" style={{ width:'100%', padding:'7px 10px', border:'1.5px solid var(--gray-200)', borderRadius:'var(--radius-md)', fontFamily:'var(--font-body)', fontSize:'0.85rem', direction:'rtl', textAlign:'right', color:'var(--gray-700)', boxSizing:'border-box' }}/>
           {personType === 'مكرّس' && laqab.trim() && baseName.trim() && (

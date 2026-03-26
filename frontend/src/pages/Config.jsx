@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Trash2, Save, RotateCcw, ImagePlus, Pencil, X, Search, ChevronDown } from 'lucide-react'
+import { Plus, Trash2, Save, RotateCcw, ImagePlus, Pencil, X, Search, ChevronDown, Award, Users, Building2, Languages, CalendarRange, Target, BookOpen } from 'lucide-react'
 import { api } from '../api.js'
 
 function cleanText(value) {
@@ -83,6 +83,56 @@ function normalizeMap(raw) {
     }
     out[base] = values
   })
+
+  return out
+}
+
+function normalizePersonTitles(raw) {
+  const entries = []
+  if (Array.isArray(raw)) {
+    for (const row of raw) entries.push(row)
+  } else if (raw && typeof raw === 'object') {
+    for (const [arabicTitle, englishTitle] of Object.entries(raw)) {
+      entries.push({ arabic_title: arabicTitle, english_title: englishTitle })
+    }
+  }
+
+  const seen = new Set()
+  const titles = []
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object') continue
+    const arabicTitle = cleanText(entry.arabic_title || entry.arabic || entry.title || entry.name || entry.ar)
+    const englishTitle = cleanText(entry.english_title || entry.english || entry.en)
+    if (!arabicTitle || seen.has(arabicTitle)) continue
+    seen.add(arabicTitle)
+    titles.push({ arabic_title: arabicTitle, english_title: englishTitle })
+  }
+  return titles
+}
+
+function normalizeSchoolBranches(raw) {
+  const out = {}
+  if (!raw || typeof raw !== 'object') return out
+
+  const items = Array.isArray(raw)
+    ? raw.map((row) => [row?.school, row?.branches])
+    : Object.entries(raw)
+
+  for (const [schoolRaw, branchesRaw] of items) {
+    const school = cleanText(schoolRaw)
+    if (!school) continue
+
+    const source = Array.isArray(branchesRaw) ? branchesRaw : (typeof branchesRaw === 'string' ? [branchesRaw] : [])
+    const seen = new Set()
+    const branches = []
+    for (const item of source) {
+      const branch = cleanText(item)
+      if (!branch || seen.has(branch)) continue
+      seen.add(branch)
+      branches.push(branch)
+    }
+    out[school] = branches
+  }
 
   return out
 }
@@ -227,10 +277,86 @@ function ScopeDropdown({ options, selectedValues, onChange }) {
   )
 }
 
+function OverviewStatCard({ label, value, note }) {
+  return (
+    <div style={{
+      padding: 16,
+      borderRadius: 14,
+      border: '1px solid #e2e6ef',
+      background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+      display: 'grid',
+      gap: 4,
+      minHeight: 92,
+    }}>
+      <div style={{ fontSize: '0.78rem', color: '#718096', fontWeight: 700 }}>{label}</div>
+      <div style={{ fontFamily: 'var(--font-head)', fontWeight: 900, fontSize: '1.45rem', color: '#0f2744' }}>{value}</div>
+      <div style={{ fontSize: '0.8rem', color: '#4a5568' }}>{note}</div>
+    </div>
+  )
+}
+
+function SectionPanel({ icon: Icon, title, hint, children }) {
+  return (
+    <div style={{
+      border: '1px solid #e2e6ef',
+      borderRadius: 14,
+      background: 'white',
+      padding: 14,
+      display: 'grid',
+      gap: 12,
+      boxShadow: '0 2px 10px rgba(15, 23, 42, 0.04)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <div style={{
+          width: 34,
+          height: 34,
+          borderRadius: 10,
+          background: 'rgba(15, 39, 68, 0.06)',
+          color: '#0f2744',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          {Icon ? <Icon size={16} /> : null}
+        </div>
+        <div style={{ display: 'grid', gap: 3 }}>
+          <div style={{ fontWeight: 800, color: '#1a2a3a', fontSize: '0.92rem' }}>{title}</div>
+          {hint ? <div style={{ fontSize: '0.8rem', color: '#718096', lineHeight: 1.7 }}>{hint}</div> : null}
+        </div>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function EmptyStatePanel({ title, description }) {
+  return (
+    <div style={{
+      textAlign: 'center',
+      color: '#718096',
+      padding: '24px 16px',
+      fontSize: '0.86rem',
+      border: '1px dashed #d6dce8',
+      borderRadius: 12,
+      background: '#fbfcfe',
+      display: 'grid',
+      gap: 4,
+    }}>
+      <div style={{ fontWeight: 700, color: '#4a5568' }}>{title}</div>
+      <div>{description}</div>
+    </div>
+  )
+}
+
 export default function Config({ toast }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [activeTab, setActiveTab] = useState('mottos')
   const [rows, setRows] = useState([])
+  const [personTitles, setPersonTitles] = useState([])
+  const [schoolBranches, setSchoolBranches] = useState({})
+  const [schoolOptions, setSchoolOptions] = useState([])
 
   const [mottosLoading, setMottosLoading] = useState(true)
   const [mottosSaving, setMottosSaving] = useState(false)
@@ -256,6 +382,10 @@ export default function Config({ toast }) {
 
   const [baseName, setBaseName] = useState('')
   const [variationsInput, setVariationsInput] = useState('')
+  const [titleArabic, setTitleArabic] = useState('')
+  const [titleEnglish, setTitleEnglish] = useState('')
+  const [selectedSchoolName, setSelectedSchoolName] = useState('')
+  const [schoolBranchInput, setSchoolBranchInput] = useState('')
 
   function resetMottoForm() {
     setEditingMottoId('')
@@ -311,20 +441,84 @@ export default function Config({ toast }) {
   }
 
   const hasRows = rows.length > 0
+  const hasPersonTitleRows = personTitles.length > 0
+  const selectedSchoolBranches = schoolBranches[selectedSchoolName] || []
 
   const variationCount = useMemo(() => rows.reduce((sum, row) => sum + parseVariations(row.variationsText).length, 0), [rows])
+  const personTitleCount = useMemo(() => personTitles.length, [personTitles])
+  const schoolBranchCount = useMemo(
+    () => Object.values(schoolBranches).reduce((sum, branches) => sum + (Array.isArray(branches) ? branches.length : 0), 0),
+    [schoolBranches],
+  )
+  const configTabs = [
+    {
+      id: 'mottos',
+      label: 'شعار سنة الشبيبة',
+      summary: `${mottos.length} شعار محفوظ`,
+      description: 'إدارة الشعار السنوي، النطاق، المرجع الكتابي، والصورة.',
+      icon: Award,
+      tips: ['حدّد النص والسنة', 'اختر النطاق وتاريخ التطبيق', 'أضف المرجع والصورة ثم احفظ'],
+    },
+    {
+      id: 'personTitles',
+      label: 'ألقاب الأشخاص',
+      summary: `${personTitleCount} لقب`,
+      description: 'إعداد الألقاب العربية والإنجليزية المستخدمة في نماذج الإدخال.',
+      icon: Users,
+      tips: ['أدخل اللقب بالعربية', 'أضف المقابل الإنجليزي إن وجد', 'راجع القائمة ثم احفظ'],
+    },
+    {
+      id: 'schoolBranches',
+      label: 'فروع المدارس',
+      summary: `${Object.keys(schoolBranches).length} مدرسة / ${schoolBranchCount} فرع`,
+      description: 'تنظيم المدارس وفروعها ضمن إعدادات النظام.',
+      icon: Building2,
+      tips: ['اختر المدرسة', 'أضف الفروع التابعة لها', 'احفظ بعد مراجعة التعديلات'],
+    },
+    {
+      id: 'nameVariations',
+      label: 'اختلافات الأسماء',
+      summary: `${rows.length} اسم أساسي / ${variationCount} اختلاف`,
+      description: 'تحسين البحث بربط الاسم الأساسي باختلافاته الشائعة.',
+      icon: Languages,
+      tips: ['أدخل الاسم الأساسي', 'أضف الاختلافات الشائعة', 'احفظ أو أعد الضبط عند الحاجة'],
+    },
+  ]
+  const schoolOptionsMerged = useMemo(() => {
+    const values = new Set()
+    const merged = []
+
+    const register = (value) => {
+      const school = cleanText(value)
+      if (!school || values.has(school)) return
+      values.add(school)
+      merged.push(school)
+    }
+
+    schoolOptions.forEach(register)
+    Object.keys(schoolBranches).forEach(register)
+
+    return merged.sort((a, b) => a.localeCompare(b, 'ar'))
+  }, [schoolBranches, schoolOptions])
   const verseValidation = useMemo(() => validateVersesInput(selectedVersesInput), [selectedVersesInput])
 
   const loadConfig = async () => {
     setLoading(true)
     try {
-      const response = await api.getConfig()
+      const [response, filtersResponse] = await Promise.all([api.getConfig(), api.filters()])
       const nameVariations = normalizeMap(response?.config?.name_variations || {})
       const parsedRows = Object.entries(nameVariations).map(([base, variations]) => ({
         base,
         variationsText: variations.join('، '),
       }))
       setRows(parsedRows)
+      setPersonTitles(normalizePersonTitles(response?.config?.person_titles || []))
+      setSchoolBranches(normalizeSchoolBranches(response?.config?.school_branches || {}))
+      setSchoolOptions((filtersResponse?.school || []).map((item) => cleanText(item?.value)).filter(Boolean))
+      setTitleArabic('')
+      setTitleEnglish('')
+      setSelectedSchoolName('')
+      setSchoolBranchInput('')
     } catch {
       toast?.('تعذر تحميل الإعدادات', 'error')
     } finally {
@@ -420,6 +614,104 @@ export default function Config({ toast }) {
     setRows(prev => prev.filter((_, i) => i !== index))
   }
 
+  const updatePersonTitleRow = (index, key, value) => {
+    setPersonTitles(prev => prev.map((row, i) => (i === index ? { ...row, [key]: value } : row)))
+  }
+
+  const removePersonTitleRow = (index) => {
+    setPersonTitles(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const addPersonTitleRow = () => {
+    const arabicTitle = cleanText(titleArabic)
+    const englishTitle = cleanText(titleEnglish)
+
+    if (!arabicTitle) {
+      toast?.('يرجى إدخال اللقب بالعربية', 'error')
+      return
+    }
+
+    setPersonTitles(prev => {
+      const existingIndex = prev.findIndex((row) => cleanText(row.arabic_title) === arabicTitle)
+      if (existingIndex >= 0) {
+        return prev.map((row, index) => (
+          index === existingIndex
+            ? { ...row, english_title: englishTitle || row.english_title || '' }
+            : row
+        ))
+      }
+      return [...prev, { arabic_title: arabicTitle, english_title: englishTitle }]
+    })
+
+    setTitleArabic('')
+    setTitleEnglish('')
+  }
+
+  const updateSchoolBranchRow = (school, index, value) => {
+    const schoolName = cleanText(school)
+    if (!schoolName) return
+    setSchoolBranches((prev) => {
+      const current = Array.isArray(prev[schoolName]) ? prev[schoolName] : []
+      const next = current.map((branch, rowIndex) => (rowIndex === index ? value : branch))
+      return {
+        ...prev,
+        [schoolName]: next,
+      }
+    })
+  }
+
+  const removeSchoolBranchRow = (school, index) => {
+    const schoolName = cleanText(school)
+    if (!schoolName) return
+    setSchoolBranches((prev) => {
+      const current = Array.isArray(prev[schoolName]) ? prev[schoolName] : []
+      const next = current.filter((_, rowIndex) => rowIndex !== index)
+      if (next.length === 0) {
+        const { [schoolName]: _removed, ...rest } = prev
+        return rest
+      }
+      return {
+        ...prev,
+        [schoolName]: next,
+      }
+    })
+  }
+
+  const removeSelectedSchoolEntry = () => {
+    const schoolName = cleanText(selectedSchoolName)
+    if (!schoolName) return
+    setSchoolBranches((prev) => {
+      const { [schoolName]: _removed, ...rest } = prev
+      return rest
+    })
+    setSchoolBranchInput('')
+    setSelectedSchoolName('')
+  }
+
+  const addSchoolBranchRow = () => {
+    const schoolName = cleanText(selectedSchoolName)
+    const branchName = cleanText(schoolBranchInput)
+
+    if (!schoolName) {
+      toast?.('يرجى اختيار المدرسة أولاً', 'error')
+      return
+    }
+    if (!branchName) {
+      toast?.('يرجى إدخال اسم الفرع', 'error')
+      return
+    }
+
+    setSchoolBranches((prev) => {
+      const current = Array.isArray(prev[schoolName]) ? prev[schoolName] : []
+      if (current.some((branch) => cleanText(branch) === branchName)) return prev
+      return {
+        ...prev,
+        [schoolName]: [...current, branchName],
+      }
+    })
+    setSchoolBranchInput('')
+  }
+
   const addRow = () => {
     const base = cleanText(baseName)
     const vars = parseVariations(variationsInput)
@@ -459,12 +751,38 @@ export default function Config({ toast }) {
     return out
   }
 
+  const buildPersonTitlesPayload = () => {
+    const draftArabicTitle = cleanText(titleArabic)
+    const draftEnglishTitle = cleanText(titleEnglish)
+    const source = draftArabicTitle
+      ? [...personTitles, { arabic_title: draftArabicTitle, english_title: draftEnglishTitle }]
+      : personTitles
+    return normalizePersonTitles(source)
+  }
+
+  const buildSchoolBranchesPayload = () => {
+    const payload = normalizeSchoolBranches(schoolBranches)
+    const schoolName = cleanText(selectedSchoolName)
+    const branchName = cleanText(schoolBranchInput)
+    if (schoolName && branchName) {
+      const current = Array.isArray(payload[schoolName]) ? payload[schoolName] : []
+      if (!current.includes(branchName)) {
+        payload[schoolName] = [...current, branchName]
+      }
+    }
+    return normalizeSchoolBranches(payload)
+  }
+
   const handleSave = async () => {
     setSaving(true)
     try {
-      const payload = { name_variations: buildPayloadMap() }
+      const payload = {
+        name_variations: buildPayloadMap(),
+        person_titles: buildPersonTitlesPayload(),
+        school_branches: buildSchoolBranchesPayload(),
+      }
       await api.putConfig(payload)
-      toast?.('تم حفظ اختلافات الأسماء', 'success')
+      toast?.('تم حفظ الإعدادات', 'success')
       await loadConfig()
     } catch {
       toast?.('تعذر حفظ الإعدادات', 'error')
@@ -477,8 +795,12 @@ export default function Config({ toast }) {
     if (!confirm('سيتم حذف كل اختلافات الأسماء. هل تريد المتابعة؟')) return
     setSaving(true)
     try {
-      await api.resetConfig()
-      toast?.('تمت إعادة الضبط', 'success')
+      await api.putConfig({
+        name_variations: {},
+        person_titles: buildPersonTitlesPayload(),
+        school_branches: buildSchoolBranchesPayload(),
+      })
+      toast?.('تمت إعادة ضبط اختلافات الأسماء', 'success')
       await loadConfig()
     } catch {
       toast?.('تعذر إعادة الضبط', 'error')
@@ -633,8 +955,95 @@ export default function Config({ toast }) {
 
   if (loading || mottosLoading) return <div className="loading-center"><div className="spinner" /></div>
 
+  const activeTabMeta = configTabs.find((tab) => tab.id === activeTab) || configTabs[0]
+  const ActiveTabIcon = activeTabMeta.icon
+
   return (
     <div style={{ display: 'grid', gap: 16 }}>
+      <div className="card">
+        <div className="card-body" style={{ display: 'grid', gap: 18, background: 'linear-gradient(180deg, rgba(255,255,255,1) 0%, rgba(248,250,252,0.8) 100%)' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ display: 'grid', gap: 8, maxWidth: 760 }}>
+              <div style={{ fontSize: '0.76rem', letterSpacing: '0.08em', color: '#c9963c', fontWeight: 800 }}>
+                CONTROL CENTER
+              </div>
+              <div style={{ fontFamily: 'var(--font-head)', fontSize: '1.45rem', fontWeight: 900, color: '#0f2744' }}>
+                إعدادات النظام
+              </div>
+              <div style={{ color: '#4a5568', fontSize: '0.92rem', lineHeight: 1.9 }}>
+                الصفحة مرتبة الآن حسب نوع الإعداد. اختر التبويب المناسب ثم أكمل الخطوات داخله: إدخال البيانات، مراجعة العناصر الحالية، ثم الحفظ.
+              </div>
+            </div>
+
+            <div style={{ minWidth: 280, padding: 14, borderRadius: 16, border: '1px solid rgba(201,150,60,0.24)', background: 'linear-gradient(135deg, rgba(201,150,60,0.1), rgba(15,39,68,0.04))', display: 'grid', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ width: 38, height: 38, borderRadius: 12, background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0f2744' }}>
+                  {ActiveTabIcon ? <ActiveTabIcon size={18} /> : null}
+                </div>
+                <div style={{ display: 'grid', gap: 2 }}>
+                  <div style={{ fontSize: '0.78rem', color: '#8c6724', fontWeight: 800 }}>التبويب الحالي</div>
+                  <div style={{ fontSize: '1rem', color: '#1a2a3a', fontWeight: 900 }}>{activeTabMeta.label}</div>
+                </div>
+              </div>
+              <div style={{ fontSize: '0.82rem', color: '#4a5568', lineHeight: 1.8 }}>{activeTabMeta.description}</div>
+              <div style={{ display: 'grid', gap: 4 }}>
+                {activeTabMeta.tips.map((tip, index) => (
+                  <div key={`${activeTabMeta.id}-tip-${index}`} style={{ fontSize: '0.8rem', color: '#2d3748' }}>
+                    {index + 1}. {tip}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+            <OverviewStatCard label="الشعارات" value={mottos.length} note="عدد الشعارات المعرفة حالياً" />
+            <OverviewStatCard label="الألقاب" value={personTitleCount} note="ألقاب يمكن استخدامها في الإدخال" />
+            <OverviewStatCard label="المدارس والفروع" value={`${Object.keys(schoolBranches).length}/${schoolBranchCount}`} note="مدارس مقابل عدد الفروع" />
+            <OverviewStatCard label="اختلافات البحث" value={variationCount} note="بدائل أسماء لتحسين نتائج البحث" />
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {configTabs.map((tab) => {
+              const isActive = tab.id === activeTab
+              const TabIcon = tab.icon
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  style={{
+                    minWidth: 210,
+                    padding: '14px 16px',
+                    borderRadius: 16,
+                    border: isActive ? '1.5px solid #c9963c' : '1.5px solid #e2e6ef',
+                    background: isActive ? 'linear-gradient(135deg, rgba(201,150,60,0.14), rgba(15,39,68,0.04))' : '#fff',
+                    color: '#1a2a3a',
+                    display: 'grid',
+                    gap: 8,
+                    textAlign: 'right',
+                    cursor: 'pointer',
+                    boxShadow: isActive ? '0 6px 18px rgba(201,150,60,0.12)' : 'none',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 34, height: 34, borderRadius: 10, background: isActive ? 'rgba(255,255,255,0.8)' : '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isActive ? '#8c6724' : '#0f2744', flexShrink: 0 }}>
+                      {TabIcon ? <TabIcon size={16} /> : null}
+                    </div>
+                    <div style={{ display: 'grid', gap: 2 }}>
+                      <span style={{ fontSize: '0.92rem', fontWeight: 800 }}>{tab.label}</span>
+                      <span style={{ fontSize: '0.78rem', color: isActive ? '#8c6724' : '#718096' }}>{tab.summary}</span>
+                    </div>
+                  </div>
+                  <span style={{ fontSize: '0.78rem', color: '#4a5568', lineHeight: 1.7 }}>{tab.description}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      {activeTab === 'mottos' ? (
       <div className="card">
         <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span className="card-title">إدارة شعار سنة الشبيبة</span>
@@ -642,19 +1051,20 @@ export default function Config({ toast }) {
         </div>
 
         <div className="card-body" style={{ display: 'grid', gap: 14 }}>
-          <div style={{
-            background: '#f8fafc',
-            border: '1px solid #e2e6ef',
-            borderRadius: 10,
-            padding: 12,
-            fontSize: '0.83rem',
-            color: '#4a5568',
-            lineHeight: 1.7,
-          }}>
-            يمكنك إضافة شعار خاص بـ JECJordan و/أو فرق شبيبة محددة، مع مرجع كتابي واحد منظم (مسار الكتاب + أرقام الآيات).
-          </div>
+          <SectionPanel
+            icon={Award}
+            title="ملخص إدارة الشعار"
+            hint="يمكنك إضافة شعار خاص بـ JECJordan و/أو فرق شبيبة محددة، مع مرجع كتابي منظم وصورة مرافقة."
+          >
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
+              <OverviewStatCard label="الشعارات الحالية" value={mottos.length} note="جميع الشعارات المحفوظة" />
+              <OverviewStatCard label="النطاقات المتاحة" value={scopeOptions.length} note="JECJordan مع فرق الشبيبة" />
+              <OverviewStatCard label="وضع التحرير" value={editingMottoId ? 'نشط' : 'جديد'} note={editingMottoId ? 'أنت تعدل شعاراً محفوظاً' : 'سيتم إنشاء شعار جديد'} />
+            </div>
+          </SectionPanel>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <SectionPanel icon={Award} title="البيانات الأساسية" hint="ابدأ بنص الشعار والسنة المرجعية إن كانت مطلوبة.">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
             <div>
               <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4a5568', marginBottom: 5, display: 'block' }}>
                 نص الشعار
@@ -681,10 +1091,10 @@ export default function Config({ toast }) {
               />
             </div>
           </div>
+          </SectionPanel>
 
-          <div style={{ border: '1px solid #e2e6ef', borderRadius: 10, padding: 12, display: 'grid', gap: 8 }}>
-            <div style={{ fontSize: '0.82rem', color: '#4a5568', fontWeight: 700 }}>فترة تطبيق الشعار</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 8, alignItems: 'end' }}>
+          <SectionPanel icon={CalendarRange} title="فترة التطبيق" hint="حدد تاريخ البداية والنهاية، أو فعّل خيار الحالي إذا كان الشعار ما زال معتمداً.">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 8, alignItems: 'end' }}>
               <div>
                 <label style={{ fontSize: '0.76rem', color: '#4a5568', marginBottom: 4, display: 'block' }}>من</label>
                 <input
@@ -704,7 +1114,7 @@ export default function Config({ toast }) {
                   style={{ ...inputStyle, opacity: applicationIsPresent ? 0.65 : 1 }}
                 />
               </div>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: '0.84rem', color: '#2d3748', paddingBottom: 8 }}>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: '0.84rem', color: '#2d3748', paddingBottom: 8, minHeight: 42 }}>
                 <input
                   type="checkbox"
                   checked={applicationIsPresent}
@@ -713,16 +1123,14 @@ export default function Config({ toast }) {
                 حالي
               </label>
             </div>
-          </div>
+          </SectionPanel>
 
-          <div style={{ border: '1px solid #e2e6ef', borderRadius: 10, padding: 12, display: 'grid', gap: 8 }}>
-            <div style={{ fontSize: '0.82rem', color: '#4a5568', fontWeight: 700 }}>نطاق تطبيق الشعار</div>
+          <SectionPanel icon={Target} title="نطاق التطبيق" hint="اختر ما إذا كان الشعار عاماً على JECJordan أو مخصصاً لفرق شبيبة بعينها.">
             <ScopeDropdown options={scopeOptions} selectedValues={targetScopes} onChange={setTargetScopes} />
-          </div>
+          </SectionPanel>
 
-          <div style={{ border: '1px solid #e2e6ef', borderRadius: 10, padding: 12, display: 'grid', gap: 8 }}>
-            <div style={{ fontSize: '0.82rem', color: '#4a5568', fontWeight: 700 }}>المرجع الكتابي</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 8, alignItems: 'end' }}>
+          <SectionPanel icon={BookOpen} title="المرجع الكتابي" hint="اختر المسار الكامل للمرجع ثم أدخل الآيات بصيغة واضحة مثل 5:15 أو 5:15-6:12.">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, alignItems: 'end' }}>
               <div>
                 <label style={{ fontSize: '0.76rem', color: '#4a5568', marginBottom: 4, display: 'block' }}>العهد</label>
                 <select
@@ -785,10 +1193,9 @@ export default function Config({ toast }) {
                 ) : null}
               </div>
             </div>
-          </div>
+          </SectionPanel>
 
-          <div style={{ border: '1px solid #e2e6ef', borderRadius: 10, padding: 12, display: 'grid', gap: 8 }}>
-            <div style={{ fontSize: '0.82rem', color: '#4a5568', fontWeight: 700 }}>صورة الشعار</div>
+          <SectionPanel icon={ImagePlus} title="صورة الشعار" hint="اختيار الصورة اختياري، وسيتم رفعها مباشرة بعد نجاح حفظ بيانات الشعار.">
             <label className="btn btn-ghost btn-sm" style={{ width: 'fit-content', cursor: 'pointer', gap: 6 }}>
               <ImagePlus size={14} />
               {logoFile ? `تم اختيار: ${logoFile.name}` : 'اختيار ملف شعار'}
@@ -802,7 +1209,7 @@ export default function Config({ toast }) {
             <div style={{ fontSize: '0.76rem', color: '#718096' }}>
               يتم رفع الشعار بعد حفظ الشعار. الامتدادات المدعومة: jpg, jpeg, png, webp, gif.
             </div>
-          </div>
+          </SectionPanel>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             {editingMottoId ? (
@@ -894,14 +1301,221 @@ export default function Config({ toast }) {
                 </tbody>
               </table>
             </div>
-          ) : (
-            <div style={{ textAlign: 'center', color: '#9ba5bc', padding: '8px 0', fontSize: '0.86rem' }}>
-              لا توجد شعارات محفوظة بعد.
-            </div>
-          )}
+          ) : <EmptyStatePanel title="لا توجد شعارات محفوظة بعد" description="ابدأ بإضافة أول شعار ثم احفظه ليظهر هنا مع فترة التطبيق والنطاق." />}
         </div>
       </div>
+      ) : null}
 
+      {activeTab === 'personTitles' ? (
+      <div className="card">
+        <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span className="card-title">ألقاب الأشخاص</span>
+          <span style={{ fontSize: '0.78rem', color: '#9ba5bc' }}>
+            {personTitleCount} لقب
+          </span>
+        </div>
+
+        <div className="card-body" style={{ display: 'grid', gap: 14 }}>
+          <SectionPanel icon={Users} title="ما الذي تضبطه هنا؟" hint="أضف الألقاب التي تستخدم مع الأشخاص مثل الأب، الأخت، الأخ. هذه القيم ستظهر لاحقاً في قوائم الإدخال.">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }}>
+              <OverviewStatCard label="الألقاب الحالية" value={personTitleCount} note="عدد الألقاب المحفوظة" />
+              <OverviewStatCard label="المسودة" value={cleanText(titleArabic) ? 'جاهزة' : 'فارغة'} note="تحقق من اللقب العربي قبل الإضافة" />
+            </div>
+          </SectionPanel>
+
+          <SectionPanel icon={Users} title="إضافة أو تعديل لقب" hint="اللقب العربي مطلوب، أما الحقل الإنجليزي فهو اختياري لعرض ترجمة أو مقابل مناسب.">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8, alignItems: 'end' }}>
+            <div>
+              <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4a5568', marginBottom: 5, display: 'block' }}>
+                اللقب بالعربية
+              </label>
+              <input
+                value={titleArabic}
+                onChange={(e) => setTitleArabic(e.target.value)}
+                placeholder="مثال: الأب"
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4a5568', marginBottom: 5, display: 'block' }}>
+                English Title
+              </label>
+              <input
+                value={titleEnglish}
+                onChange={(e) => setTitleEnglish(e.target.value)}
+                placeholder="Example: Father"
+                style={{ ...inputStyle, direction: 'ltr', textAlign: 'left' }}
+              />
+            </div>
+            <button className="btn btn-gold btn-sm" onClick={addPersonTitleRow} style={{ gap: 6, whiteSpace: 'nowrap' }}>
+              <Plus size={14} /> إضافة
+            </button>
+          </div>
+          </SectionPanel>
+
+          {hasPersonTitleRows ? (
+            <div style={{ border: '1px solid #e2e6ef', borderRadius: 10, overflow: 'hidden' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
+                <thead>
+                  <tr style={{ background: '#f8f9fb', borderBottom: '1px solid #e2e6ef' }}>
+                    <th style={{ padding: '10px 12px', textAlign: 'right', color: '#4a5568', fontWeight: 700 }}>العربية</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'left', color: '#4a5568', fontWeight: 700 }}>English</th>
+                    <th style={{ padding: '10px 12px', width: 80 }} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {personTitles.map((row, index) => (
+                    <tr key={`title-row-${index}`} style={{ borderBottom: index < personTitles.length - 1 ? '1px solid #f1f4f9' : 'none' }}>
+                      <td style={{ padding: 10 }}>
+                        <input
+                          value={row.arabic_title || ''}
+                          onChange={(e) => updatePersonTitleRow(index, 'arabic_title', e.target.value)}
+                          style={inputStyle}
+                        />
+                      </td>
+                      <td style={{ padding: 10 }}>
+                        <input
+                          value={row.english_title || ''}
+                          onChange={(e) => updatePersonTitleRow(index, 'english_title', e.target.value)}
+                          placeholder="Optional"
+                          style={{ ...inputStyle, direction: 'ltr', textAlign: 'left' }}
+                        />
+                      </td>
+                      <td style={{ padding: 10 }}>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ color: 'var(--red)' }}
+                          onClick={() => removePersonTitleRow(index)}
+                          title="حذف"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <EmptyStatePanel title="لا توجد ألقاب محفوظة بعد" description="أدخل لقباً جديداً من الأعلى ثم احفظ الإعدادات ليتم اعتماده في النماذج." />}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn btn-gold btn-sm" onClick={handleSave} disabled={saving} style={{ gap: 6 }}>
+              <Save size={14} /> {saving ? 'جار الحفظ...' : 'حفظ الإعدادات'}
+            </button>
+          </div>
+        </div>
+      </div>
+      ) : null}
+
+      {activeTab === 'schoolBranches' ? (
+      <div className="card">
+        <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span className="card-title">فروع المدارس</span>
+          <span style={{ fontSize: '0.78rem', color: '#9ba5bc' }}>
+            {Object.keys(schoolBranches).length} مدرسة / {schoolBranchCount} فرع
+          </span>
+        </div>
+
+        <div className="card-body" style={{ display: 'grid', gap: 14 }}>
+          <SectionPanel icon={Building2} title="تنظيم المدارس والفروع" hint="اختر اسم المدرسة أولاً ثم أضف الفروع التابعة لها. تُحفظ الفروع لكل مدرسة بشكل مستقل ضمن إعدادات النظام.">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }}>
+              <OverviewStatCard label="عدد المدارس" value={Object.keys(schoolBranches).length} note="مدارس تحتوي على فروع محفوظة" />
+              <OverviewStatCard label="إجمالي الفروع" value={schoolBranchCount} note="مجموع الفروع في كل المدارس" />
+              <OverviewStatCard label="المدرسة المختارة" value={selectedSchoolName || '—'} note="اختر مدرسة لعرض فروعها" />
+            </div>
+          </SectionPanel>
+
+          <SectionPanel icon={Building2} title="إضافة فرع جديد" hint="إذا لم تظهر المدرسة في القائمة بعد، تأكد أن مصدر البيانات يوفرها أو اختر مدرسة محفوظة مسبقاً.">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8, alignItems: 'end' }}>
+            <div>
+              <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4a5568', marginBottom: 5, display: 'block' }}>
+                اسم المدرسة
+              </label>
+              <select value={selectedSchoolName} onChange={(e) => setSelectedSchoolName(e.target.value)} style={inputStyle}>
+                <option value="">اختر مدرسة</option>
+                {schoolOptionsMerged.map((school) => (
+                  <option key={school} value={school}>{school}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4a5568', marginBottom: 5, display: 'block' }}>
+                اسم الفرع
+              </label>
+              <input
+                value={schoolBranchInput}
+                onChange={(e) => setSchoolBranchInput(e.target.value)}
+                placeholder="مثال: فرع طبربور"
+                style={inputStyle}
+              />
+            </div>
+            <button className="btn btn-gold btn-sm" onClick={addSchoolBranchRow} style={{ gap: 6, whiteSpace: 'nowrap' }}>
+              <Plus size={14} /> إضافة
+            </button>
+          </div>
+          </SectionPanel>
+
+          {selectedSchoolName ? (
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1a2a3a' }}>
+                  فروع {selectedSchoolName}
+                </div>
+                {selectedSchoolBranches.length > 0 ? (
+                  <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={removeSelectedSchoolEntry}>
+                    <Trash2 size={14} /> حذف المدرسة من القائمة
+                  </button>
+                ) : null}
+              </div>
+
+              {selectedSchoolBranches.length > 0 ? (
+                <div style={{ border: '1px solid #e2e6ef', borderRadius: 10, overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
+                    <thead>
+                      <tr style={{ background: '#f8f9fb', borderBottom: '1px solid #e2e6ef' }}>
+                        <th style={{ padding: '10px 12px', textAlign: 'right', color: '#4a5568', fontWeight: 700 }}>الفرع</th>
+                        <th style={{ padding: '10px 12px', width: 80 }} />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedSchoolBranches.map((branch, index) => (
+                        <tr key={`school-branch-${selectedSchoolName}-${index}`} style={{ borderBottom: index < selectedSchoolBranches.length - 1 ? '1px solid #f1f4f9' : 'none' }}>
+                          <td style={{ padding: 10 }}>
+                            <input
+                              value={branch || ''}
+                              onChange={(e) => updateSchoolBranchRow(selectedSchoolName, index, e.target.value)}
+                              style={inputStyle}
+                            />
+                          </td>
+                          <td style={{ padding: 10 }}>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              style={{ color: 'var(--red)' }}
+                              onClick={() => removeSchoolBranchRow(selectedSchoolName, index)}
+                              title="حذف"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : <EmptyStatePanel title="لا توجد فروع محفوظة لهذه المدرسة بعد" description="أضف فرعاً من النموذج أعلاه ثم احفظ الإعدادات لتثبيت التغيير." />}
+            </div>
+          ) : <EmptyStatePanel title="اختر مدرسة لعرض فروعها وإدارتها" description="بعد اختيار المدرسة ستظهر الفروع الحالية ويمكنك تعديلها أو حذفها." />}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn btn-gold btn-sm" onClick={handleSave} disabled={saving} style={{ gap: 6 }}>
+              <Save size={14} /> {saving ? 'جار الحفظ...' : 'حفظ الإعدادات'}
+            </button>
+          </div>
+        </div>
+      </div>
+      ) : null}
+
+      {activeTab === 'nameVariations' ? (
       <div className="card">
         <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span className="card-title">اختلافات الأسماء للبحث</span>
@@ -911,19 +1525,16 @@ export default function Config({ toast }) {
         </div>
 
         <div className="card-body" style={{ display: 'grid', gap: 14 }}>
-          <div style={{
-            background: '#f8fafc',
-            border: '1px solid #e2e6ef',
-            borderRadius: 10,
-            padding: 12,
-            fontSize: '0.83rem',
-            color: '#4a5568',
-            lineHeight: 1.7,
-          }}>
-            أدخل اسما اساسيا واختلافاته. مثال: العودة {'->'} معايعة. عند البحث عن اي اسم، سيبحث النظام ايضا في الاختلافات المعرفة له.
-          </div>
+          <SectionPanel icon={Languages} title="كيف تعمل اختلافات الأسماء؟" hint="أدخل اسماً أساسياً واختلافاته الشائعة. عند البحث عن أي اسم، سيبحث النظام أيضاً ضمن الاختلافات المعرفة له.">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }}>
+              <OverviewStatCard label="الأسماء الأساسية" value={rows.length} note="عدد الأسماء المعرفة" />
+              <OverviewStatCard label="إجمالي الاختلافات" value={variationCount} note="كل البدائل المرتبطة بالأسماء" />
+              <OverviewStatCard label="مسودة الإدخال" value={cleanText(baseName) ? 'جاهزة' : 'فارغة'} note="أدخل الاسم الأساسي والاختلافات قبل الإضافة" />
+            </div>
+          </SectionPanel>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto', gap: 8, alignItems: 'end' }}>
+          <SectionPanel icon={Languages} title="إضافة اسم واختلافاته" hint="يمكنك فصل الاختلافات بفواصل عربية أو إنجليزية، وسيتم دمج المكرر تلقائياً.">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8, alignItems: 'end' }}>
             <div>
               <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4a5568', marginBottom: 5, display: 'block' }}>
                 الاسم الاساسي
@@ -950,6 +1561,7 @@ export default function Config({ toast }) {
               <Plus size={14} /> إضافة
             </button>
           </div>
+          </SectionPanel>
 
           {hasRows ? (
             <div style={{ border: '1px solid #e2e6ef', borderRadius: 10, overflow: 'hidden' }}>
@@ -994,11 +1606,7 @@ export default function Config({ toast }) {
                 </tbody>
               </table>
             </div>
-          ) : (
-            <div style={{ textAlign: 'center', color: '#9ba5bc', padding: '18px 0', fontSize: '0.86rem' }}>
-              لا توجد اختلافات أسماء مضافة بعد.
-            </div>
-          )}
+          ) : <EmptyStatePanel title="لا توجد اختلافات أسماء مضافة بعد" description="أضف اسماً أساسياً مع اختلافاته ليستخدمها النظام في البحث الذكي." />}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button className="btn btn-ghost btn-sm" onClick={handleReset} disabled={saving} style={{ gap: 6 }}>
@@ -1010,6 +1618,7 @@ export default function Config({ toast }) {
           </div>
         </div>
       </div>
+      ) : null}
     </div>
   )
 }

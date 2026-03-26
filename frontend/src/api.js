@@ -49,10 +49,12 @@ export const api = {
   chartAge:        ()           => req('/chart/age_group'),
 
   personsEnriched: ()           => req('/persons/enriched'),
+  listPeopleLocations: ()       => req('/people-locations'),
   persons:         (params)     => req('/persons?' + new URLSearchParams(params)),
   getPerson:       (id)         => req(`/person/${id}`),
   updatePerson:    (id, body)   => req(`/person/${id}`, { method: 'PUT', body }),
   addPerson:       (body)       => req('/person', { method: 'POST', body }),
+  resolveGoogleMapsLocation: (url) => req('/location/resolve-google-maps', { method: 'POST', body: { url } }),
   deletePerson:    (id)         => req(`/person/${id}`, { method: 'DELETE' }),
   archivePerson:   (id, youthGroupId)         => req(`/person/${id}/archive`, { method: 'PATCH', body: { youth_group_id: youthGroupId } }),
   unarchivePerson: (id, youthGroupId)         => req(`/person/${id}/unarchive`, { method: 'PATCH', body: { youth_group_id: youthGroupId } }),
@@ -66,6 +68,14 @@ export const api = {
       : req(`/org-tree/${encodeURIComponent(group)}`),
 
   getOrgTreePeriods: (group) => req(`/org-tree/${encodeURIComponent(group)}/periods`),
+
+  getOrgTreeHistory: ({ personId, unregisteredId, groupIds } = {}) => {
+    const qs = new URLSearchParams()
+    if (personId !== undefined && personId !== null && String(personId).trim()) qs.set('person_id', String(personId).trim())
+    if (unregisteredId !== undefined && unregisteredId !== null && String(unregisteredId).trim()) qs.set('unregistered_id', String(unregisteredId).trim())
+    if (Array.isArray(groupIds) && groupIds.length) qs.set('group_ids', groupIds.map(v => String(v || '').trim()).filter(Boolean).join(','))
+    return req(`/org-tree/history?${qs.toString()}`)
+  },
 
   // Lean single-period endpoint (without embedding all periods metadata)
   getOrgTreePeriod: (group, periodId) =>

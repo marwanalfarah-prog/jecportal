@@ -1,10 +1,203 @@
 import os
+import re
+from urllib.parse import unquote, urlparse
+from urllib.request import Request, urlopen
 
 import numpy as np
 import pandas as pd
 from flask import jsonify, request, send_from_directory
 
 from core import state as S
+
+
+def _is_allowed_google_maps_host(hostname: str | None) -> bool:
+    host = (hostname or "").strip().lower()
+    if not host:
+        return False
+    if host == "goo.gl" or host.endswith(".goo.gl"):
+        return True
+    return host == "google.com" or host.endswith(".google.com") or ".google." in host
+
+
+def _extract_coordinate_pair(text: str | None):
+    source = str(text or "")
+    patterns = [
+        (re.compile(r"!3d(-?\d{1,3}(?:\.\d+)?)!4d(-?\d{1,3}(?:\.\d+)?)"), False),
+        (re.compile(r"!4d(-?\d{1,3}(?:\.\d+)?)!3d(-?\d{1,3}(?:\.\d+)?)"), True),
+        (re.compile(r"@(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)"), False),
+        (re.compile(r"(-?\d{1,3}(?:\.\d+)?),\+(-?\d{1,3}(?:\.\d+)?)"), False),
+        (re.compile(r"(-?\d{1,3}(?:\.\d+)?),\s*(-?\d{1,3}(?:\.\d+)?)"), False),
+    ]
+
+    for pattern, reversed_order in patterns:
+        match = pattern.search(source)
+        if not match:
+            continue
+        lat_raw = match.group(2) if reversed_order else match.group(1)
+        lng_raw = match.group(1) if reversed_order else match.group(2)
+        lat = S._normalize_coordinate(lat_raw, "lat")
+        lng = S._normalize_coordinate(lng_raw, "lng")
+        if lat is not None and lng is not None:
+            return lat, lng
+    return None, None
+
+
+def _parse_google_maps_coordinates(raw_url: str):
+    text = str(raw_url or "").strip()
+    if not text:
+        return None, None, False
+
+    try:
+        parsed = urlparse(text)
+    except ValueError:
+        return None, None, False
+
+    if parsed.scheme not in {"http", "https"}:
+        return None, None, False
+
+    if not _is_allowed_google_maps_host(parsed.hostname):
+        return None, None, False
+
+    candidates = [text, unquote(text), parsed.path, unquote(parsed.path)]
+    query_pairs = parsed.query.split("&") if parsed.query else []
+    for pair in query_pairs:
+        if "=" not in pair:
+            continue
+        _, value = pair.split("=", 1)
+        if value:
+            candidates.append(value)
+            candidates.append(unquote(value))
+
+    for candidate in candidates:
+        lat, lng = _extract_coordinate_pair(candidate)
+        if lat is not None and lng is not None:
+            return lat, lng, True
+
+    return None, None, True
+
+
+def _resolve_google_maps_coordinates(raw_url: str):
+    lat, lng, allowed = _parse_google_maps_coordinates(raw_url)
+    if lat is not None and lng is not None:
+        return lat, lng
+    if not allowed:
+        return None, None
+
+    request_obj = Request(str(raw_url).strip(), headers={"User-Agent": "Mozilla/5.0"})
+    with urlopen(request_obj, timeout=10) as response:
+        final_url = response.geturl()
+        if not _is_allowed_google_maps_host(urlparse(final_url).hostname):
+            return None, None
+        lat, lng, _ = _parse_google_maps_coordinates(final_url)
+        if lat is not None and lng is not None:
+            return lat, lng
+        try:
+            content = response.read(65536).decode("utf-8", errors="ignore")
+        except Exception:
+            return None, None
+        return _extract_coordinate_pair(content)
+
+
+def _person_full_name(person: dict | None) -> str:
+    payload = person if isinstance(person, dict) else {}
+    parts = [
+        payload.get("title"),
+        payload.get("first_name"),
+        payload.get("second_name"),
+        payload.get("third_name"),
+        payload.get("last_name"),
+    ]
+    return " ".join(str(part).strip() for part in parts if str(part or "").strip())
+
+
+def _membership_rows_by_person(df: pd.DataFrame):
+    lookup = {}
+    if df is None or df.empty or "person_id" not in df.columns:
+        return lookup
+
+    for pid, grp in df.groupby("person_id", sort=False):
+        entries = []
+        for _, row in grp.iterrows():
+            youth_group_id = S._normalize_text(row.get(S.YOUTH_GROUP_ID_COL))
+            if not youth_group_id:
+                continue
+            archived = row.get("archived")
+            if archived is not None and str(archived) not in ("nan", "None", "") and bool(archived):
+                continue
+            entries.append({
+                "youth_group_id": youth_group_id,
+                "age_group": S._normalize_text(row.get("age_group")) or "",
+            })
+        lookup[str(S._normalize_person_id(pid))] = entries
+    return lookup
+
+
+def _build_people_location_rows(persons_df: pd.DataFrame, addresses_df: pd.DataFrame, memberships_df: pd.DataFrame, person_type: str):
+    if persons_df is None or persons_df.empty or "person_id" not in persons_df.columns:
+        return []
+    if addresses_df is None or addresses_df.empty or "person_id" not in addresses_df.columns:
+        return []
+
+    person_lookup = {}
+    for person in persons_df.replace({np.nan: None}).to_dict(orient="records"):
+        pid = str(S._normalize_person_id(person.get("person_id")))
+        if pid:
+            person_lookup[pid] = person
+
+    memberships_lookup = _membership_rows_by_person(memberships_df)
+    rows = []
+    for index, address in enumerate(addresses_df.replace({np.nan: None}).to_dict(orient="records")):
+        pid = str(S._normalize_person_id(address.get("person_id")))
+        person = person_lookup.get(pid)
+        if not pid or person is None:
+            continue
+
+        lat = S._normalize_coordinate(address.get("lat"), "lat")
+        lng = S._normalize_coordinate(address.get("lng"), "lng")
+        if lat is None or lng is None:
+            continue
+
+        memberships = memberships_lookup.get(pid, [])
+        youth_groups = []
+        age_groups = []
+        for membership in memberships:
+            youth_group_id = membership.get("youth_group_id")
+            youth_group_name = S.youth_group_name(youth_group_id) or youth_group_id
+            if youth_group_name and youth_group_name not in youth_groups:
+                youth_groups.append(youth_group_name)
+            age_group = membership.get("age_group")
+            if age_group and age_group not in age_groups:
+                age_groups.append(age_group)
+
+        country = S._normalize_text(address.get("country")) or S.DEFAULT_COUNTRY
+        governorate = S._normalize_text(address.get("governorate"))
+        city = S._normalize_text(address.get("city"))
+        full_address_line = S._normalize_text(address.get("address"))
+
+        rows.append({
+            "location_key": f"{person_type}:{pid}:{index}",
+            "person_id": person.get("person_id"),
+            "person_type": person_type,
+            "full_name": _person_full_name(person),
+            "youth_groups": youth_groups,
+            "age_groups": age_groups,
+            "country": country,
+            "governorate": governorate,
+            "city": city,
+            "address": full_address_line,
+            "full_address": "، ".join(part for part in [country, governorate, city, full_address_line] if part),
+            "lat": lat,
+            "lng": lng,
+            "is_primary": S._to_bool(address.get("is_primary")),
+        })
+
+    rows.sort(key=lambda item: (
+        str(item.get("governorate") or ""),
+        str(item.get("city") or ""),
+        str(item.get("full_name") or ""),
+        0 if item.get("is_primary") else 1,
+    ))
+    return rows
 
 
 def register_registered_routes(app):
@@ -83,25 +276,60 @@ def register_registered_routes(app):
         hob = S._sheet_for_registered("hobbies_skills")
 
         youth_group_counts = []
+        youth_group_count_map = {}
         if not pyg.empty and S.YOUTH_GROUP_ID_COL in pyg.columns:
             counts = (
                 pyg[["person_id", S.YOUTH_GROUP_ID_COL]]
                 .dropna(subset=[S.YOUTH_GROUP_ID_COL])
                 .drop_duplicates()
                 .groupby(S.YOUTH_GROUP_ID_COL)["person_id"].count()
-                .sort_values(ascending=False)
             )
-            youth_group_counts = [
-                {"value": str(gid), "label": S.youth_group_name(gid) or str(gid), "count": int(c)}
-                for gid, c in counts.items()
-            ]
+            youth_group_count_map = {
+                str(gid): int(count)
+                for gid, count in counts.items()
+                if str(gid).strip()
+            }
+
+        seen_youth_group_ids = set()
+        for option in S.youth_group_options():
+            group_id = str(option.get("value") or "").strip()
+            if not group_id:
+                continue
+            seen_youth_group_ids.add(group_id)
+            youth_group_counts.append({
+                "value": group_id,
+                "label": S.youth_group_name(group_id) or str(option.get("label") or group_id),
+                "count": youth_group_count_map.get(group_id, 0),
+            })
+
+        for group_id, count in youth_group_count_map.items():
+            if group_id in seen_youth_group_ids:
+                continue
+            youth_group_counts.append({
+                "value": group_id,
+                "label": S.youth_group_name(group_id) or group_id,
+                "count": count,
+            })
+
+        youth_group_counts.sort(key=lambda item: (-int(item.get("count") or 0), str(item.get("label") or item.get("value") or "")))
 
         return jsonify({
             "first_name": S.value_counts_json(persons["first_name"]),
             "second_name": S.value_counts_json(persons["second_name"]),
             "third_name": S.value_counts_json(persons["third_name"]),
             "last_name": S.value_counts_json(persons["last_name"]),
+            "english_first_name": S.value_counts_json(persons["english_first_name"]),
+            "english_second_name": S.value_counts_json(persons["english_second_name"]),
+            "english_third_name": S.value_counts_json(persons["english_third_name"]),
+            "english_last_name": S.value_counts_json(persons["english_last_name"]),
+            "mother_first_name": S.value_counts_json(persons["mother_first_name"]),
+            "mother_second_name": S.value_counts_json(persons["mother_second_name"]),
+            "mother_third_name": S.value_counts_json(persons["mother_third_name"]),
+            "mother_english_first_name": S.value_counts_json(persons["mother_english_first_name"]),
+            "mother_english_second_name": S.value_counts_json(persons["mother_english_second_name"]),
+            "mother_english_third_name": S.value_counts_json(persons["mother_english_third_name"]),
             "gender": S.value_counts_json(persons["gender"]),
+            "school_system": S.value_counts_json(persons["school_system"]),
             "governorate": S.value_counts_json(persons["governorate"]),
             "birth_year": S.value_counts_json(persons["birth_year"].astype(str)),
             "nationality": S.pid_counts(nat, "nationality"),
@@ -128,18 +356,52 @@ def register_registered_routes(app):
         df = df.iloc[(page - 1) * per_page: page * per_page]
         return jsonify({"total": total, "page": page, "per_page": per_page, "data": S.df_to_json(df)})
 
+    @app.get("/api/people-locations")
+    def get_people_locations():
+        registered_rows = _build_people_location_rows(
+            S._registered_persons_df(),
+            S.store.get("addresses", pd.DataFrame()),
+            S._sheet_for_registered("person_youth_group"),
+            "registered",
+        )
+
+        unregistered_rows = _build_people_location_rows(
+            S.unreg_store.get("persons", pd.DataFrame()),
+            S.unreg_store.get("addresses", pd.DataFrame()),
+            S.unreg_store.get("person_youth_group", pd.DataFrame()),
+            "unregistered",
+        )
+
+        return jsonify({"locations": registered_rows + unregistered_rows})
+
     @app.get("/api/person/<int:pid>")
     def get_person(pid):
+        pid_text = str(pid)
+
         def sub(sheet):
-            rows = S.df_to_json(S._sheet_for_registered(sheet)[S._sheet_for_registered(sheet)["person_id"] == pid])
+            df = S.store.get(sheet, pd.DataFrame())
+            if df.empty or "person_id" not in df.columns:
+                return []
+            rows = S.df_to_json(df[df["person_id"].astype(str) == pid_text])
             if sheet == "person_youth_group":
                 return _normalize_membership_rows(rows)
+            if sheet == "nationality":
+                return S.enrich_nationality_rows(rows)
             return rows
 
-        persons_row = S._registered_persons_df()[S._registered_persons_df()["person_id"] == pid]
+        persons = S.store.get("persons", pd.DataFrame())
+        if persons.empty or "person_id" not in persons.columns:
+            return jsonify({"error": "not found"}), 404
+
+        persons_row = persons[persons["person_id"].astype(str) == pid_text]
+        if not persons_row.empty and "registered" in persons_row.columns:
+            persons_row = persons_row[persons_row["registered"].apply(S._bool_registered)]
         if persons_row.empty:
             return jsonify({"error": "not found"}), 404
-        person_payload = S.df_to_json(persons_row)[0]
+
+        person_payload = S.df_to_json(
+            S._project_primary_addresses(persons_row, S.store.get("addresses", pd.DataFrame()))
+        )[0]
         _, ext = S.get_photo_path(pid)
         return jsonify({
             "person": person_payload,
@@ -147,6 +409,8 @@ def register_registered_routes(app):
             "photo": f"/api/person/{pid}/photo" if ext else None,
             "nationality": sub("nationality"),
             "mobile_numbers": sub("mobile_numbers"),
+            "emails": sub("emails"),
+            "social_media": sub("social_media"),
             "addresses": sub("addresses"),
             "schools": sub("schools"),
             "higher_education": sub("higher_education"),
@@ -197,6 +461,20 @@ def register_registered_routes(app):
             S.save()
         return jsonify({"ok": True})
 
+    @app.post("/api/location/resolve-google-maps")
+    def resolve_google_maps_location():
+        body = request.json or {}
+        raw_url = str(body.get("url") or "").strip()
+        if not raw_url:
+            return jsonify({"error": "url is required"}), 400
+        try:
+            lat, lng = S.resolve_google_maps_coordinates(raw_url)
+        except Exception:
+            return jsonify({"error": "failed to resolve location"}), 400
+        if lat is None or lng is None:
+            return jsonify({"error": "coordinates not found"}), 400
+        return jsonify({"lat": lat, "lng": lng})
+
     @app.put("/api/person/<int:pid>")
     def update_person(pid):
         body = request.json
@@ -232,6 +510,8 @@ def register_registered_routes(app):
 
             replace_sub("nationality", body.get("nationality", []))
             replace_sub("mobile_numbers", body.get("mobile_numbers", []))
+            replace_sub("emails", body.get("emails", []))
+            replace_sub("social_media", body.get("social_media", []))
             if addresses_rows is not None:
                 replace_sub("addresses", addresses_rows)
             replace_sub("schools", body.get("schools", []))
@@ -271,6 +551,8 @@ def register_registered_routes(app):
 
             add_sub("nationality", body.get("nationality", []))
             add_sub("mobile_numbers", body.get("mobile_numbers", []))
+            add_sub("emails", body.get("emails", []))
+            add_sub("social_media", body.get("social_media", []))
             add_sub("addresses", addresses_rows)
             add_sub("schools", body.get("schools", []))
             add_sub("higher_education", body.get("higher_education", []))

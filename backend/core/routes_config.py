@@ -99,9 +99,103 @@ def _normalize_name_variations(raw):
     return result
 
 
+def _normalize_person_titles(raw):
+    result = []
+    if isinstance(raw, dict):
+        entries = [
+            {
+                "arabic_title": key,
+                "english_title": value,
+            }
+            for key, value in raw.items()
+        ]
+    elif isinstance(raw, list):
+        entries = raw
+    else:
+        entries = []
+
+    by_arabic = {}
+    order = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+
+        arabic_title = _clean_text(
+            entry.get("arabic_title")
+            or entry.get("arabic")
+            or entry.get("title")
+            or entry.get("name")
+            or entry.get("ar")
+        )
+        english_title = _clean_text(
+            entry.get("english_title")
+            or entry.get("english")
+            or entry.get("en")
+        )
+
+        if not arabic_title:
+            continue
+
+        if arabic_title not in by_arabic:
+            by_arabic[arabic_title] = {
+                "arabic_title": arabic_title,
+                "english_title": english_title,
+            }
+            order.append(arabic_title)
+            continue
+
+        if not by_arabic[arabic_title].get("english_title") and english_title:
+            by_arabic[arabic_title]["english_title"] = english_title
+
+    for arabic_title in order:
+        result.append(by_arabic[arabic_title])
+    return result
+
+
+def _normalize_school_branches(raw):
+    result = {}
+    if isinstance(raw, dict):
+        items = raw.items()
+    elif isinstance(raw, list):
+        items = []
+        for entry in raw:
+            if not isinstance(entry, dict):
+                continue
+            items.append((entry.get("school"), entry.get("branches", [])))
+    else:
+        items = []
+
+    for school_raw, branches_raw in items:
+        school = _clean_text(school_raw)
+        if not school:
+            continue
+
+        if isinstance(branches_raw, str):
+            values = [branches_raw]
+        elif isinstance(branches_raw, list):
+            values = branches_raw
+        else:
+            values = []
+
+        cleaned = []
+        seen = set()
+        for value in values:
+            branch = _clean_text(value)
+            if not branch or branch in seen:
+                continue
+            seen.add(branch)
+            cleaned.append(branch)
+
+        result[school] = cleaned
+
+    return result
+
+
 def _default_config():
     return {
         "name_variations": {},
+        "person_titles": [],
+        "school_branches": {},
     }
 
 
@@ -623,12 +717,16 @@ def _load_config():
         data = _default_config()
     config = dict(data)
     config["name_variations"] = _normalize_name_variations(config.get("name_variations", {}))
+    config["person_titles"] = _normalize_person_titles(config.get("person_titles", []))
+    config["school_branches"] = _normalize_school_branches(config.get("school_branches", {}))
     return config
 
 
 def _save_config(config):
     payload = {
         "name_variations": _normalize_name_variations(config.get("name_variations", {})),
+        "person_titles": _normalize_person_titles(config.get("person_titles", [])),
+        "school_branches": _normalize_school_branches(config.get("school_branches", {})),
     }
     S.db.save_json_file(_config_path(), payload)
     return payload
@@ -871,6 +969,10 @@ def register_config_routes(app):
             merged = dict(current)
             if "name_variations" in body:
                 merged["name_variations"] = _normalize_name_variations(body.get("name_variations"))
+            if "person_titles" in body:
+                merged["person_titles"] = _normalize_person_titles(body.get("person_titles"))
+            if "school_branches" in body:
+                merged["school_branches"] = _normalize_school_branches(body.get("school_branches"))
             saved = _save_config(merged)
         return jsonify({"ok": True, "config": saved})
 

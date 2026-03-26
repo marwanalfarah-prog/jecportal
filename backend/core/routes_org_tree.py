@@ -12,6 +12,12 @@ from core import state as S
 ORG_TREES_DIR = S.db.org_trees_dir
 os.makedirs(ORG_TREES_DIR, exist_ok=True)
 
+_PERSON_LOOKUP_CACHE_VERSION = None
+_REGISTERED_PERSON_ROWS: dict = {}
+_UNREGISTERED_PERSON_ROWS: dict = {}
+_UNREGISTERED_PERSON_IDS: set[str] = set()
+_ORG_TREE_PERIOD_CACHE: dict[str, dict] = {}
+
 GS_GROUP_ID = "GS"
 GS_GROUP_ALIASES = {
     GS_GROUP_ID,
@@ -171,6 +177,42 @@ def _compose_base_name(row: dict) -> str:
     ).strip()
 
 
+def _current_data_version() -> int:
+    return S.cache_state()[2]
+
+
+def _ensure_person_lookup_cache():
+    global _PERSON_LOOKUP_CACHE_VERSION, _REGISTERED_PERSON_ROWS, _UNREGISTERED_PERSON_ROWS, _UNREGISTERED_PERSON_IDS
+
+    data_version = _current_data_version()
+    if _PERSON_LOOKUP_CACHE_VERSION == data_version:
+        return
+
+    reg_rows = {}
+    reg_df = S._registered_persons_df().replace({np.nan: None})
+    if not reg_df.empty and "person_id" in reg_df.columns:
+        for row in reg_df.to_dict(orient="records"):
+            pid = S._normalize_person_id(row.get("person_id"))
+            if pid is not None:
+                reg_rows[pid] = row
+
+    unreg_rows = {}
+    unreg_ids = set()
+    unreg_df = S.unreg_store.get("persons", pd.DataFrame()).replace({np.nan: None})
+    if not unreg_df.empty and "person_id" in unreg_df.columns:
+        for row in unreg_df.to_dict(orient="records"):
+            pid = S._normalize_person_id(row.get("person_id"))
+            if pid is None:
+                continue
+            unreg_rows[pid] = row
+            unreg_ids.add(str(pid))
+
+    _REGISTERED_PERSON_ROWS = reg_rows
+    _UNREGISTERED_PERSON_ROWS = unreg_rows
+    _UNREGISTERED_PERSON_IDS = unreg_ids
+    _PERSON_LOOKUP_CACHE_VERSION = data_version
+
+
 def _is_unregistered_person_id(pid) -> bool:
     if pid is None or str(pid).strip() == "":
         return False
@@ -179,14 +221,8 @@ def _is_unregistered_person_id(pid) -> bool:
     if pid_norm is None:
         return False
 
-    try:
-        df = S.unreg_store.get("persons", pd.DataFrame())
-        if df.empty or "person_id" not in df.columns:
-            return False
-        col = df["person_id"].dropna().astype(str).str.strip()
-        return str(pid_norm) in set(col.tolist())
-    except Exception:
-        return False
+    _ensure_person_lookup_cache()
+    return str(pid_norm) in _UNREGISTERED_PERSON_IDS
 
 
 def _extract_node_identity(node: dict):
@@ -231,9 +267,10 @@ def _canonicalize_tree_nodes(nodes: list) -> list:
     return out
 
 
-def _enrich_node_from_person(node: dict) -> dict:
+def _enrich_node_with_identity(node: dict, pid, unregistered: bool) -> dict:
+    _ensure_person_lookup_cache()
+
     n = dict(node or {})
-    pid, unregistered = _extract_node_identity(n)
     n["personId"] = pid
     n["unregistered"] = bool(unregistered)
 
@@ -249,12 +286,10 @@ def _enrich_node_from_person(node: dict) -> dict:
 
     try:
         if not unregistered:
-            reg_persons = S._registered_persons_df()
-            row = reg_persons[reg_persons["person_id"] == int(pid)]
-            if row.empty:
+            row = _REGISTERED_PERSON_ROWS.get(pid)
+            if not row:
                 return n
-            r = row.iloc[0].replace({np.nan: None}).to_dict()
-            base = _compose_base_name(r)
+            base = _compose_base_name(row)
             photo_path, _ = S.get_photo_path(int(pid))
             n["baseName"] = base
             n["laqab"] = ""
@@ -263,16 +298,12 @@ def _enrich_node_from_person(node: dict) -> dict:
             n["name"] = base
             return n
 
-        df = S.unreg_store.get("persons", pd.DataFrame())
-        if df.empty or "person_id" not in df.columns:
+        row = _UNREGISTERED_PERSON_ROWS.get(S._normalize_person_id(pid))
+        if not row:
             return n
-        row = df[df["person_id"].astype(str) == str(pid)]
-        if row.empty:
-            return n
-        r = row.iloc[0].replace({np.nan: None}).to_dict()
-        base = _compose_base_name(r)
+        base = _compose_base_name(row)
         _, ext = S.get_unreg_photo_path(str(pid))
-        laqab = str(r.get("title") or "").strip()
+        laqab = str(row.get("title") or "").strip()
         n["baseName"] = base
         n["laqab"] = laqab
         n["personType"] = "مكرّس" if laqab else "علماني"
@@ -284,6 +315,48 @@ def _enrich_node_from_person(node: dict) -> dict:
     return n
 
 
+def _enrich_node_from_person(node: dict) -> dict:
+    pid, unregistered = _extract_node_identity(node or {})
+    return _enrich_node_with_identity(node, pid, unregistered)
+
+
+def _period_cache_entry(path: str) -> dict:
+    data_version = _current_data_version()
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return {"nodes": [], "edges": [], "person_ids": set(), "unregistered_ids": set()}
+
+    cached = _ORG_TREE_PERIOD_CACHE.get(path)
+    if cached and cached.get("mtime") == mtime and cached.get("data_version") == data_version:
+        return cached
+
+    data = S.db.load_json_file(path, {"nodes": [], "edges": []})
+    enriched_nodes = []
+    person_ids = set()
+    unregistered_ids = set()
+
+    for raw_node in (data.get("nodes") or []):
+        pid, is_unregistered = _extract_node_identity(raw_node)
+        if pid is not None:
+            if is_unregistered:
+                unregistered_ids.add(str(pid))
+            else:
+                person_ids.add(str(pid))
+        enriched_nodes.append(_enrich_node_with_identity(raw_node, pid, is_unregistered))
+
+    cached = {
+        "mtime": mtime,
+        "data_version": data_version,
+        "nodes": enriched_nodes,
+        "edges": data.get("edges") or [],
+        "person_ids": person_ids,
+        "unregistered_ids": unregistered_ids,
+    }
+    _ORG_TREE_PERIOD_CACHE[path] = cached
+    return cached
+
+
 def _prepare_tree_response_data(data: dict, period: dict | None = None) -> dict:
     payload = dict(data or {})
     payload["nodes"] = [_enrich_node_from_person(n) for n in (payload.get("nodes") or [])]
@@ -291,6 +364,89 @@ def _prepare_tree_response_data(data: dict, period: dict | None = None) -> dict:
     payload.pop("period", None)
     payload["period"] = _period_for_response(period) if isinstance(period, dict) else None
     return payload
+
+
+def _group_display_name(group_ref: str) -> str:
+    group_id = _resolve_group_id(group_ref)
+    if group_id == GS_GROUP_ID:
+        return "الأمانة العامة"
+    return S.youth_group_name(group_id) or group_id
+
+
+def _build_history_target_matcher(person_id=None, unregistered_id=None):
+    target_person_id = S._normalize_person_id(person_id) if person_id is not None and str(person_id).strip() != "" else None
+    target_unregistered_id = S._normalize_person_id(unregistered_id) if unregistered_id is not None and str(unregistered_id).strip() != "" else None
+
+    def matcher(node: dict) -> bool:
+        node_id, node_is_unregistered = _extract_node_identity(node)
+        if node_id is None:
+            return False
+
+        if target_unregistered_id is not None:
+            return bool(node_is_unregistered and node_id == target_unregistered_id)
+
+        if target_person_id is None:
+            return False
+
+        return bool(not node_is_unregistered and node_id == target_person_id)
+
+    return matcher
+
+
+def _parse_group_refs(raw_group_ids: str | None) -> list[str]:
+    if not raw_group_ids:
+        refs = [opt["value"] for opt in S.youth_group_options()]
+        refs.append(GS_GROUP_ID)
+    else:
+        refs = [part.strip() for part in str(raw_group_ids).split(",") if part.strip()]
+
+    resolved = []
+    seen = set()
+    for ref in refs:
+        group_id = _resolve_group_id(ref)
+        if not group_id or group_id in seen:
+            continue
+        seen.add(group_id)
+        resolved.append(group_id)
+    return resolved
+
+
+def _load_history_trees(group_refs: list[str], person_id=None, unregistered_id=None) -> list[dict]:
+    matches = []
+    target_person_id = S._normalize_person_id(person_id) if person_id is not None and str(person_id).strip() != "" else None
+    target_unregistered_id = S._normalize_person_id(unregistered_id) if unregistered_id is not None and str(unregistered_id).strip() != "" else None
+    for group_ref in group_refs:
+        periods = _load_index(group_ref)
+        if not periods:
+            continue
+
+        group_id = _resolve_group_id(group_ref)
+        group_name = _group_display_name(group_id)
+
+        for period in periods:
+            path = _period_path(group_id, period.get("id"))
+            if not os.path.exists(path):
+                continue
+
+            period_cache = _period_cache_entry(path)
+            if target_unregistered_id is not None:
+                if str(target_unregistered_id) not in period_cache["unregistered_ids"]:
+                    continue
+            elif target_person_id is not None:
+                if str(target_person_id) not in period_cache["person_ids"]:
+                    continue
+            else:
+                continue
+
+            matches.append({
+                "groupId": group_id,
+                "groupName": group_name,
+                "period": _period_for_response(period),
+                "nodes": period_cache["nodes"],
+                "edges": period_cache["edges"],
+            })
+
+    return matches
 
 
 def _normalize_tree_payload(nodes: list, edges: list) -> dict:
@@ -355,6 +511,17 @@ def _migrate_all_org_tree_files():
 
 
 def register_org_tree_routes(app):
+    @app.get("/api/org-tree/history")
+    def get_org_tree_history():
+        person_id = request.args.get("person_id")
+        unregistered_id = request.args.get("unregistered_id")
+        if not person_id and not unregistered_id:
+            return jsonify({"error": "person_id or unregistered_id is required"}), 400
+
+        group_refs = _parse_group_refs(request.args.get("group_ids"))
+        history = _load_history_trees(group_refs, person_id=person_id, unregistered_id=unregistered_id)
+        return jsonify({"items": history})
+
     @app.patch("/api/unregistered/<uid>/archive")
     def archive_unregistered(uid):
         body = request.json or {}
@@ -427,8 +594,8 @@ def register_org_tree_routes(app):
         path = _period_path(group_name, period_id)
         if not os.path.exists(path):
             return jsonify({"nodes": [], "edges": [], "period": _period_for_response(period) if period else None}), 404
-        data = S.db.load_json_file(path, {"nodes": [], "edges": []})
-        return jsonify(_prepare_tree_response_data(data, period))
+        cached = _period_cache_entry(path)
+        return jsonify({"nodes": cached["nodes"], "edges": cached["edges"], "period": _period_for_response(period) if period else None})
 
     @app.get("/api/org-tree/<path:group_name>")
     def get_org_tree(group_name):
@@ -439,8 +606,8 @@ def register_org_tree_routes(app):
             path = _period_path(group_name, period_id)
             if not os.path.exists(path):
                 return jsonify({"nodes": [], "edges": [], "period": _period_for_response(period) if period else None, "periods": _periods_for_response(periods)})
-            data = S.db.load_json_file(path, {"nodes": [], "edges": []})
-            payload = _prepare_tree_response_data(data, period)
+            cached = _period_cache_entry(path)
+            payload = {"nodes": cached["nodes"], "edges": cached["edges"], "period": _period_for_response(period) if period else None}
             payload["periods"] = _periods_for_response(periods)
             return jsonify(payload)
 
@@ -455,7 +622,8 @@ def register_org_tree_routes(app):
         path = _period_path(group_name, active["id"])
         if not os.path.exists(path):
             return jsonify({"nodes": [], "edges": [], "period": _period_for_response(active), "periods": _periods_for_response(periods)})
-        data = _prepare_tree_response_data(S.db.load_json_file(path, {"nodes": [], "edges": []}), active)
+        cached = _period_cache_entry(path)
+        data = {"nodes": cached["nodes"], "edges": cached["edges"], "period": _period_for_response(active)}
         data["periods"] = _periods_for_response(periods)
         return jsonify(data)
 

@@ -1,10 +1,13 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import {
-  ArrowRight, Pencil, Trash2, Plus, Camera, UserX,
+  ArrowRight, Pencil, Trash2, Plus, Check, Camera, UserX,
   GraduationCap, Briefcase, Heart, Users, Shield,
-  Phone, Globe, School, GitBranch, Archive, ArchiveRestore, MapPin
+  Phone, PhoneCall, Globe, School, GitBranch, Archive, ArchiveRestore, MapPin, Mail,
+  Facebook, Instagram, Linkedin, ExternalLink
 } from 'lucide-react'
+import { parsePhoneNumberFromString } from 'libphonenumber-js'
 import { api } from '../api.js'
+import { buildGoogleMapsOpenUrl, parseGoogleMapsUrl, sanitizeStoredCoordinate } from '../location.js'
 
 function firstNameInitial(value) {
   const firstToken = String(value ?? '').trim().split(/\s+/).find(Boolean)
@@ -13,11 +16,13 @@ function firstNameInitial(value) {
 
 // ── Combo dropdown (searchable + free-text "other") ──────────────────────────
 // options: [{ value, count }] sorted by count desc
-function ComboDropdown({ value, onChange, options, placeholder = '—' }) {
+function ComboDropdown({ value, onChange, options, placeholder = '—', dir = 'rtl', customActionLabel = '＋ أخرى / اكتب يدوياً…', customInputPlaceholder = 'اكتب قيمة…' }) {
   const [open, setOpen]     = useState(false)
   const [query, setQuery]   = useState('')
   const [custom, setCustom] = useState(false)
   const ref = useRef(null)
+  const textAlign = dir === 'ltr' ? 'left' : 'right'
+  const safeOptions = Array.isArray(options) ? options : []
 
   // Close on outside click
   useEffect(() => {
@@ -27,7 +32,9 @@ function ComboDropdown({ value, onChange, options, placeholder = '—' }) {
   }, [])
 
   const getLabel = (o) => (o?.label || o?.value)
-  const filtered = options.filter(o =>
+  const selectedOption = safeOptions.find(o => o?.value === value)
+  const displayValue = selectedOption ? getLabel(selectedOption) : value
+  const filtered = safeOptions.filter(o =>
     getLabel(o) && getLabel(o).toString().toLowerCase().includes(query.toLowerCase())
   )
 
@@ -40,8 +47,10 @@ function ComboDropdown({ value, onChange, options, placeholder = '—' }) {
         <input
           autoFocus
           className="combo-input"
-          placeholder="اكتب قيمة…"
+          placeholder={customInputPlaceholder}
           defaultValue={value || ''}
+          dir={dir}
+          style={{ direction: dir, textAlign }}
           onBlur={e => { onChange(e.target.value); setCustom(false) }}
           onKeyDown={e => { if (e.key === 'Enter') { onChange(e.target.value); setCustom(false) } if (e.key === 'Escape') setCustom(false) }}
         />
@@ -54,8 +63,8 @@ function ComboDropdown({ value, onChange, options, placeholder = '—' }) {
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       <button type="button" className="combo-trigger" onClick={() => { setOpen(o => !o); setQuery('') }}>
-        <span style={{ flex: 1, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {value || <span style={{ color: 'var(--gray-400)' }}>{placeholder}</span>}
+        <span style={{ flex: 1, textAlign, direction: dir, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {displayValue || <span style={{ color: 'var(--gray-400)' }}>{placeholder}</span>}
         </span>
         <span style={{ color: 'var(--gray-400)', fontSize: '0.7rem', flexShrink: 0 }}>▾</span>
       </button>
@@ -66,22 +75,26 @@ function ComboDropdown({ value, onChange, options, placeholder = '—' }) {
             className="combo-search"
             placeholder="بحث…"
             value={query}
+            dir={dir}
+            style={{ direction: dir, textAlign }}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={e => e.stopPropagation()}
           />
           <div className="combo-list">
             {filtered.length === 0 && (
-              <div style={{ padding: '8px 12px', color: 'var(--gray-400)', fontSize: '0.82rem' }}>لا توجد نتائج</div>
+              <div style={{ padding: '8px 12px', color: 'var(--gray-400)', fontSize: '0.82rem', textAlign, direction: dir }}>لا توجد نتائج</div>
             )}
             {filtered.map(o => (
               <button type="button" key={o.value} className={`combo-item${value === o.value ? ' selected' : ''}`}
+                style={{ textAlign, direction: dir }}
                 onClick={() => pick(o.value)}>
                 {getLabel(o)}
               </button>
             ))}
             <button type="button" className="combo-item combo-other"
+              style={{ textAlign, direction: dir }}
               onClick={() => { setOpen(false); setQuery(''); setCustom(true) }}>
-              ＋ أخرى / اكتب يدوياً…
+              {customActionLabel}
             </button>
           </div>
         </div>
@@ -91,16 +104,19 @@ function ComboDropdown({ value, onChange, options, placeholder = '—' }) {
 }
 
 // ── Select-only dropdown (no free text) ───────────────────────────────────────
-function SelectDropdown({ value, onChange, options, placeholder = '—' }) {
+function SelectDropdown({ value, onChange, options, placeholder = '—', dir = 'rtl' }) {
+  const textAlign = dir === 'ltr' ? 'left' : 'right'
+  const safeOptions = Array.isArray(options) ? options : []
   return (
     <select
       className="combo-trigger"
       value={value || ''}
       onChange={e => onChange(e.target.value)}
-      style={{ cursor: 'pointer' }}
+      dir={dir}
+      style={{ cursor: 'pointer', direction: dir, textAlign }}
     >
       <option value="">{placeholder}</option>
-      {options.map(o => (
+      {safeOptions.map(o => (
         <option key={o.value || o} value={o.value || o}>{o.label || o.value || o}</option>
       ))}
     </select>
@@ -162,7 +178,941 @@ function normalizeCountryValue(value) {
   return text
 }
 
-const DEFAULT_ADDRESS_ROW = { country: 'الأردن', governorate: '', city: '', address: '', is_primary: true }
+function normalizePersonTitles(raw) {
+  const entries = Array.isArray(raw) ? raw : []
+  const seen = new Set()
+  const titles = []
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object') continue
+    const arabicTitle = String(entry.arabic_title || entry.arabic || entry.title || entry.name || '').replace(/\s+/g, ' ').trim()
+    const englishTitle = String(entry.english_title || entry.english || '').replace(/\s+/g, ' ').trim()
+    if (!arabicTitle || seen.has(arabicTitle)) continue
+    seen.add(arabicTitle)
+    titles.push({ arabic_title: arabicTitle, english_title: englishTitle })
+  }
+  return titles
+}
+
+function normalizeTitleLookupKey(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+function normalizeSchoolLookupKey(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().replace(/[أإآ]/g, 'ا').toLowerCase()
+}
+
+function normalizeSchoolBranches(raw) {
+  const out = {}
+  if (!raw || typeof raw !== 'object') return out
+
+  const items = Array.isArray(raw)
+    ? raw.map((row) => [row?.school, row?.branches])
+    : Object.entries(raw)
+
+  for (const [schoolRaw, branchesRaw] of items) {
+    const school = normalizeLooseInput(schoolRaw)
+    if (!school) continue
+
+    const source = Array.isArray(branchesRaw) ? branchesRaw : (typeof branchesRaw === 'string' ? [branchesRaw] : [])
+    const seen = new Set()
+    const branches = []
+    for (const item of source) {
+      const branch = normalizeLooseInput(item)
+      if (!branch || seen.has(branch)) continue
+      seen.add(branch)
+      branches.push(branch)
+    }
+
+    out[school] = branches
+  }
+
+  return out
+}
+
+function schoolBranchesForName(schoolBranches, schoolName) {
+  const school = normalizeLooseInput(schoolName)
+  if (!school) return []
+  const lookupKey = normalizeSchoolLookupKey(school)
+  const entry = Object.entries(normalizeSchoolBranches(schoolBranches)).find(([name]) => normalizeSchoolLookupKey(name) === lookupKey)
+  return entry ? entry[1] : []
+}
+
+function normalizeSchoolGradeValue(value) {
+  return normalizeLooseInput(value)
+}
+
+function normalizeSchoolGrades(values) {
+  const source = Array.isArray(values)
+    ? values
+    : String(values || '').split('|')
+
+  const seen = new Set()
+  const ordered = []
+  for (const option of SCHOOL_GRADE_OPTIONS) {
+    const exists = source.some((value) => normalizeSchoolGradeValue(value) === option)
+    if (exists && !seen.has(option)) {
+      seen.add(option)
+      ordered.push(option)
+    }
+  }
+
+  return ordered
+}
+
+function serializeSchoolGrades(values) {
+  return normalizeSchoolGrades(values).join('|')
+}
+
+function findHighestSchoolGrade(rows) {
+  const source = Array.isArray(rows) ? rows : []
+  let highestIndex = -1
+
+  source.forEach((row) => {
+    normalizeSchoolGrades(row?.grades_attended).forEach((grade) => {
+      const gradeIndex = SCHOOL_GRADE_OPTIONS.indexOf(grade)
+      if (gradeIndex > highestIndex) highestIndex = gradeIndex
+    })
+  })
+
+  return highestIndex >= 0 ? SCHOOL_GRADE_OPTIONS[highestIndex] : ''
+}
+
+function sanitizeDateInput(value) {
+  const text = String(value || '').trim()
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : ''
+}
+
+function normalizeSchoolRows(rows, { dropEmpty = false, graduatedFromSchools = false } = {}) {
+  const source = Array.isArray(rows) ? rows : []
+  const normalized = source
+    .map((row) => ({
+      school: normalizeLooseInput(row?.school),
+      section: normalizeLooseInput(row?.section),
+      start_date: sanitizeDateInput(row?.start_date),
+      end_date: sanitizeDateInput(row?.end_date),
+      is_current: row?.is_current === undefined || row?.is_current === null || row?.is_current === ''
+        ? !sanitizeDateInput(row?.end_date)
+        : toBoolDefaultFalse(row?.is_current),
+      grades_attended: normalizeSchoolGrades(row?.grades_attended),
+    }))
+    .map((row) => ({
+      ...row,
+      end_date: row.is_current ? '' : row.end_date,
+      is_current: graduatedFromSchools ? false : row.is_current,
+    }))
+    .filter((row) => (dropEmpty ? row.school : true))
+
+  const activeIndexes = normalized
+    .map((row, index) => (row.is_current ? index : -1))
+    .filter((index) => index >= 0)
+
+  if (activeIndexes.length > 1) {
+    const keepIndex = activeIndexes[activeIndexes.length - 1]
+    normalized.forEach((row, index) => {
+      if (index !== keepIndex) row.is_current = false
+    })
+  }
+
+  return dropEmpty
+    ? normalized.map((row) => ({
+        ...row,
+        grades_attended: serializeSchoolGrades(row.grades_attended),
+        section: row.section || null,
+        start_date: row.start_date || null,
+        end_date: row.end_date || null,
+      }))
+    : normalized
+}
+
+const HIGHER_EDUCATION_STATE_OPTIONS = [
+  { value: 'current', label: 'حاليًّا' },
+  { value: 'switched', label: 'حوّل التخصّص أو الجامعة / الكليّة' },
+  { value: 'exited', label: 'منسحب' },
+  { value: 'graduated', label: 'متخرّج' },
+]
+
+function normalizeHigherEducationStateValue(value, { isCurrent = false } = {}) {
+  const text = normalizeLooseInput(value)
+  if (!text) return isCurrent ? 'current' : ''
+
+  const lookup = text.toLowerCase()
+  if (lookup === 'current' || text === 'حاليًّا' || text === 'حاليا' || text === 'حالي') return 'current'
+  if (lookup === 'switched' || lookup === 'switched major|university' || lookup === 'switched major/university' || text === 'حوّل التخصّص أو الجامعة / الكليّة' || text === 'حوّل التخصص أو الجامعة / الكلية') return 'switched'
+  if (lookup === 'exited' || text === 'منسحب' || text === 'انسحب') return 'exited'
+  if (lookup === 'graduated' || text === 'متخرّج' || text === 'متخرج') return 'graduated'
+
+  return text
+}
+
+function higherEducationStateLabel(value) {
+  const normalized = normalizeHigherEducationStateValue(value)
+  const match = HIGHER_EDUCATION_STATE_OPTIONS.find((option) => option.value === normalized)
+  return match?.label || normalized
+}
+
+function normalizeHigherEducationRows(rows, { dropEmpty = false } = {}) {
+  const source = Array.isArray(rows) ? rows : []
+  const normalized = source
+    .map((row) => {
+      const startDate = sanitizeDateInput(row?.start_date)
+      const rawCurrent = row?.is_current === undefined || row?.is_current === null || row?.is_current === ''
+        ? !sanitizeDateInput(row?.end_date)
+        : toBoolDefaultFalse(row?.is_current)
+      const state = normalizeHigherEducationStateValue(row?.state, { isCurrent: rawCurrent })
+      const isCurrent = state === 'switched'
+        ? false
+        : state === 'current'
+          ? true
+          : rawCurrent
+
+      return {
+        university_college: normalizeLooseInput(row?.university_college),
+        major: normalizeLooseInput(row?.major),
+        degree: normalizeLooseInput(row?.degree),
+        start_date: startDate,
+        end_date: isCurrent ? '' : sanitizeDateInput(row?.end_date),
+        is_current: isCurrent,
+        state,
+      }
+    })
+    .filter((row) => (dropEmpty ? (row.university_college || row.major || row.degree || row.start_date || row.end_date || row.state) : true))
+
+  return dropEmpty
+    ? normalized.map((row) => ({
+        ...row,
+        university_college: row.university_college || null,
+        major: row.major || null,
+        degree: row.degree || null,
+        start_date: row.start_date || null,
+        end_date: row.end_date || null,
+        state: row.state || null,
+      }))
+    : normalized
+}
+
+const JOB_STATE_OPTIONS = [
+  { value: 'current', label: 'حاليًّا' },
+  { value: 'previous', label: 'سابق' },
+]
+
+function normalizeJobStateValue(value, { isCurrent = false } = {}) {
+  const text = normalizeLooseInput(value)
+  if (!text) return isCurrent ? 'current' : 'previous'
+
+  const lookup = text.toLowerCase()
+  if (lookup === 'current' || text === 'حاليًّا' || text === 'حاليا' || text === 'حالي') return 'current'
+  if (lookup === 'previous' || text === 'سابق') return 'previous'
+
+  return text
+}
+
+function jobStateLabel(value) {
+  const normalized = normalizeJobStateValue(value)
+  const match = JOB_STATE_OPTIONS.find((option) => option.value === normalized)
+  return match?.label || normalized
+}
+
+function normalizeJobRows(rows, { dropEmpty = false } = {}) {
+  const source = Array.isArray(rows) ? rows : []
+  const normalized = source
+    .map((row) => {
+      const startDate = sanitizeDateInput(row?.start_date)
+      const rawCurrent = row?.is_current === undefined || row?.is_current === null || row?.is_current === ''
+        ? !sanitizeDateInput(row?.end_date)
+        : toBoolDefaultFalse(row?.is_current)
+      const state = normalizeJobStateValue(row?.state, { isCurrent: rawCurrent })
+      const isCurrent = state === 'current'
+
+      return {
+        job_id: normalizeLooseInput(row?.job_id) || createLocalId('job'),
+        job_title: normalizeLooseInput(row?.job_title),
+        company: normalizeLooseInput(row?.company),
+        start_date: startDate,
+        end_date: isCurrent ? '' : sanitizeDateInput(row?.end_date),
+        is_current: isCurrent,
+        state,
+      }
+    })
+    .filter((row) => (dropEmpty ? (row.job_title || row.company || row.start_date || row.end_date || row.state) : true))
+
+  return dropEmpty
+    ? normalized.map((row) => ({
+        ...row,
+        job_title: row.job_title || null,
+        company: row.company || null,
+        start_date: row.start_date || null,
+        end_date: row.end_date || null,
+        state: row.state || null,
+      }))
+    : normalized
+}
+
+function jobRowLabel(row, index = null) {
+  const jobTitle = normalizeLooseInput(row?.job_title)
+  const company = normalizeLooseInput(row?.company)
+  if (jobTitle && company) return `${jobTitle} - ${company}`
+  if (jobTitle) return jobTitle
+  if (company) return company
+  return index === null ? 'سجل العمل' : `سجل العمل ${index + 1}`
+}
+
+function extractJobOptions(rows) {
+  const seen = new Set()
+  return normalizeJobRows(rows)
+    .map((row, index) => ({ value: row.job_id, label: jobRowLabel(row, index) }))
+    .filter((option) => {
+      if (!option.value || seen.has(option.value)) return false
+      seen.add(option.value)
+      return true
+    })
+}
+
+function normalizeEmailType(value) {
+  const text = normalizeLooseInput(value)
+  if (!text) return 'personal'
+  const lookup = text.toLowerCase()
+  if (lookup === 'personal' || text === 'شخصي') return 'personal'
+  if (lookup === 'work' || text === 'عمل') return 'work'
+  return text
+}
+
+function emailTypeLabel(value) {
+  const normalized = normalizeEmailType(value)
+  if (normalized === 'personal') return 'شخصي'
+  if (normalized === 'work') return 'عمل'
+  return normalized
+}
+
+function normalizeSocialPlatform(value) {
+  const text = normalizeLooseInput(value).toLowerCase()
+  if (!text) return 'facebook'
+  if (text === 'facebook' || text === 'instagram' || text === 'linkedin') return text
+  return 'facebook'
+}
+
+function socialPlatformLabel(value) {
+  const normalized = normalizeSocialPlatform(value)
+  if (normalized === 'facebook') return 'Facebook'
+  if (normalized === 'instagram') return 'Instagram'
+  if (normalized === 'linkedin') return 'LinkedIn'
+  return normalized
+}
+
+function socialPlatformIcon(value, size = 16) {
+  const normalized = normalizeSocialPlatform(value)
+  if (normalized === 'facebook') return <Facebook size={size} />
+  if (normalized === 'instagram') return <Instagram size={size} />
+  return <Linkedin size={size} />
+}
+
+function normalizeSocialUrl(value) {
+  return normalizeLooseInput(value)
+}
+
+function buildSocialProfileUrl(value) {
+  const text = normalizeSocialUrl(value)
+  if (!text) return ''
+  return /^https?:\/\//i.test(text) ? text : `https://${text}`
+}
+
+function normalizeSocialMediaRows(rows, { dropEmpty = false } = {}) {
+  const source = Array.isArray(rows) ? rows : []
+  const normalized = source
+    .map((row) => ({
+      platform: normalizeSocialPlatform(row?.platform),
+      url: normalizeSocialUrl(row?.url),
+      is_primary: toBoolDefaultFalse(row?.is_primary),
+    }))
+    .filter((row) => (dropEmpty ? row.url : true))
+
+  const grouped = new Map()
+  normalized.forEach((row, index) => {
+    const key = row.platform
+    const entries = grouped.get(key) || []
+    entries.push({ row, index })
+    grouped.set(key, entries)
+  })
+
+  const nextRows = [...normalized]
+  grouped.forEach((entries) => {
+    const primaryIndex = entries.findIndex((entry) => entry.row.is_primary)
+    const winner = primaryIndex >= 0 ? primaryIndex : 0
+    entries.forEach((entry, entryIndex) => {
+      nextRows[entry.index] = {
+        ...entry.row,
+        is_primary: entryIndex === winner,
+      }
+    })
+  })
+
+  return nextRows
+}
+
+function serializeSocialMediaRows(rows) {
+  return normalizeSocialMediaRows(rows, { dropEmpty: true })
+}
+
+function parseLinkedJobIds(value) {
+  const raw = Array.isArray(value)
+    ? value
+    : (() => {
+        const text = String(value || '').trim()
+        if (!text) return []
+        try {
+          const parsed = JSON.parse(text)
+          if (Array.isArray(parsed)) return parsed
+          return parsed ? [parsed] : []
+        } catch {
+          return text.split(/\s*[|,]\s*/)
+        }
+      })()
+
+  const seen = new Set()
+  return raw
+    .map((item) => normalizeLooseInput(item))
+    .filter((item) => {
+      if (!item || seen.has(item)) return false
+      seen.add(item)
+      return true
+    })
+}
+
+function normalizeEmailRows(rows, { dropEmpty = false, validJobIds = null } = {}) {
+  const source = Array.isArray(rows) ? rows : []
+  const validJobIdSet = validJobIds ? new Set(validJobIds.map((value) => String(value).trim()).filter(Boolean)) : null
+  const normalized = source
+    .map((row) => {
+      const type = normalizeEmailType(row?.type)
+      const linkedJobIds = type === 'work'
+        ? parseLinkedJobIds(row?.linked_job_ids).filter((jobId) => !validJobIdSet || validJobIdSet.has(jobId))
+        : []
+
+      return {
+        email: normalizeLooseInput(row?.email),
+        type,
+        is_primary: type === 'personal' ? toBoolDefaultFalse(row?.is_primary) : false,
+        linked_job_ids: linkedJobIds,
+      }
+    })
+    .filter((row) => (dropEmpty ? row.email : true))
+
+  let primaryAssigned = false
+  return normalized.map((row) => {
+    if (row.type !== 'personal') return { ...row, is_primary: false }
+    if (!row.is_primary) return row
+    if (primaryAssigned) return { ...row, is_primary: false }
+    primaryAssigned = true
+    return row
+  })
+}
+
+function serializeEmailRows(rows, { validJobIds = null } = {}) {
+  return normalizeEmailRows(rows, { dropEmpty: true, validJobIds }).map((row) => ({
+    ...row,
+    linked_job_ids: row.type === 'work' && row.linked_job_ids.length ? JSON.stringify(row.linked_job_ids) : null,
+  }))
+}
+
+const DEFAULT_ADDRESS_ROW = { country: 'الأردن', governorate: '', city: '', address: '', location_url: '', lat: null, lng: null, is_primary: true }
+const DEFAULT_MOBILE_NUMBER_ROW = { mobile_number: '', type: 'personal', phone_calls_flag: true, whatsapp_flag: true, linked_job_ids: [] }
+const DEFAULT_EMAIL_ROW = { email: '', type: 'personal', is_primary: false, linked_job_ids: [] }
+const DEFAULT_SOCIAL_MEDIA_ROW = { platform: 'facebook', url: '', is_primary: false }
+const NATIONALITY_JORDANIAN = 'أردنيّة'
+const NATIONALITY_CHILDREN_OF_JORDANIAN_MOTHERS = 'أبناء الأردنيّات'
+const PHONE_NUMBER_TYPE_OPTIONS = [
+  { value: 'personal', label: 'شخصي' },
+  { value: 'work', label: 'عمل' },
+  { value: 'home', label: 'منزل' },
+  { value: 'family', label: 'فرد من العائلة' },
+]
+const PHONE_NUMBER_FAMILY_RELATION_OPTIONS = [
+  { value: 'الأب', label: 'الأب' },
+  { value: 'الأم', label: 'الأم' },
+  { value: 'الأخ', label: 'الأخ' },
+  { value: 'الأخت', label: 'الأخت' },
+  { value: 'الجد', label: 'الجد' },
+  { value: 'الجدة', label: 'الجدة' },
+  { value: 'العم', label: 'العم' },
+  { value: 'العمة', label: 'العمة' },
+  { value: 'الخال', label: 'الخال' },
+  { value: 'الخالة', label: 'الخالة' },
+]
+const EMAIL_TYPE_OPTIONS = [
+  { value: 'personal', label: 'شخصي' },
+  { value: 'work', label: 'عمل' },
+]
+const SOCIAL_MEDIA_PLATFORM_OPTIONS = [
+  { value: 'facebook', label: 'Facebook' },
+  { value: 'instagram', label: 'Instagram' },
+  { value: 'linkedin', label: 'LinkedIn' },
+]
+const SCHOOL_GRADE_OPTIONS = [
+  'الروضة الصغرى (KG1)',
+  'الروضة الكبرى (KG2)',
+  'الصف الأول',
+  'الصف الثاني',
+  'الصف الثالث',
+  'الصف الرابع',
+  'الصف الخامس',
+  'الصف السادس',
+  'الصف السابع',
+  'الصف الثامن',
+  'الصف التاسع',
+  'الصف العاشر',
+  'الصف الحادي عشر (الأول ثانوي)',
+  'الصف الثاني عشر (التوجيهي)',
+]
+const DEFAULT_SCHOOL_SYSTEM = 'النظام الوطني الأردني'
+const SCHOOL_SYSTEM_OPTIONS = [DEFAULT_SCHOOL_SYSTEM, 'IGCSE', 'IB', 'SAT']
+
+function normalizeSchoolSystemValue(value) {
+  const text = normalizeLooseInput(value)
+  if (text === 'وطني') return DEFAULT_SCHOOL_SYSTEM
+  return text
+}
+
+function storedSchoolSystemValue(value) {
+  return normalizeSchoolSystemValue(value) || DEFAULT_SCHOOL_SYSTEM
+}
+
+function buildSchoolSystemOptions(values = [], currentValue = '') {
+  const seen = new Set()
+  const ordered = []
+
+  for (const source of [...SCHOOL_SYSTEM_OPTIONS, ...values, currentValue]) {
+    const option = normalizeSchoolSystemValue(source)
+    if (!option || seen.has(option)) continue
+    seen.add(option)
+    ordered.push(option)
+  }
+
+  return ordered
+}
+
+function preserveLooseInput(value) {
+  return String(value ?? '')
+}
+
+function normalizeLooseInput(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim()
+}
+
+function normalizeNationalityValue(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim()
+}
+
+function normalizeNationalityLookupKey(value) {
+  return normalizeNationalityValue(value).replace(/[أإآ]/g, 'ا').toLowerCase()
+}
+
+function normalizeIsoAlpha2(value) {
+  const text = String(value || '').trim().toUpperCase()
+  return /^[A-Z]{2}$/.test(text) ? text : ''
+}
+
+function flagEmojiFromIsoAlpha2(value) {
+  const isoAlpha2 = normalizeIsoAlpha2(value)
+  if (!isoAlpha2) return ''
+  return String.fromCodePoint(...Array.from(isoAlpha2).map((char) => 127397 + char.charCodeAt(0)))
+}
+
+function renderNationalityLabel(row, { fallbackIcon = '', gap = 6 } = {}) {
+  const nationality = normalizeNationalityValue(row?.nationality)
+  if (!nationality) return '—'
+
+  const flag = flagEmojiFromIsoAlpha2(row?.iso_alpha2)
+  const flagAssetUrl = emojiAssetUrlFromEmoji(flag)
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap, direction: 'rtl' }}>
+      {flagAssetUrl ? (
+        <img
+          src={flagAssetUrl}
+          alt={nationality}
+          title={nationality}
+          width="20"
+          height="20"
+          style={{ width: 20, height: 20, flexShrink: 0 }}
+        />
+      ) : (fallbackIcon ? <span aria-hidden="true">{fallbackIcon}</span> : null)}
+      <span>{nationality}</span>
+    </span>
+  )
+}
+
+function isJordanianNationality(value) {
+  return normalizeNationalityLookupKey(value) === normalizeNationalityLookupKey(NATIONALITY_JORDANIAN)
+}
+
+function isChildrenOfJordanianMothersNationality(value) {
+  return normalizeNationalityLookupKey(value) === normalizeNationalityLookupKey(NATIONALITY_CHILDREN_OF_JORDANIAN_MOTHERS)
+}
+
+function sanitizeNationalityIdentifierValue(field, value) {
+  const text = String(value ?? '').trim()
+  if (!text) return ''
+  if (field === 'passport_number') return text.replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+  return text.replace(/\D/g, '')
+}
+
+function normalizeNationalityRows(rows, { dropEmpty = false } = {}) {
+  const source = Array.isArray(rows) ? rows : []
+  const seen = new Set()
+  const normalized = []
+
+  for (const row of source) {
+    const nationality = normalizeNationalityValue(row?.nationality)
+    if (!nationality) continue
+
+    const lookupKey = normalizeNationalityLookupKey(nationality)
+    if (seen.has(lookupKey)) continue
+    seen.add(lookupKey)
+
+    normalized.push({
+      nationality,
+      iso_alpha2: normalizeIsoAlpha2(row?.iso_alpha2),
+      national_id: isJordanianNationality(nationality)
+        ? sanitizeNationalityIdentifierValue('national_id', row?.national_id)
+        : '',
+      passport_number: isChildrenOfJordanianMothersNationality(nationality)
+        ? ''
+        : sanitizeNationalityIdentifierValue('passport_number', row?.passport_number),
+      jordanian_mothers_children_serial: isChildrenOfJordanianMothersNationality(nationality)
+        ? sanitizeNationalityIdentifierValue('jordanian_mothers_children_serial', row?.jordanian_mothers_children_serial)
+        : '',
+    })
+  }
+
+  return dropEmpty ? normalized.filter((row) => row.nationality) : normalized
+}
+
+function serializeNationalityRows(rows, { dropEmpty = false } = {}) {
+  return normalizeNationalityRows(rows, { dropEmpty }).map((row) => ({
+    nationality: row.nationality,
+    national_id: row.national_id,
+    passport_number: row.passport_number,
+    jordanian_mothers_children_serial: row.jordanian_mothers_children_serial,
+  }))
+}
+
+function getNationalitySelectionError(rows, candidate) {
+  const nationality = normalizeNationalityValue(candidate)
+  if (!nationality) return 'يرجى إدخال الجنسية أولاً'
+
+  const normalizedRows = normalizeNationalityRows(rows)
+  if (normalizedRows.some((row) => normalizeNationalityLookupKey(row.nationality) === normalizeNationalityLookupKey(nationality))) {
+    return 'هذه الجنسية مضافة بالفعل'
+  }
+
+  const hasJordanian = normalizedRows.some((row) => isJordanianNationality(row.nationality))
+  const hasChildren = normalizedRows.some((row) => isChildrenOfJordanianMothersNationality(row.nationality))
+
+  if (isJordanianNationality(nationality) && hasChildren) {
+    return 'لا يمكن اختيار الجنسية الأردنيّة مع أبناء الأردنيّات'
+  }
+
+  if (isChildrenOfJordanianMothersNationality(nationality) && hasJordanian) {
+    return 'لا يمكن اختيار أبناء الأردنيّات مع الجنسية الأردنيّة'
+  }
+
+  return ''
+}
+
+function nationalityIdentifierFields(row) {
+  const fields = []
+
+  if (isJordanianNationality(row?.nationality)) {
+    fields.unshift({ key: 'national_id', label: 'الرقم الوطني', hint: 'أرقام فقط', dir: 'ltr', inputMode: 'numeric' })
+  }
+
+  if (isChildrenOfJordanianMothersNationality(row?.nationality)) {
+    fields.unshift({
+      key: 'jordanian_mothers_children_serial',
+      label: 'الرقم المتسلسل لهويّة أبناء الأردنيّات',
+      hint: 'أرقام فقط',
+      dir: 'ltr',
+      inputMode: 'numeric',
+    })
+    return fields
+  }
+
+  fields.unshift({ key: 'passport_number', label: 'رقم جواز السفر', hint: 'أحرف وأرقام فقط', dir: 'ltr', inputMode: 'text' })
+
+  return fields
+}
+
+function normalizeMobileNumberValue(value) {
+  const text = String(value ?? '').trim()
+  if (!text) return ''
+  return text.endsWith('.0') && /^[-+()\s\d.]+$/.test(text) ? text.slice(0, -2) : text
+}
+
+function normalizeMobileNumberType(value) {
+  const text = String(value ?? '').trim()
+  if (!text) return 'personal'
+  if (text.toLowerCase().startsWith('family:')) {
+    const relation = text.slice('family:'.length).trim()
+    return relation ? `family:${relation}` : 'family'
+  }
+  const known = PHONE_NUMBER_TYPE_OPTIONS.find(option => option.value.toLowerCase() === text.toLowerCase())
+  return known ? known.value : text
+}
+
+function parseMobileNumberTypeMeta(value) {
+  const normalized = normalizeMobileNumberType(value)
+  if (normalized.startsWith('family:')) {
+    return {
+      normalized,
+      selectorValue: 'family',
+      baseType: 'family',
+      familyRelation: normalized.slice('family:'.length).trim(),
+      isCustom: false,
+    }
+  }
+
+  const known = PHONE_NUMBER_TYPE_OPTIONS.find(option => option.value === normalized)
+  if (known) {
+    return {
+      normalized,
+      selectorValue: normalized,
+      baseType: normalized,
+      familyRelation: '',
+      isCustom: false,
+    }
+  }
+
+  return {
+    normalized,
+    selectorValue: normalized,
+    baseType: normalized,
+    familyRelation: '',
+    isCustom: true,
+  }
+}
+
+function buildFamilyMobileNumberType(relation) {
+  const normalizedRelation = String(relation ?? '').replace(/\s+/g, ' ').trim()
+  return normalizedRelation ? `family:${normalizedRelation}` : 'family'
+}
+
+function phoneNumberTypeLabel(value) {
+  const { normalized, baseType, familyRelation } = parseMobileNumberTypeMeta(value)
+  const labelMap = {
+    personal: 'الهاتف الشخصي',
+    work: 'هاتف العمل',
+    home: 'هاتف المنزل',
+    family: familyRelation ? `رقم هاتف ${familyRelation}` : 'رقم هاتف فرد من العائلة',
+    other: 'هاتف آخر',
+  }
+  if (labelMap[baseType]) return labelMap[baseType]
+  return normalized ? `رقم هاتف ${normalized}` : ''
+}
+
+const PHONE_COUNTRY_DIAL_CODES = [
+  { code: '971', iso: 'AE', name: 'الإمارات' },
+  { code: '970', iso: 'PS', name: 'فلسطين' },
+  { code: '968', iso: 'OM', name: 'عُمان' },
+  { code: '967', iso: 'YE', name: 'اليمن' },
+  { code: '966', iso: 'SA', name: 'السعودية' },
+  { code: '965', iso: 'KW', name: 'الكويت' },
+  { code: '964', iso: 'IQ', name: 'العراق' },
+  { code: '963', iso: 'SY', name: 'سوريا' },
+  { code: '962', iso: 'JO', name: 'الأردن' },
+  { code: '961', iso: 'LB', name: 'لبنان' },
+  { code: '974', iso: 'QA', name: 'قطر' },
+  { code: '973', iso: 'BH', name: 'البحرين' },
+  { code: '972', iso: 'IL', name: 'إسرائيل' },
+  { code: '971', iso: 'AE', name: 'الإمارات' },
+  { code: '970', iso: 'PS', name: 'فلسطين' },
+  { code: '994', iso: 'AZ', name: 'أذربيجان' },
+  { code: '995', iso: 'GE', name: 'جورجيا' },
+  { code: '996', iso: 'KG', name: 'قيرغيزستان' },
+  { code: '998', iso: 'UZ', name: 'أوزبكستان' },
+  { code: '995', iso: 'GE', name: 'جورجيا' },
+  { code: '90', iso: 'TR', name: 'تركيا' },
+  { code: '49', iso: 'DE', name: 'ألمانيا' },
+  { code: '44', iso: 'GB', name: 'المملكة المتحدة' },
+  { code: '43', iso: 'AT', name: 'النمسا' },
+  { code: '41', iso: 'CH', name: 'سويسرا' },
+  { code: '39', iso: 'IT', name: 'إيطاليا' },
+  { code: '34', iso: 'ES', name: 'إسبانيا' },
+  { code: '33', iso: 'FR', name: 'فرنسا' },
+  { code: '32', iso: 'BE', name: 'بلجيكا' },
+  { code: '31', iso: 'NL', name: 'هولندا' },
+  { code: '47', iso: 'NO', name: 'النرويج' },
+  { code: '46', iso: 'SE', name: 'السويد' },
+  { code: '45', iso: 'DK', name: 'الدنمارك' },
+  { code: '30', iso: 'GR', name: 'اليونان' },
+  { code: '27', iso: 'ZA', name: 'جنوب أفريقيا' },
+  { code: '20', iso: 'EG', name: 'مصر' },
+  { code: '1', iso: 'US', name: 'الولايات المتحدة' },
+]
+
+function flagEmojiFromIsoCode(isoCode) {
+  const code = String(isoCode || '').trim().toUpperCase()
+  if (!/^[A-Z]{2}$/.test(code)) return ''
+  return String.fromCodePoint(...code.split('').map((char) => 127397 + char.charCodeAt(0)))
+}
+
+function emojiAssetUrlFromEmoji(emoji) {
+  const text = String(emoji || '').trim()
+  if (!text) return ''
+  const codePoints = Array.from(text)
+    .map((char) => char.codePointAt(0)?.toString(16))
+    .filter(Boolean)
+    .join('-')
+  if (!codePoints) return ''
+  return `https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/svg/${codePoints}.svg`
+}
+
+function normalizePhoneDigits(value) {
+  let text = String(value ?? '').trim()
+  if (!text) return ''
+  text = text.replace(/[()\-\s]/g, '')
+  if (text.startsWith('+')) text = text.slice(1)
+  if (text.startsWith('00')) text = text.slice(2)
+  return text.replace(/\D/g, '')
+}
+
+function detectPhoneCountry(value) {
+  const raw = String(value ?? '').trim()
+  const digits = normalizePhoneDigits(raw)
+  if (!digits) return null
+
+  if (/^07\d{8}$/.test(raw.replace(/\D/g, ''))) {
+    return { iso: 'JO', name: 'الأردن', flag: flagEmojiFromIsoCode('JO') }
+  }
+
+  if (/^[789]\d{7}$/.test(digits) || /^7\d{8}$/.test(digits) || /^962/.test(digits)) {
+    return { iso: 'JO', name: 'الأردن', flag: flagEmojiFromIsoCode('JO') }
+  }
+
+  const match = PHONE_COUNTRY_DIAL_CODES
+    .slice()
+    .sort((a, b) => b.code.length - a.code.length)
+    .find((entry) => digits.startsWith(entry.code))
+
+  if (!match) return null
+
+  return {
+    iso: match.iso,
+    name: match.name,
+    flag: flagEmojiFromIsoCode(match.iso),
+  }
+}
+
+function formatDisplayPhoneNumber(value) {
+  const raw = normalizeMobileNumberValue(value)
+  if (!raw) return ''
+
+  const trimmed = String(raw).trim()
+  const normalized = trimmed.startsWith('00') ? `+${trimmed.slice(2)}` : trimmed
+  const guessedCountry = detectPhoneCountry(trimmed)?.iso || 'JO'
+
+  const parsed = normalized.startsWith('+')
+    ? parsePhoneNumberFromString(normalized)
+    : parsePhoneNumberFromString(normalized, guessedCountry)
+
+  if (parsed && parsed.isPossible()) {
+    return parsed.formatInternational()
+  }
+
+  return trimmed
+}
+
+function normalizeWhatsAppPhone(value) {
+  let digits = String(value ?? '').replace(/[^\d+]/g, '').trim()
+  if (!digits) return ''
+
+  if (digits.startsWith('+')) digits = digits.slice(1)
+  if (digits.startsWith('00')) digits = digits.slice(2)
+
+  const plainDigits = digits.replace(/\D/g, '')
+  if (!plainDigits) return ''
+
+  if (plainDigits.startsWith('962')) return plainDigits
+  if (plainDigits.startsWith('0')) return `962${plainDigits.slice(1)}`
+  if (plainDigits.startsWith('7') && plainDigits.length === 9) return `962${plainDigits}`
+
+  return plainDigits
+}
+
+function buildWhatsAppWebChatUrl(value) {
+  const phone = normalizeWhatsAppPhone(value)
+  if (!phone) return ''
+  return `https://web.whatsapp.com/send?phone=${phone}`
+}
+
+function WhatsAppIcon({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="10" fill="#25D366" />
+      <path
+        d="M12 6.3a5.62 5.62 0 0 0-4.78 8.58l-.67 2.32 2.38-.62A5.62 5.62 0 1 0 12 6.3Z"
+        fill="white"
+      />
+      <path
+        d="M12.08 8.45a3.86 3.86 0 0 0-3.34 5.8l.18.3-.4 1.36 1.4-.37.29.17a3.86 3.86 0 1 0 1.87-7.26Z"
+        fill="#25D366"
+      />
+      <path
+        d="M10.6 10.38c.08-.18.16-.19.27-.19h.24c.08 0 .18.02.26.22l.3.71c.05.11.04.18-.02.27l-.18.28c-.05.08-.04.15.01.22.12.22.35.52.66.79.35.3.64.46.87.57.09.04.15.03.22-.03l.27-.31c.08-.1.16-.11.28-.06l.67.29c.18.08.21.18.21.26v.22c0 .14-.1.33-.25.49-.17.18-.43.3-.71.3-.41 0-.94-.16-1.58-.58a5.13 5.13 0 0 1-1.15-1.11c-.36-.52-.52-.98-.52-1.35 0-.26.1-.49.27-.67Z"
+        fill="white"
+      />
+    </svg>
+  )
+}
+
+function toBoolDefaultTrue(value) {
+  if (value === null || value === undefined || value === '') return true
+  if (typeof value === 'boolean') return value
+  const text = String(value).trim().toLowerCase()
+  if (!text || text === 'nan' || text === 'none' || text === 'null') return true
+  return !['0', 'false', 'no', 'n'].includes(text)
+}
+
+function toBoolDefaultFalse(value) {
+  if (value === null || value === undefined || value === '') return false
+  if (typeof value === 'boolean') return value
+  const text = String(value).trim().toLowerCase()
+  if (!text || text === 'nan' || text === 'none' || text === 'null') return false
+  return ['1', 'true', 'yes', 'y'].includes(text)
+}
+
+function createLocalId(prefix = 'row') {
+  const uuid = globalThis.crypto?.randomUUID?.()
+  if (uuid) return `${prefix}_${uuid.replace(/-/g, '').slice(0, 12)}`
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+function normalizeMobileNumberRows(rows, { dropEmpty = false, validJobIds = null } = {}) {
+  const source = Array.isArray(rows) ? rows : []
+  const validJobIdSet = validJobIds ? new Set(validJobIds.map((value) => String(value).trim()).filter(Boolean)) : null
+  const normalized = source.map((row) => {
+    const type = normalizeMobileNumberType(row?.type)
+    const linkedJobIds = type === 'work'
+      ? parseLinkedJobIds(row?.linked_job_ids).filter((jobId) => !validJobIdSet || validJobIdSet.has(jobId))
+      : []
+
+    return {
+      mobile_number: normalizeMobileNumberValue(row?.mobile_number),
+      type,
+      phone_calls_flag: toBoolDefaultTrue(row?.phone_calls_flag),
+      whatsapp_flag: toBoolDefaultTrue(row?.whatsapp_flag),
+      linked_job_ids: linkedJobIds,
+    }
+  })
+
+  return dropEmpty
+    ? normalized.filter((row) => row.mobile_number)
+    : normalized
+}
+
+function serializeMobileNumberRows(rows, { validJobIds = null } = {}) {
+  return normalizeMobileNumberRows(rows, { dropEmpty: true, validJobIds }).map((row) => ({
+    ...row,
+    linked_job_ids: row.type === 'work' && row.linked_job_ids.length ? JSON.stringify(row.linked_job_ids) : null,
+  }))
+}
 
 function parseLegacyBirthDate(str) {
   if (!str) return { month: '', day: '' }
@@ -318,25 +1268,1358 @@ function TagField({ items, valueKey, onAdd, onRemove, placeholder, options = [] 
   )
 }
 
+function NationalityRowsEditor({ rows, onChange, options = [], placeholder = 'أضف جنسية…' }) {
+  const normalizedRows = normalizeNationalityRows(rows)
+  const [open, setOpen] = useState(false)
+  const [custom, setCustom] = useState(false)
+  const [query, setQuery] = useState('')
+  const [draft, setDraft] = useState('')
+  const [message, setMessage] = useState('')
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) {
+        setOpen(false)
+        setQuery('')
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [])
+
+  const updateRows = (nextRows) => {
+    onChange(normalizeNationalityRows(nextRows))
+  }
+
+  const updateRow = (index, key, value) => {
+    updateRows(normalizedRows.map((row, rowIndex) => (
+      rowIndex === index
+        ? { ...row, [key]: sanitizeNationalityIdentifierValue(key, value) }
+        : row
+    )))
+  }
+
+  const removeRow = (index) => {
+    setMessage('')
+    updateRows(normalizedRows.filter((_, rowIndex) => rowIndex !== index))
+  }
+
+  const addNationality = (value) => {
+    const nationality = normalizeNationalityValue(value)
+    const error = getNationalitySelectionError(normalizedRows, nationality)
+    if (error) {
+      setMessage(error)
+      return
+    }
+
+    setMessage('')
+    updateRows([
+      ...normalizedRows,
+      { nationality, iso_alpha2: '', national_id: '', passport_number: '', jordanian_mothers_children_serial: '' },
+    ])
+    setOpen(false)
+    setCustom(false)
+    setQuery('')
+    setDraft('')
+  }
+
+  const availableOptions = Array.from(new Map(
+    options
+      .map((option) => {
+        const value = normalizeNationalityValue(option?.value || option)
+        const label = option?.label || value
+        return value ? [normalizeNationalityLookupKey(value), { value, label }] : null
+      })
+      .filter(Boolean)
+  ).values()).filter((option) => !getNationalitySelectionError(normalizedRows, option.value))
+
+  const filteredOptions = availableOptions.filter((option) => option.label.toLowerCase().includes(query.toLowerCase()))
+  const conflictHint = normalizedRows.some((row) => isJordanianNationality(row.nationality))
+    ? 'لا يمكن اختيار أبناء الأردنيّات مع الجنسية الأردنيّة.'
+    : normalizedRows.some((row) => isChildrenOfJordanianMothersNationality(row.nationality))
+      ? 'لا يمكن اختيار الجنسية الأردنيّة مع أبناء الأردنيّات.'
+      : ''
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {normalizedRows.map((row, index) => (
+        <div key={`nationality-row-${index}`} style={{ border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-md)', padding: 12, background: 'var(--gray-50)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{renderNationalityLabel(row)}</div>
+            <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => removeRow(index)}>
+              حذف
+            </button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+            {nationalityIdentifierFields(row).map((field) => (
+              <label key={field.key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>{field.label}</span>
+                <input
+                  className="combo-input"
+                  value={row[field.key] || ''}
+                  dir={field.dir}
+                  inputMode={field.inputMode}
+                  style={{ direction: field.dir, textAlign: field.dir === 'ltr' ? 'left' : 'right' }}
+                  placeholder={field.hint}
+                  onChange={(event) => updateRow(index, field.key, event.target.value)}
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {!custom ? (
+        <div ref={ref} style={{ position: 'relative' }}>
+          <button type="button" className="combo-trigger" onClick={() => { setOpen((current) => !current); setQuery(''); setMessage('') }}>
+            <span style={{ flex: 1, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {placeholder}
+            </span>
+            <span style={{ color: 'var(--gray-400)', fontSize: '0.7rem', flexShrink: 0 }}>▾</span>
+          </button>
+          {open && (
+            <div className="combo-dropdown">
+              <input
+                autoFocus
+                className="combo-search"
+                placeholder="بحث…"
+                value={query}
+                onChange={event => setQuery(event.target.value)}
+                onKeyDown={event => event.stopPropagation()}
+              />
+              <div className="combo-list">
+                {filteredOptions.length === 0 && (
+                  <div style={{ padding: '8px 12px', color: 'var(--gray-400)', fontSize: '0.82rem' }}>لا توجد نتائج</div>
+                )}
+                {filteredOptions.map((option) => (
+                  <button type="button" key={option.value} className="combo-item" onClick={() => addNationality(option.value)}>
+                    {option.label}
+                  </button>
+                ))}
+                <button type="button" className="combo-item combo-other" onClick={() => { setOpen(false); setQuery(''); setCustom(true); setMessage('') }}>
+                  ＋ أخرى / اكتب يدوياً…
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input
+            autoFocus
+            className="combo-input"
+            style={{ flex: 1 }}
+            placeholder="اكتب الجنسية…"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') addNationality(draft)
+              if (event.key === 'Escape') { setCustom(false); setDraft(''); setMessage('') }
+            }}
+          />
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => addNationality(draft)}>إضافة</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setCustom(false); setDraft(''); setMessage('') }}>✕</button>
+        </div>
+      )}
+
+      {conflictHint && <div style={{ fontSize: '0.78rem', color: '#92400e' }}>{conflictHint}</div>}
+      {message && <div style={{ fontSize: '0.78rem', color: 'var(--red)' }}>{message}</div>}
+    </div>
+  )
+}
+
+function PhoneNumbersEditor({ rows, onChange, jobRows = [] }) {
+  const jobOptions = extractJobOptions(jobRows)
+  const validJobIds = jobOptions.map((option) => option.value)
+  const normalizedRows = normalizeMobileNumberRows(rows, { validJobIds })
+  const typeOptions = Array.from(new Map(
+    [...PHONE_NUMBER_TYPE_OPTIONS, ...normalizedRows
+      .map((row) => parseMobileNumberTypeMeta(row.type))
+      .filter((meta) => meta.normalized && meta.baseType !== 'family')
+      .map((meta) => ({ value: meta.selectorValue, label: PHONE_NUMBER_TYPE_OPTIONS.find((option) => option.value === meta.selectorValue)?.label || meta.selectorValue }))]
+      .map((option) => [option.value, option])
+  ).values())
+  const familyRelationOptions = Array.from(new Map(
+    [...PHONE_NUMBER_FAMILY_RELATION_OPTIONS,
+      ...normalizedRows
+        .map((row) => parseMobileNumberTypeMeta(row.type).familyRelation)
+        .filter(Boolean)
+        .map((value) => ({ value, label: value }))]
+      .map((option) => [option.value, option])
+  ).values())
+
+  const commit = (nextRows) => onChange(normalizeMobileNumberRows(nextRows, { validJobIds }))
+  const updateRow = (index, key, value) => {
+    commit(normalizedRows.map((row, rowIndex) => {
+      if (rowIndex !== index) return row
+
+      const nextRow = { ...row, [key]: value }
+      if (key === 'type') {
+        const selectedType = normalizeMobileNumberType(value)
+        const currentFamilyRelation = parseMobileNumberTypeMeta(row.type).familyRelation
+        nextRow.type = selectedType === 'family'
+          ? buildFamilyMobileNumberType(currentFamilyRelation)
+          : selectedType
+        if (parseMobileNumberTypeMeta(nextRow.type).baseType !== 'work') nextRow.linked_job_ids = []
+      }
+      if (key === 'family_relation') {
+        nextRow.type = buildFamilyMobileNumberType(value)
+      }
+      return nextRow
+    }))
+  }
+  const toggleLinkedJob = (index, jobId) => {
+    commit(normalizedRows.map((row, rowIndex) => {
+      if (rowIndex !== index) return row
+      const current = new Set(parseLinkedJobIds(row.linked_job_ids))
+      if (current.has(jobId)) current.delete(jobId)
+      else current.add(jobId)
+      return { ...row, linked_job_ids: Array.from(current) }
+    }))
+  }
+
+  const addRow = () => commit([...normalizedRows, { ...DEFAULT_MOBILE_NUMBER_ROW }])
+  const removeRow = (index) => commit(normalizedRows.filter((_, rowIndex) => rowIndex !== index))
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {normalizedRows.map((row, index) => {
+        const typeMeta = parseMobileNumberTypeMeta(row.type)
+        const linkedIds = parseLinkedJobIds(row.linked_job_ids)
+        return (
+          <div key={`phone-row-${index}`} style={{ border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-md)', padding: 12, background: 'var(--gray-50)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div dir="ltr" style={{ fontWeight: 700, color: 'var(--navy)', direction: 'ltr', unicodeBidi: 'plaintext' }}>{row.mobile_number || '—'}</div>
+                <span style={{ fontSize: '0.78rem', color: 'var(--gray-500)', fontWeight: 600 }}>{phoneNumberTypeLabel(row.type)}</span>
+              </div>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => removeRow(index)}>
+                حذف
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>الرقم</span>
+                <input
+                  className="combo-input"
+                  value={row.mobile_number || ''}
+                  onChange={(event) => updateRow(index, 'mobile_number', event.target.value)}
+                  placeholder="079xxxxxxx"
+                  dir="ltr"
+                  inputMode="tel"
+                  style={{ textAlign: 'left' }}
+                />
+              </label>
+
+              <div className="profile-two-column-layout">
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>النوع</span>
+                  <ComboDropdown
+                    value={typeMeta.selectorValue}
+                    onChange={(value) => updateRow(index, 'type', value)}
+                    options={typeOptions}
+                    placeholder="اختر النوع…"
+                    customActionLabel="اكتب النوع يدوياً…"
+                    customInputPlaceholder="اكتب نوع الرقم…"
+                  />
+                </label>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'center' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>الإعدادات</span>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.88rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(row.phone_calls_flag)}
+                      onChange={(event) => updateRow(index, 'phone_calls_flag', event.target.checked)}
+                    />
+                    اتصالات
+                  </label>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.88rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(row.whatsapp_flag)}
+                      onChange={(event) => updateRow(index, 'whatsapp_flag', event.target.checked)}
+                    />
+                    واتساب
+                  </label>
+                </div>
+              </div>
+
+              {typeMeta.baseType === 'family' ? (
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>صلة القرابة</span>
+                  <ComboDropdown
+                    value={typeMeta.familyRelation}
+                    onChange={(value) => updateRow(index, 'family_relation', value)}
+                    options={familyRelationOptions}
+                    placeholder="اختر صلة القرابة…"
+                    customActionLabel="اكتب صلة القرابة يدوياً…"
+                    customInputPlaceholder="اكتب صلة القرابة…"
+                  />
+                </label>
+              ) : null}
+
+              {typeMeta.baseType === 'work' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>سجلات العمل المرتبطة</span>
+                  {jobOptions.length === 0 ? (
+                    <div style={{ fontSize: '0.78rem', color: 'var(--gray-400)' }}>أضف سجل عمل أولاً ثم اربط الرقم به.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {jobOptions.map((option) => {
+                        const active = linkedIds.includes(option.value)
+                        return (
+                          <label key={option.value} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.88rem' }}>
+                            <input
+                              type="checkbox"
+                              checked={active}
+                              onChange={() => toggleLinkedJob(index, option.value)}
+                            />
+                            {option.label}
+                          </label>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        )
+      })}
+      <button type="button" className="add-row-btn" onClick={addRow}><Plus size={14} /> إضافة رقم هاتف</button>
+    </div>
+  )
+}
+
+function EmailsEditor({ rows, onChange, jobRows = [] }) {
+  const jobOptions = extractJobOptions(jobRows)
+  const validJobIds = jobOptions.map((option) => option.value)
+  const normalizedRows = normalizeEmailRows(rows, { validJobIds })
+
+  const commit = (nextRows) => onChange(normalizeEmailRows(nextRows, { validJobIds }))
+  const updateRow = (index, key, value) => {
+    commit(normalizedRows.map((row, rowIndex) => {
+      if (rowIndex !== index) return row
+
+      const nextRow = { ...row, [key]: value }
+      if (key === 'type') {
+        nextRow.type = normalizeEmailType(value)
+        if (nextRow.type !== 'personal') nextRow.is_primary = false
+        if (nextRow.type !== 'work') nextRow.linked_job_ids = []
+      }
+      return nextRow
+    }))
+  }
+  const toggleLinkedJob = (index, jobId) => {
+    commit(normalizedRows.map((row, rowIndex) => {
+      if (rowIndex !== index) return row
+      const current = new Set(parseLinkedJobIds(row.linked_job_ids))
+      if (current.has(jobId)) current.delete(jobId)
+      else current.add(jobId)
+      return { ...row, linked_job_ids: Array.from(current) }
+    }))
+  }
+  const addRow = () => commit([...normalizedRows, { ...DEFAULT_EMAIL_ROW, is_primary: !normalizedRows.some((row) => row.type === 'personal' && row.is_primary) }])
+  const removeRow = (index) => commit(normalizedRows.filter((_, rowIndex) => rowIndex !== index))
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {normalizedRows.map((row, index) => {
+        const linkedIds = parseLinkedJobIds(row.linked_job_ids)
+        return (
+          <div key={`email-row-${index}`} style={{ border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-md)', padding: 12, background: 'var(--gray-50)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{row.email || '—'}</div>
+                <span style={{ fontSize: '0.78rem', color: 'var(--gray-500)', fontWeight: 600 }}>
+                  {emailTypeLabel(row.type)}{row.type === 'personal' && row.is_primary ? ' • الرئيسي' : ''}
+                </span>
+              </div>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => removeRow(index)}>
+                حذف
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>البريد الإلكتروني</span>
+                <input
+                  className="combo-input"
+                  type="email"
+                  value={row.email || ''}
+                  dir="ltr"
+                  style={{ textAlign: 'left' }}
+                  placeholder="name@example.com"
+                  onChange={(event) => updateRow(index, 'email', event.target.value)}
+                />
+              </label>
+
+              <div className="profile-two-column-layout">
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>النوع</span>
+                  <SelectDropdown
+                    value={row.type}
+                    onChange={(value) => updateRow(index, 'type', value)}
+                    options={EMAIL_TYPE_OPTIONS}
+                    placeholder="اختر النوع…"
+                  />
+                </label>
+
+                {row.type === 'personal' ? (
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'center' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>الإعدادات</span>
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.88rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(row.is_primary)}
+                        onChange={(event) => updateRow(index, 'is_primary', event.target.checked)}
+                      />
+                      البريد الشخصي الرئيسي
+                    </label>
+                  </label>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>سجلات العمل المرتبطة</span>
+                    {jobOptions.length === 0 ? (
+                      <div style={{ fontSize: '0.78rem', color: 'var(--gray-400)' }}>أضف سجل عمل أولاً ثم اربط البريد به.</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {jobOptions.map((option) => {
+                          const active = linkedIds.includes(option.value)
+                          return (
+                            <label key={option.value} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.88rem' }}>
+                              <input
+                                type="checkbox"
+                                checked={active}
+                                onChange={() => toggleLinkedJob(index, option.value)}
+                              />
+                              {option.label}
+                            </label>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })}
+
+      <button type="button" className="add-row-btn" onClick={addRow}><Plus size={14} /> إضافة بريد إلكتروني</button>
+    </div>
+  )
+}
+
+function SocialMediaEditor({ rows, onChange }) {
+  const normalizedRows = normalizeSocialMediaRows(rows)
+
+  const commit = (nextRows) => onChange(normalizeSocialMediaRows(nextRows))
+  const updateRow = (index, key, value) => {
+    commit(normalizedRows.map((row, rowIndex) => {
+      if (rowIndex !== index) return row
+      const nextRow = { ...row, [key]: value }
+      if (key === 'platform') nextRow.platform = normalizeSocialPlatform(value)
+      return nextRow
+    }))
+  }
+  const addRow = () => commit([...normalizedRows, { ...DEFAULT_SOCIAL_MEDIA_ROW }])
+  const removeRow = (index) => commit(normalizedRows.filter((_, rowIndex) => rowIndex !== index))
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {normalizedRows.map((row, index) => (
+        <div key={`social-row-${index}`} style={{ border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-md)', padding: 12, background: 'var(--gray-50)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: 700, color: 'var(--navy)' }}>
+                {socialPlatformIcon(row.platform, 16)}
+                <span>{socialPlatformLabel(row.platform)}</span>
+              </div>
+              <span dir="ltr" style={{ fontSize: '0.78rem', color: 'var(--gray-500)', fontWeight: 600, direction: 'ltr', unicodeBidi: 'plaintext' }}>{row.url || '—'}</span>
+            </div>
+            <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => removeRow(index)}>
+              حذف
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+            <div className="profile-two-column-layout">
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>المنصة</span>
+                <SelectDropdown
+                  value={row.platform}
+                  onChange={(value) => updateRow(index, 'platform', value)}
+                  options={SOCIAL_MEDIA_PLATFORM_OPTIONS}
+                  placeholder="اختر المنصة…"
+                  dir="ltr"
+                />
+              </label>
+
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'center' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>الإعدادات</span>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.88rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(row.is_primary)}
+                    onChange={(event) => updateRow(index, 'is_primary', event.target.checked)}
+                  />
+                  الملف الرئيسي لهذه المنصة
+                </label>
+              </label>
+            </div>
+
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>الرابط</span>
+              <input
+                className="combo-input"
+                value={row.url || ''}
+                dir="ltr"
+                style={{ textAlign: 'left' }}
+                placeholder="https://..."
+                onChange={(event) => updateRow(index, 'url', event.target.value)}
+              />
+            </label>
+          </div>
+        </div>
+      ))}
+      <button type="button" className="add-row-btn" onClick={addRow}><Plus size={14} /> إضافة حساب تواصل اجتماعي</button>
+    </div>
+  )
+}
+
+function MultiSelectChips({ options, selected, onChange }) {
+  const selectedSet = new Set(Array.isArray(selected) ? selected : [])
+  const toggle = (option) => {
+    if (selectedSet.has(option)) {
+      onChange((selected || []).filter((value) => value !== option))
+      return
+    }
+    onChange([...(selected || []), option])
+  }
+
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {options.map((option) => {
+        const active = selectedSet.has(option)
+        return (
+          <button
+            key={option}
+            type="button"
+            className={'am-option-item' + (active ? ' am-selected' : '')}
+            style={{ width: 'auto', paddingInline: 12 }}
+            onClick={() => toggle(option)}
+          >
+            <span className={'am-check-box' + (active ? ' am-selected' : '')}>
+              {active && <Plus size={11} style={{ transform: 'rotate(45deg)' }} />}
+            </span>
+            {option}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function CompactMultiSelect({ options, selected, onChange, placeholder = 'اختر…' }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const normalizedSelected = Array.isArray(selected) ? selected : []
+  const selectedSet = new Set(normalizedSelected)
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [])
+
+  const toggle = (option) => {
+    if (selectedSet.has(option)) {
+      onChange(normalizedSelected.filter((value) => value !== option))
+      return
+    }
+    onChange([...normalizedSelected, option])
+  }
+
+  const summary = normalizedSelected.length === 0
+    ? placeholder
+    : normalizedSelected.length <= 2
+      ? normalizedSelected.join('، ')
+      : `${normalizedSelected.length} صفوف محددة`
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button type="button" className="combo-trigger" onClick={() => setOpen((current) => !current)}>
+        <span style={{ flex: 1, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{summary}</span>
+        <span style={{ color: 'var(--gray-400)', fontSize: '0.7rem', flexShrink: 0 }}>▾</span>
+      </button>
+      {open && (
+        <div className="combo-dropdown">
+          <div className="combo-list" style={{ maxHeight: 260 }}>
+            {options.map((option) => {
+              const active = selectedSet.has(option)
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  className={'combo-item' + (active ? ' selected' : '')}
+                  onClick={() => toggle(option)}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}
+                >
+                  <span>{option}</span>
+                  {active && <Check size={13} strokeWidth={3} />}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches = {}, graduatedFromSchools = false, onGraduatedChange, schoolSystem = '', schoolSystemOptions = [], onSchoolSystemChange }) {
+  const normalizedRows = normalizeSchoolRows(rows, { graduatedFromSchools })
+  const [open, setOpen] = useState(false)
+  const [custom, setCustom] = useState(false)
+  const [query, setQuery] = useState('')
+  const [draft, setDraft] = useState('')
+  const [message, setMessage] = useState('')
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) {
+        setOpen(false)
+        setQuery('')
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [])
+
+  const commit = (nextRows) => onChange(normalizeSchoolRows(nextRows, { graduatedFromSchools }))
+
+  const commitRowChanges = (index, changes) => {
+    const nextRows = normalizedRows.map((entry, rowIndex) => {
+      if (rowIndex !== index) {
+        return changes.is_current ? { ...entry, is_current: false } : entry
+      }
+      const nextRow = { ...entry, ...changes }
+      if (graduatedFromSchools) nextRow.is_current = false
+      if (Object.prototype.hasOwnProperty.call(changes, 'is_current') && changes.is_current) {
+        nextRow.end_date = ''
+      }
+      if (Object.prototype.hasOwnProperty.call(changes, 'is_current') && !changes.is_current && nextRow.end_date) {
+        nextRow.end_date = sanitizeDateInput(nextRow.end_date)
+      }
+      return nextRow
+    })
+    commit(nextRows)
+  }
+
+  const addSchool = (value) => {
+    const school = normalizeLooseInput(value)
+    if (!school) {
+      setMessage('يرجى إدخال المدرسة أولاً')
+      return
+    }
+    setMessage('')
+    commit([...normalizedRows, { school, section: '', start_date: '', end_date: '', is_current: true, grades_attended: [] }])
+    setOpen(false)
+    setCustom(false)
+    setQuery('')
+    setDraft('')
+  }
+
+  const updateRow = (index, key, value) => {
+    const nextRows = normalizedRows.map((row, rowIndex) => {
+      if (rowIndex !== index) return row
+      const nextRow = { ...row, [key]: normalizeLooseInput(value) }
+      if (key === 'school') {
+        const sections = schoolBranchesForName(schoolBranches, nextRow.school)
+        if (sections.length > 0 && nextRow.section && !sections.includes(nextRow.section)) {
+          nextRow.section = ''
+        }
+        if (sections.length === 0) {
+          nextRow.section = ''
+        }
+      }
+      return nextRow
+    })
+    setMessage('')
+    commit(nextRows)
+  }
+
+  const removeRow = (index) => {
+    setMessage('')
+    commit(normalizedRows.filter((_, rowIndex) => rowIndex !== index))
+  }
+
+  const availableOptions = Array.from(new Map(
+    schoolOptions
+      .map((option) => {
+        const value = normalizeLooseInput(option?.value || option)
+        const label = option?.label || value
+        return value ? [normalizeSchoolLookupKey(value), { value, label }] : null
+      })
+      .filter(Boolean)
+  ).values())
+
+  const filteredOptions = availableOptions.filter((option) => option.label.toLowerCase().includes(query.toLowerCase()))
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: '0.82rem', color: 'var(--gray-500)' }}>يمكن أن تكون مدرسة واحدة فقط نشطة، أو لا توجد مدرسة نشطة إذا كان الطالب متخرّجًا.</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ minWidth: 180 }}>
+            <ComboDropdown
+              value={normalizeSchoolSystemValue(schoolSystem)}
+              onChange={(value) => onSchoolSystemChange && onSchoolSystemChange(normalizeSchoolSystemValue(value))}
+              options={buildSchoolSystemOptions(schoolSystemOptions, schoolSystem).map((value) => ({ value, label: value }))}
+              placeholder="نظام الدراسة"
+            />
+          </div>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', color: 'var(--navy)' }}>
+            <input
+              type="checkbox"
+              checked={Boolean(graduatedFromSchools)}
+              onChange={(event) => onGraduatedChange && onGraduatedChange(event.target.checked)}
+            />
+            متخرّج من المدارس
+          </label>
+        </div>
+      </div>
+      {normalizedRows.map((row, index) => {
+        const configuredSections = schoolBranchesForName(schoolBranches, row.school)
+        const sectionOptions = configuredSections.includes(row.section) || !row.section
+          ? configuredSections
+          : [...configuredSections, row.section]
+
+        return (
+          <div key={`school-row-${index}`} style={{ border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-md)', padding: 12, background: 'var(--gray-50)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{row.school || '—'}</div>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.82rem', color: 'var(--navy)' }}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(row.is_current)}
+                    disabled={Boolean(graduatedFromSchools)}
+                    onChange={(event) => commitRowChanges(index, { is_current: event.target.checked })}
+                  />
+                  حاليًّا
+                </label>
+              </div>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => removeRow(index)}>
+                حذف
+              </button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>اسم المدرسة</span>
+                <ComboDropdown value={row.school} onChange={(value) => updateRow(index, 'school', value)} options={schoolOptions} placeholder="—" />
+              </label>
+              {sectionOptions.length > 0 && (
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>القسم / الفرع</span>
+                  <SelectDropdown
+                    value={row.section}
+                    onChange={(value) => updateRow(index, 'section', value)}
+                    options={sectionOptions.map((value) => ({ value, label: value }))}
+                    placeholder="—"
+                  />
+                </label>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>تاريخ البداية</span>
+                  <input
+                    className="combo-input"
+                    type="date"
+                    value={row.start_date || ''}
+                    dir="ltr"
+                    style={{ textAlign: 'left' }}
+                    onChange={(event) => commit(normalizedRows.map((entry, rowIndex) => rowIndex === index ? { ...entry, start_date: sanitizeDateInput(event.target.value) } : entry))}
+                  />
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>تاريخ النهاية</span>
+                  {!row.is_current && (
+                    <input
+                      className="combo-input"
+                      type="date"
+                      value={row.end_date || ''}
+                      dir="ltr"
+                      style={{ textAlign: 'left' }}
+                      onChange={(event) => commitRowChanges(index, { end_date: sanitizeDateInput(event.target.value) })}
+                    />
+                  )}
+                  {row.is_current && !graduatedFromSchools && <div style={{ fontSize: '0.78rem', color: 'var(--gray-400)' }}>العضو ما يزال في هذه المدرسة</div>}
+                </label>
+              </div>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>الصفوف التي دَرَسها في هذه المدرسة</span>
+                <CompactMultiSelect
+                  options={SCHOOL_GRADE_OPTIONS}
+                  selected={row.grades_attended}
+                  onChange={(values) => commit(normalizedRows.map((entry, rowIndex) => rowIndex === index ? {
+                    ...entry,
+                    grades_attended: normalizeSchoolGrades(values),
+                  } : entry))}
+                  placeholder="اختر الصفوف…"
+                />
+              </label>
+            </div>
+          </div>
+        )
+      })}
+
+      {!custom ? (
+        <div ref={ref} style={{ position: 'relative' }}>
+          <button type="button" className="combo-trigger" onClick={() => { setOpen((current) => !current); setQuery(''); setMessage('') }}>
+            <span style={{ flex: 1, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              أضف مدرسة…
+            </span>
+            <span style={{ color: 'var(--gray-400)', fontSize: '0.7rem', flexShrink: 0 }}>▾</span>
+          </button>
+          {open && (
+            <div className="combo-dropdown">
+              <input
+                autoFocus
+                className="combo-search"
+                placeholder="بحث…"
+                value={query}
+                onChange={event => setQuery(event.target.value)}
+                onKeyDown={event => event.stopPropagation()}
+              />
+              <div className="combo-list">
+                {filteredOptions.length === 0 && (
+                  <div style={{ padding: '8px 12px', color: 'var(--gray-400)', fontSize: '0.82rem' }}>لا توجد نتائج</div>
+                )}
+                {filteredOptions.map((option) => (
+                  <button type="button" key={option.value} className="combo-item" onClick={() => addSchool(option.value)}>
+                    {option.label}
+                  </button>
+                ))}
+                <button type="button" className="combo-item combo-other" onClick={() => { setOpen(false); setQuery(''); setCustom(true); setMessage('') }}>
+                  ＋ أخرى / اكتب يدوياً…
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input
+            autoFocus
+            className="combo-input"
+            style={{ flex: 1 }}
+            placeholder="اكتب اسم المدرسة…"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') addSchool(draft)
+              if (event.key === 'Escape') { setCustom(false); setDraft(''); setMessage('') }
+            }}
+          />
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => addSchool(draft)}>إضافة</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setCustom(false); setDraft(''); setMessage('') }}>✕</button>
+        </div>
+      )}
+
+      {message && <div style={{ fontSize: '0.78rem', color: 'var(--red)' }}>{message}</div>}
+    </div>
+  )
+}
+
+function HigherEducationRowsEditor({ rows, onChange, universityOptions = [], majorOptions = [], degreeOptions = [] }) {
+  const normalizedRows = normalizeHigherEducationRows(rows)
+  const [open, setOpen] = useState(false)
+  const [custom, setCustom] = useState(false)
+  const [query, setQuery] = useState('')
+  const [draft, setDraft] = useState('')
+  const [message, setMessage] = useState('')
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) {
+        setOpen(false)
+        setQuery('')
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [])
+
+  const commit = (nextRows) => onChange(normalizeHigherEducationRows(nextRows))
+
+  const commitRowChanges = (index, changes) => {
+    const nextRows = normalizedRows.map((entry, rowIndex) => {
+      if (rowIndex !== index) return entry
+
+      const nextRow = { ...entry, ...changes }
+      const nextState = normalizeHigherEducationStateValue(nextRow.state, { isCurrent: nextRow.is_current })
+      nextRow.state = nextState
+
+      if (Object.prototype.hasOwnProperty.call(changes, 'state')) {
+        if (nextState === 'current') {
+          nextRow.is_current = true
+          nextRow.end_date = ''
+        } else if (nextState === 'switched') {
+          nextRow.is_current = false
+        } else if (nextState === 'exited' || nextState === 'graduated') {
+          nextRow.is_current = false
+        }
+      }
+
+      if (nextRow.is_current) nextRow.end_date = ''
+      return nextRow
+    })
+
+    commit(nextRows)
+  }
+
+  const updateRow = (index, key, value) => {
+    const normalizedValue = key === 'start_date' || key === 'end_date'
+      ? sanitizeDateInput(value)
+      : normalizeLooseInput(value)
+    commit(normalizedRows.map((row, rowIndex) => (
+      rowIndex === index ? { ...row, [key]: normalizedValue } : row
+    )))
+  }
+
+  const removeRow = (index) => {
+    setMessage('')
+    commit(normalizedRows.filter((_, rowIndex) => rowIndex !== index))
+  }
+
+  const addRecord = (value) => {
+    const universityCollege = normalizeLooseInput(value)
+    if (!universityCollege) {
+      setMessage('يرجى إدخال الجامعة / الكليّة أولاً')
+      return
+    }
+    setMessage('')
+    commit([...normalizedRows, {
+      university_college: universityCollege,
+      major: '',
+      degree: '',
+      start_date: '',
+      end_date: '',
+      is_current: true,
+      state: 'current',
+    }])
+    setOpen(false)
+    setCustom(false)
+    setQuery('')
+    setDraft('')
+  }
+
+  const availableOptions = Array.from(new Map(
+    universityOptions
+      .map((option) => {
+        const value = normalizeLooseInput(option?.value || option)
+        const label = option?.label || value
+        return value ? [value.toLowerCase(), { value, label }] : null
+      })
+      .filter(Boolean)
+  ).values())
+
+  const filteredOptions = availableOptions.filter((option) => option.label.toLowerCase().includes(query.toLowerCase()))
+  const degreeChoiceOptions = degreeOptions.length
+    ? degreeOptions
+    : [{ value: 'بكالوريوس' }, { value: 'ماجستير' }, { value: 'دكتوراه' }, { value: 'دبلوم' }]
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {normalizedRows.map((row, index) => {
+        const stateLabel = higherEducationStateLabel(row.state)
+
+        return (
+          <div key={`higher-education-row-${index}`} style={{ border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-md)', padding: 12, background: 'var(--gray-50)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{row.university_college || '—'}</div>
+                {stateLabel ? <span style={{ fontSize: '0.78rem', color: 'var(--gray-500)', fontWeight: 600 }}>{stateLabel}</span> : null}
+              </div>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => removeRow(index)}>
+                حذف
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>الجامعة / الكليّة</span>
+                <ComboDropdown value={row.university_college} onChange={(value) => updateRow(index, 'university_college', value)} options={universityOptions} placeholder="—" />
+              </label>
+
+              <div className="profile-two-column-layout">
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>التخصّص</span>
+                  <ComboDropdown value={row.major} onChange={(value) => updateRow(index, 'major', value)} options={majorOptions} placeholder="—" />
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>الدرجة العلميّة</span>
+                  <ComboDropdown value={row.degree} onChange={(value) => updateRow(index, 'degree', value)} options={degreeChoiceOptions} placeholder="—" />
+                </label>
+              </div>
+
+              <div className="profile-two-column-layout">
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>تاريخ البداية</span>
+                  <input
+                    className="combo-input"
+                    type="date"
+                    value={row.start_date || ''}
+                    dir="ltr"
+                    style={{ textAlign: 'left' }}
+                    onChange={(event) => updateRow(index, 'start_date', event.target.value)}
+                  />
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>تاريخ النهاية</span>
+                  {!row.is_current ? (
+                    <input
+                      className="combo-input"
+                      type="date"
+                      value={row.end_date || ''}
+                      dir="ltr"
+                      style={{ textAlign: 'left' }}
+                      onChange={(event) => updateRow(index, 'end_date', event.target.value)}
+                    />
+                  ) : (
+                    <div style={{ fontSize: '0.78rem', color: 'var(--gray-400)' }}>السجل ما يزال نشطًا</div>
+                  )}
+                </label>
+              </div>
+
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>حالة السجل</span>
+                <SelectDropdown
+                  value={row.state}
+                  onChange={(value) => commitRowChanges(index, { state: value })}
+                  options={HIGHER_EDUCATION_STATE_OPTIONS}
+                  placeholder="اختر الحالة…"
+                />
+              </label>
+            </div>
+          </div>
+        )
+      })}
+
+      {!custom ? (
+        <div ref={ref} style={{ position: 'relative' }}>
+          <button type="button" className="combo-trigger" onClick={() => { setOpen((current) => !current); setQuery(''); setMessage('') }}>
+            <span style={{ flex: 1, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              أضف سجل تعليم عالٍ…
+            </span>
+            <span style={{ color: 'var(--gray-400)', fontSize: '0.7rem', flexShrink: 0 }}>▾</span>
+          </button>
+          {open && (
+            <div className="combo-dropdown">
+              <input
+                autoFocus
+                className="combo-search"
+                placeholder="بحث…"
+                value={query}
+                onChange={event => setQuery(event.target.value)}
+                onKeyDown={event => event.stopPropagation()}
+              />
+              <div className="combo-list">
+                {filteredOptions.length === 0 && (
+                  <div style={{ padding: '8px 12px', color: 'var(--gray-400)', fontSize: '0.82rem' }}>لا توجد نتائج</div>
+                )}
+                {filteredOptions.map((option) => (
+                  <button type="button" key={option.value} className="combo-item" onClick={() => addRecord(option.value)}>
+                    {option.label}
+                  </button>
+                ))}
+                <button type="button" className="combo-item combo-other" onClick={() => { setOpen(false); setQuery(''); setCustom(true); setMessage('') }}>
+                  ＋ أخرى / اكتب يدوياً…
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input
+            autoFocus
+            className="combo-input"
+            style={{ flex: 1 }}
+            placeholder="اكتب اسم الجامعة / الكليّة…"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') addRecord(draft)
+              if (event.key === 'Escape') { setCustom(false); setDraft(''); setMessage('') }
+            }}
+          />
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => addRecord(draft)}>إضافة</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setCustom(false); setDraft(''); setMessage('') }}>✕</button>
+        </div>
+      )}
+
+      {message && <div style={{ fontSize: '0.78rem', color: 'var(--red)' }}>{message}</div>}
+    </div>
+  )
+}
+
+function JobRowsEditor({ rows, onChange, jobTitleOptions = [], companyOptions = [] }) {
+  const normalizedRows = normalizeJobRows(rows)
+  const [open, setOpen] = useState(false)
+  const [custom, setCustom] = useState(false)
+  const [query, setQuery] = useState('')
+  const [draft, setDraft] = useState('')
+  const [message, setMessage] = useState('')
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) {
+        setOpen(false)
+        setQuery('')
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [])
+
+  const commit = (nextRows) => onChange(normalizeJobRows(nextRows))
+
+  const commitRowChanges = (index, changes) => {
+    const nextRows = normalizedRows.map((entry, rowIndex) => {
+      if (rowIndex !== index) return entry
+
+      const nextRow = { ...entry, ...changes }
+      const nextState = normalizeJobStateValue(nextRow.state, { isCurrent: nextRow.is_current })
+      nextRow.state = nextState
+
+      if (Object.prototype.hasOwnProperty.call(changes, 'state')) {
+        if (nextState === 'current') {
+          nextRow.is_current = true
+          nextRow.end_date = ''
+        } else {
+          nextRow.is_current = false
+        }
+      }
+
+      if (nextRow.is_current) nextRow.end_date = ''
+      return nextRow
+    })
+
+    commit(nextRows)
+  }
+
+  const updateRow = (index, key, value) => {
+    const normalizedValue = key === 'start_date' || key === 'end_date'
+      ? sanitizeDateInput(value)
+      : normalizeLooseInput(value)
+    commit(normalizedRows.map((row, rowIndex) => (
+      rowIndex === index ? { ...row, [key]: normalizedValue } : row
+    )))
+  }
+
+  const removeRow = (index) => {
+    setMessage('')
+    commit(normalizedRows.filter((_, rowIndex) => rowIndex !== index))
+  }
+
+  const addRecord = (value) => {
+    const jobTitle = normalizeLooseInput(value)
+    if (!jobTitle) {
+      setMessage('يرجى إدخال المسمّى الوظيفي أولاً')
+      return
+    }
+    setMessage('')
+    commit([...normalizedRows, {
+      job_title: jobTitle,
+      company: '',
+      start_date: '',
+      end_date: '',
+      is_current: true,
+      state: 'current',
+    }])
+    setOpen(false)
+    setCustom(false)
+    setQuery('')
+    setDraft('')
+  }
+
+  const availableOptions = Array.from(new Map(
+    jobTitleOptions
+      .map((option) => {
+        const value = normalizeLooseInput(option?.value || option)
+        const label = option?.label || value
+        return value ? [value.toLowerCase(), { value, label }] : null
+      })
+      .filter(Boolean)
+  ).values())
+
+  const filteredOptions = availableOptions.filter((option) => option.label.toLowerCase().includes(query.toLowerCase()))
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {normalizedRows.map((row, index) => {
+        const stateLabel = jobStateLabel(row.state)
+
+        return (
+          <div key={row.job_id || `job-row-${index}`} style={{ border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-md)', padding: 12, background: 'var(--gray-50)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{row.job_title || '—'}</div>
+                {stateLabel ? <span style={{ fontSize: '0.78rem', color: 'var(--gray-500)', fontWeight: 600 }}>{stateLabel}</span> : null}
+              </div>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => removeRow(index)}>
+                حذف
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
+              <div className="profile-two-column-layout">
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>المسمّى الوظيفي</span>
+                  <ComboDropdown value={row.job_title} onChange={(value) => updateRow(index, 'job_title', value)} options={jobTitleOptions} placeholder="—" />
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>الشركة / المؤسسة</span>
+                  <ComboDropdown value={row.company} onChange={(value) => updateRow(index, 'company', value)} options={companyOptions} placeholder="—" />
+                </label>
+              </div>
+
+              <div className="profile-two-column-layout">
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>تاريخ البداية</span>
+                  <input
+                    className="combo-input"
+                    type="date"
+                    value={row.start_date || ''}
+                    dir="ltr"
+                    style={{ textAlign: 'left' }}
+                    onChange={(event) => updateRow(index, 'start_date', event.target.value)}
+                  />
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>تاريخ النهاية</span>
+                  {!row.is_current ? (
+                    <input
+                      className="combo-input"
+                      type="date"
+                      value={row.end_date || ''}
+                      dir="ltr"
+                      style={{ textAlign: 'left' }}
+                      onChange={(event) => updateRow(index, 'end_date', event.target.value)}
+                    />
+                  ) : (
+                    <div style={{ fontSize: '0.78rem', color: 'var(--gray-400)' }}>العمل الحالي لا يحتاج تاريخ نهاية</div>
+                  )}
+                </label>
+              </div>
+
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>الحالة</span>
+                <SelectDropdown
+                  value={row.state}
+                  onChange={(value) => commitRowChanges(index, { state: value })}
+                  options={JOB_STATE_OPTIONS}
+                  placeholder="اختر الحالة…"
+                />
+              </label>
+            </div>
+          </div>
+        )
+      })}
+
+      {!custom ? (
+        <div ref={ref} style={{ position: 'relative' }}>
+          <button type="button" className="combo-trigger" onClick={() => { setOpen((current) => !current); setQuery(''); setMessage('') }}>
+            <span style={{ flex: 1, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              أضف سجل عمل…
+            </span>
+            <span style={{ color: 'var(--gray-400)', fontSize: '0.7rem', flexShrink: 0 }}>▾</span>
+          </button>
+          {open && (
+            <div className="combo-dropdown">
+              <input
+                autoFocus
+                className="combo-search"
+                placeholder="بحث…"
+                value={query}
+                onChange={event => setQuery(event.target.value)}
+                onKeyDown={event => event.stopPropagation()}
+              />
+              <div className="combo-list">
+                {filteredOptions.length === 0 && (
+                  <div style={{ padding: '8px 12px', color: 'var(--gray-400)', fontSize: '0.82rem' }}>لا توجد نتائج</div>
+                )}
+                {filteredOptions.map((option) => (
+                  <button type="button" key={option.value} className="combo-item" onClick={() => addRecord(option.value)}>
+                    {option.label}
+                  </button>
+                ))}
+                <button type="button" className="combo-item combo-other" onClick={() => { setOpen(false); setQuery(''); setCustom(true); setMessage('') }}>
+                  ＋ أخرى / اكتب يدوياً…
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input
+            autoFocus
+            className="combo-input"
+            style={{ flex: 1 }}
+            placeholder="اكتب المسمّى الوظيفي…"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') addRecord(draft)
+              if (event.key === 'Escape') { setCustom(false); setDraft(''); setMessage('') }
+            }}
+          />
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => addRecord(draft)}>إضافة</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setCustom(false); setDraft(''); setMessage('') }}>✕</button>
+        </div>
+      )}
+
+      {message && <div style={{ fontSize: '0.78rem', color: 'var(--red)' }}>{message}</div>}
+    </div>
+  )
+}
+
 // ── Editable sub-table ────────────────────────────────────────────────────────
 function SubTable({ rows, setRows, columns }) {
   // NOTE: setRows here is NOT a React state setter — it's a plain callback from the parent.
   // We must never pass a functional updater (prev => ...) to it; always pass the new value directly.
-  const update = (i, k, v) => setRows(rows.map((row, idx) => idx === i ? { ...row, [k]: v } : row))
-  const remove = (i) => setRows(rows.filter((_, idx) => idx !== i))
-  const addRow = () => setRows([...rows, Object.fromEntries(columns.map(c => [c.key, '']))])
+  const safeRows = Array.isArray(rows)
+    ? rows.map((row) => (row && typeof row === 'object' ? row : {}))
+    : []
+  const safeColumns = Array.isArray(columns) ? columns : []
+  const update = (i, k, v) => setRows(safeRows.map((row, idx) => idx === i ? { ...row, [k]: v } : row))
+  const remove = (i) => setRows(safeRows.filter((_, idx) => idx !== i))
+  const addRow = () => setRows([...safeRows, Object.fromEntries(safeColumns.map(c => [c.key, '']))])
   return (
     <div>
-      {rows.length > 0 && (
+      {safeRows.length > 0 && (
         <table className="sub-table">
           <thead><tr>
-            {columns.map(c => <th key={c.key}>{c.label}</th>)}
+            {safeColumns.map(c => <th key={c.key}>{c.label}</th>)}
             <th style={{ width: 40 }}></th>
           </tr></thead>
           <tbody>
-            {rows.map((row, i) => (
+            {safeRows.map((row, i) => (
               <tr key={i}>
-                {columns.map(c => (
+                {safeColumns.map(c => (
                   <td key={c.key}>
                     {c.yearFrom !== undefined
                       ? <YearPicker value={row[c.key]} onChange={v => update(i, c.key, v)} fromYear={c.yearFrom} />
@@ -368,9 +2651,12 @@ function normalizeAddressEditorRows(rows) {
   const source = Array.isArray(rows) && rows.length ? rows : [{ ...DEFAULT_ADDRESS_ROW }]
   const normalized = source.map((row, index) => ({
     country: normalizeCountryValue(row?.country),
-    governorate: String(row?.governorate || '').trim(),
-    city: String(row?.city || '').trim(),
-    address: String(row?.address || '').trim(),
+    governorate: preserveLooseInput(row?.governorate),
+    city: preserveLooseInput(row?.city),
+    address: preserveLooseInput(row?.address),
+    location_url: String(row?.location_url || '').trim(),
+    lat: sanitizeStoredCoordinate(row?.lat, 'lat'),
+    lng: sanitizeStoredCoordinate(row?.lng, 'lng'),
     is_primary: Boolean(row?.is_primary),
   }))
   const primaryIndex = normalized.findIndex(row => row.is_primary)
@@ -378,13 +2664,83 @@ function normalizeAddressEditorRows(rows) {
   return normalized
 }
 
+function sanitizeAddressRows(rows) {
+  const source = normalizeAddressEditorRows(rows)
+  return source.map((row) => ({
+    ...row,
+    governorate: normalizeLooseInput(row.governorate),
+    city: normalizeLooseInput(row.city),
+    address: normalizeLooseInput(row.address),
+    location_url: String(row.location_url || '').trim() || null,
+    lat: sanitizeStoredCoordinate(row.lat, 'lat'),
+    lng: sanitizeStoredCoordinate(row.lng, 'lng'),
+  }))
+}
+
 function AddressRowsEditor({ rows, onChange, governorateOptions }) {
   const normalizedRows = normalizeAddressEditorRows(rows)
+  const [mapDrafts, setMapDrafts] = useState({})
+  const [mapEditors, setMapEditors] = useState({})
+  const [mapErrors, setMapErrors] = useState({})
 
   const commit = (nextRows) => onChange(normalizeAddressEditorRows(nextRows))
   const updateRow = (index, key, value) => commit(normalizedRows.map((row, rowIndex) => (
     rowIndex === index ? { ...row, [key]: value } : row
   )))
+  const openMapEditor = (index) => {
+    setMapEditors(prev => ({ ...prev, [index]: true }))
+    setMapErrors(prev => ({ ...prev, [index]: '' }))
+  }
+  const closeMapEditor = (index) => {
+    setMapEditors(prev => ({ ...prev, [index]: false }))
+    setMapDrafts(prev => ({ ...prev, [index]: '' }))
+    setMapErrors(prev => ({ ...prev, [index]: '' }))
+  }
+  const applyMapUrl = async (index) => {
+    const draft = String(mapDrafts[index] || '').trim()
+    if (!draft) {
+      setMapErrors(prev => ({ ...prev, [index]: 'ألصق رابط Google Maps أولاً' }))
+      return
+    }
+    const parsed = parseGoogleMapsUrl(draft)
+    if (!parsed.isGoogleMapsUrl) {
+      setMapErrors(prev => ({ ...prev, [index]: 'الرابط ليس من Google Maps' }))
+      return
+    }
+    let lat = sanitizeStoredCoordinate(parsed.lat, 'lat')
+    let lng = sanitizeStoredCoordinate(parsed.lng, 'lng')
+    if (lat == null || lng == null) {
+      try {
+        const resolved = await api.resolveGoogleMapsLocation(draft)
+        lat = sanitizeStoredCoordinate(resolved?.lat, 'lat')
+        lng = sanitizeStoredCoordinate(resolved?.lng, 'lng')
+      } catch {
+        setMapErrors(prev => ({ ...prev, [index]: 'تعذر استخراج الموقع من هذا الرابط' }))
+        return
+      }
+    }
+    if (lat == null || lng == null) {
+      setMapErrors(prev => ({ ...prev, [index]: 'تعذر استخراج الموقع من هذا الرابط' }))
+      return
+    }
+    commit(normalizedRows.map((row, rowIndex) => (
+      rowIndex === index
+        ? {
+            ...row,
+            location_url: draft,
+            lat,
+            lng,
+          }
+        : row
+    )))
+    closeMapEditor(index)
+  }
+  const clearMapLocation = (index) => {
+    commit(normalizedRows.map((row, rowIndex) => (
+      rowIndex === index ? { ...row, location_url: '', lat: null, lng: null } : row
+    )))
+    openMapEditor(index)
+  }
   const setPrimary = (index) => commit(normalizedRows.map((row, rowIndex) => ({ ...row, is_primary: rowIndex === index })))
   const addRow = () => commit([...normalizedRows, { ...DEFAULT_ADDRESS_ROW, is_primary: false }])
   const removeRow = (index) => {
@@ -399,7 +2755,7 @@ function AddressRowsEditor({ rows, onChange, governorateOptions }) {
           <div className="am-address-card-header">
             <div>
               <div className="am-address-card-title">عنوان {index + 1}</div>
-              <div className="am-address-card-subtitle">أدخل المحافظة ثم المدينة ثم العنوان التفصيلي</div>
+              <div className="am-address-card-subtitle">أدخل المحافظة ثم المدينة ثم العنوان التفصيلي، ثم أضف موقع المنزل عند الحاجة</div>
             </div>
             <div className="am-address-card-actions">
               {!row.is_primary && (
@@ -438,6 +2794,39 @@ function AddressRowsEditor({ rows, onChange, governorateOptions }) {
               <div className="am-field-hint am-address-label">العنوان التفصيلي</div>
               <input className="form-control" value={row.address || ''} onChange={e => updateRow(index, 'address', e.target.value)} placeholder="مثال: جبل الحسين، قرب الكنيسة اللاتينية، شارع 12" />
             </div>
+
+            <div className="am-address-field am-address-field-wide">
+              <div className="am-field-hint am-address-label">موقع المنزل</div>
+              {(!buildGoogleMapsOpenUrl(row) || mapEditors[index]) ? (
+                <div className="am-address-map-editor">
+                  <input
+                    className="form-control"
+                    value={mapDrafts[index] || ''}
+                    onChange={e => {
+                      const nextValue = e.target.value
+                      setMapDrafts(prev => ({ ...prev, [index]: nextValue }))
+                      setMapErrors(prev => ({ ...prev, [index]: '' }))
+                    }}
+                    placeholder="ألصق رابط Google Maps هنا"
+                    dir="ltr"
+                  />
+                  <div className="am-address-map-editor-actions">
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => applyMapUrl(index)}>حفظ الموقع</button>
+                    {buildGoogleMapsOpenUrl(row) && <button type="button" className="btn btn-ghost btn-sm" onClick={() => closeMapEditor(index)}>إلغاء</button>}
+                  </div>
+                  {mapErrors[index] && <div className="am-field-error"><AlertCircle size={13} style={{ flexShrink: 0 }} /> {mapErrors[index]}</div>}
+                </div>
+              ) : (
+                <div className="am-address-map-meta">
+                  <button type="button" className="am-address-map-icon active" title="فتح موقع المنزل" onClick={() => window.open(buildGoogleMapsOpenUrl(row), '_blank', 'noopener,noreferrer')}>
+                    <MapPin size={16} />
+                  </button>
+                  <button type="button" className="am-address-map-icon" title="تعديل موقع المنزل" onClick={() => clearMapLocation(index)}>
+                    <Pencil size={15} />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       ))}
@@ -447,35 +2836,41 @@ function AddressRowsEditor({ rows, onChange, governorateOptions }) {
 }
 
 // ── Inline field variants ─────────────────────────────────────────────────────
-function InlineField({ label, value, onChange }) {
+function InlineField({ label, value, onChange, dir = 'rtl' }) {
   return (
     <div className="info-row">
       <span className="info-key">{label}</span>
       <div className="editable-inline" style={{ flex: 1 }}>
-        <input value={value || ''} onChange={e => onChange(e.target.value)} placeholder="—" />
+        <input
+          value={value || ''}
+          onChange={e => onChange(e.target.value)}
+          placeholder="—"
+          dir={dir}
+          style={dir === 'ltr' ? { direction: 'ltr', textAlign: 'left' } : undefined}
+        />
         <Pencil size={12} className="edit-icon" />
       </div>
     </div>
   )
 }
 
-function InlineComboField({ label, value, onChange, options }) {
+function InlineComboField({ label, value, onChange, options, dir = 'rtl' }) {
   return (
     <div className="info-row">
       <span className="info-key">{label}</span>
       <div style={{ flex: 1 }}>
-        <ComboDropdown value={value} onChange={onChange} options={options} />
+        <ComboDropdown value={value} onChange={onChange} options={options} dir={dir} />
       </div>
     </div>
   )
 }
 
-function InlineSelectField({ label, value, onChange, options }) {
+function InlineSelectField({ label, value, onChange, options, dir = 'rtl' }) {
   return (
     <div className="info-row">
       <span className="info-key">{label}</span>
       <div style={{ flex: 1 }}>
-        <SelectDropdown value={value} onChange={onChange} options={options} />
+        <SelectDropdown value={value} onChange={onChange} options={options} dir={dir} />
       </div>
     </div>
   )
@@ -499,6 +2894,206 @@ function InlineBirthDateField({ label, day, month, legacyValue, onChange }) {
       <div style={{ flex: 1 }}>
         <BirthDatePicker day={day} month={month} legacyValue={legacyValue} onChange={onChange} />
       </div>
+    </div>
+  )
+}
+
+function InlineDobField({ label, year, day, month, legacyValue, onChange, fromYear = 1960 }) {
+  const [monthState, setMonthState] = useState('')
+  const [dayState, setDayState] = useState('')
+
+  useEffect(() => {
+    const normalizedDay = toDatePart(day, 1, 31)
+    const normalizedMonth = toDatePart(month, 1, 12)
+    if (normalizedDay || normalizedMonth) {
+      setDayState(normalizedDay)
+      setMonthState(normalizedMonth)
+      return
+    }
+    const legacy = parseLegacyBirthDate(legacyValue)
+    setDayState(legacy.day)
+    setMonthState(legacy.month)
+  }, [day, month, legacyValue])
+
+  const daysInMonth = monthState ? new Date(2000, parseInt(monthState, 10), 0).getDate() : 31
+  const days = Array.from({ length: daysInMonth }, (_, index) => index + 1)
+  const normalizedYear = year === null || year === undefined || year === '' ? '' : String(year)
+  const currentYear = new Date().getFullYear()
+  const years = []
+  for (let value = currentYear; value >= fromYear; value--) years.push(value)
+
+  const emit = ({ nextYear = normalizedYear, nextDay = dayState, nextMonth = monthState } = {}) => {
+    setDayState(nextDay)
+    setMonthState(nextMonth)
+    onChange(nextYear, nextDay, nextMonth)
+  }
+
+  const partStyle = { display: 'flex', flexDirection: 'column', gap: 4 }
+  const titleStyle = { fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-400)', textAlign: 'center' }
+
+  return (
+    <div className="info-row">
+      <span className="info-key">{label}</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '88px minmax(0, 1fr) 110px', gap: 8, alignItems: 'end' }}>
+          <div style={partStyle}>
+            <div style={titleStyle}>اليوم</div>
+            <select
+              className="combo-trigger"
+              style={{ cursor: 'pointer' }}
+              value={dayState}
+              onChange={e => emit({ nextDay: e.target.value })}
+            >
+              <option value="">—</option>
+              {days.map(value => <option key={value} value={String(value)}>{value}</option>)}
+            </select>
+          </div>
+          <div style={partStyle}>
+            <div style={titleStyle}>الشهر</div>
+            <select
+              className="combo-trigger"
+              style={{ cursor: 'pointer' }}
+              value={monthState}
+              onChange={e => emit({ nextMonth: e.target.value })}
+            >
+              <option value="">—</option>
+              {MONTHS.map(item => (
+                <option key={item.num} value={String(item.num)}>{item.num}</option>
+              ))}
+            </select>
+          </div>
+          <div style={partStyle}>
+            <div style={titleStyle}>السنة</div>
+            <select
+              className="combo-trigger"
+              style={{ cursor: 'pointer' }}
+              value={normalizedYear}
+              onChange={e => emit({ nextYear: e.target.value })}
+            >
+              <option value="">—</option>
+              {years.map(value => <option key={value} value={String(value)}>{value}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ViewField({ label, value, dir = 'rtl', tone = 'default' }) {
+  if (value === null || value === undefined || value === '') return null
+  return (
+    <div style={{ display: 'grid', gap: 4, padding: '10px 12px', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-md)', background: tone === 'subtle' ? 'var(--gray-50)' : 'white' }}>
+      <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--gray-400)' }}>{label}</div>
+      <div style={{ color: 'var(--navy)', direction: dir, textAlign: dir === 'ltr' ? 'left' : 'right', lineHeight: 1.6 }}>{value}</div>
+    </div>
+  )
+}
+
+function ViewSegmentedField({ label, parts, dir = 'rtl', tone = 'default', valueDir = dir }) {
+  const items = Array.isArray(parts)
+    ? parts.filter((part) => part && part.value !== null && part.value !== undefined && part.value !== '')
+    : []
+
+  if (!items.length) return null
+
+  return (
+    <div className={`view-segmented-field${tone === 'subtle' ? ' subtle' : ''}`}>
+      <div className="view-segmented-field-label">{label}</div>
+      <div className="view-segmented-parts" dir={dir}>
+        {items.map((part) => (
+          <div key={part.key || part.label} className="view-segmented-part">
+            <div className="view-segmented-part-label">{part.label}</div>
+            <div
+              className="view-segmented-part-value"
+              dir={part.dir || valueDir}
+              style={{ textAlign: (part.dir || valueDir) === 'ltr' ? 'left' : 'right' }}
+            >
+              {part.value}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ViewChipList({ values, emptyText = '—' }) {
+  const items = Array.isArray(values) ? values.filter(Boolean) : []
+  if (!items.length) return <div style={{ color: 'var(--gray-400)' }}>{emptyText}</div>
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      {items.map((value, index) => (
+        <span key={`${value}-${index}`} style={{ background: 'var(--gray-50)', border: '1px solid var(--gray-200)', color: 'var(--navy)', padding: '6px 10px', borderRadius: 999, fontSize: '0.82rem', fontWeight: 600 }}>
+          {value}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function ViewEmptyState({ text = 'لا توجد بيانات' }) {
+  return <div style={{ color: 'var(--gray-400)', textAlign: 'center', padding: '10px 0' }}>{text}</div>
+}
+
+function formatDateSegment(value, padLength = 2) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  return /^\d+$/.test(text) ? text.padStart(padLength, '0') : text
+}
+
+function formatSchoolPeriod(row) {
+  const start = String(row?.start_date || '').trim()
+  const end = String(row?.end_date || '').trim()
+  if (start && end) return `${start} - ${end}`
+  if (start && row?.is_current) return `${start} - حاليًّا`
+  if (start) return start
+  if (end) return end
+  if (row?.is_current) return 'حاليًّا'
+  return ''
+}
+
+function formatHigherEducationPeriod(row) {
+  const start = String(row?.start_date || '').trim()
+  const end = String(row?.end_date || '').trim()
+  if (start && end) return `${start} - ${end}`
+  if (start && row?.is_current) return `${start} - حاليًّا`
+  if (start) return start
+  if (end) return end
+  if (row?.is_current) return 'حاليًّا'
+  return ''
+}
+
+function formatJobPeriod(row) {
+  const start = String(row?.start_date || '').trim()
+  const end = String(row?.end_date || '').trim()
+  if (start && end) return `${start} - ${end}`
+  if (start && row?.is_current) return `${start} - حاليًّا`
+  if (start) return start
+  if (end) return end
+  if (row?.is_current) return 'حاليًّا'
+  return ''
+}
+
+function formatSchoolDisplayName(row) {
+  const school = String(row?.school || '').trim()
+  const section = String(row?.section || '').trim()
+  if (school && section) return `${school} - ${section}`
+  return school || '—'
+}
+
+function ViewRecordCard({ title, badge, children, onOpenMap, actions }) {
+  return (
+    <div style={{ border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-md)', padding: 12, background: 'var(--gray-50)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: children ? 10 : 0, flexWrap: 'wrap' }}>
+        <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{title || '—'}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {badge ? <span style={{ background: 'white', border: '1px solid var(--gray-200)', color: 'var(--navy)', borderRadius: 999, padding: '4px 10px', fontSize: '0.76rem', fontWeight: 700 }}>{badge}</span> : null}
+          {actions || null}
+          {onOpenMap ? <button type="button" className="btn btn-ghost btn-sm" onClick={onOpenMap}><MapPin size={14} /> فتح الموقع</button> : null}
+        </div>
+      </div>
+      {children ? <div style={{ display: 'grid', gap: 10 }}>{children}</div> : null}
     </div>
   )
 }
@@ -759,17 +3354,38 @@ function _groupKeyLabel(key) {
       : groups.slice(0, -1).join(' و') + ' و' + groups[groups.length - 1]
     return `مجلس ${groupWord} ${groupList}`
   }
+
   return key
 }
 
-// ── Org history aggregation ───────────────────────────────────────────────────
-//
-// For each period tree in which this person appears, we record:
+  // ── Org history aggregation ───────────────────────────────────────────────────
+  //
 //   { period, role, connections: { nodeId → { node, relType, periodIds[] } } }
 //
 // Then we collapse across periods within the same JEC year + same role into a
 // single "entry" that shows the merged date span and annotates each connected
 // person only when they were NOT present for the full span.
+
+function isUnregisteredOrgNode(node) {
+  return Boolean(node?.unregistered || node?.unregisteredId)
+}
+
+function orgNodeStableId(node) {
+  if (isUnregisteredOrgNode(node) && node?.unregisteredId) return `unreg:${node.unregisteredId}`
+  if (node?.personId) return `reg:${node.personId}`
+  return `node:${node?.id}`
+}
+
+function orgNodeConnectionKey(node) {
+  if (isUnregisteredOrgNode(node) && node?.unregisteredId) return `unreg:${node.unregisteredId}`
+  if (node?.personId) return `pid:${node.personId}`
+  return `nid:${node?.id}`
+}
+
+function compareOrgNodes(a, b) {
+  if (isUnregisteredOrgNode(a) !== isUnregisteredOrgNode(b)) return isUnregisteredOrgNode(a) ? 1 : -1
+  return (a?.name || '').localeCompare(b?.name || '', 'ar')
+}
 
 function buildOrgHistory(personIdOrMatcher, allPeriodTrees) {
   // allPeriodTrees: [{ groupName, period, nodes, edges }]
@@ -796,11 +3412,7 @@ function buildOrgHistory(personIdOrMatcher, allPeriodTrees) {
       //   - Same person, same role, same JEC year across multiple periods → merged (date-span display)
       //   - Same person, DIFFERENT role simultaneously → separate entries (different role string)
       //   - Two different people with same role in same year → separate (different stableId)
-      const stableId = thisNode.personId
-        ? `reg:${thisNode.personId}`
-        : thisNode.unregisteredId
-          ? `unreg:${thisNode.unregisteredId}`
-          : `node:${thisNode.id}`
+      const stableId = orgNodeStableId(thisNode)
       const key = `${groupName}|||${jecYear}|||${role}|||${stableId}`
 
       if (!entryMap.has(key)) {
@@ -916,7 +3528,7 @@ function buildOrgHistory(personIdOrMatcher, allPeriodTrees) {
     const isActive = entryEnd === null
 
     // Step 3 — smart connections
-    const connKey = (n) => n.personId ? `pid:${n.personId}` : n.unregisteredId ? `unreg:${n.unregisteredId}` : `nid:${n.id}`
+    const connKey = (n) => orgNodeConnectionKey(n)
 
     const connMeta = new Map()
 
@@ -993,10 +3605,7 @@ function buildOrgHistory(personIdOrMatcher, allPeriodTrees) {
         members.push({ node, connStart, connEnd, needsAnnotation: !(coversStart && coversEnd) })
       })
       // Sort: registered first, then by name
-      members.sort((a, b) => {
-        if (!!a.node.personId !== !!b.node.personId) return a.node.personId ? -1 : 1
-        return (a.node.name || '').localeCompare(b.node.name || '', 'ar')
-      })
+      members.sort((a, b) => compareOrgNodes(a.node, b.node))
       bubblesGrouped.push({ mergedKey, label: _groupKeyLabel(mergedKey), members })
     })
     // Sort bubble groups by label
@@ -1036,8 +3645,8 @@ function SmartConnRow({ node, connStart, connEnd, needsAnnotation, onViewProfile
   const canClick = !!(node.personId || node.unregisteredId)
   const handleClick = () => {
     if (!canClick || !onViewProfile) return
-    if (node.personId) onViewProfile(node.personId, false)
-    else if (node.unregisteredId) onViewProfile(node.unregisteredId, true)
+    if (isUnregisteredOrgNode(node) && node.unregisteredId) onViewProfile(node.unregisteredId, true)
+    else if (node.personId) onViewProfile(node.personId, false)
   }
 
   return (
@@ -1237,29 +3846,13 @@ function OrgHistoryView({ entries, onViewProfile }) {
 }
 
 // ── Shared data loader for org history ────────────────────────────────────────
-async function loadAllPeriodTrees(nodeMatcher, relevantGroupIds = []) {
-  const allPeriodTrees = []
-  const groups = (Array.isArray(relevantGroupIds) ? relevantGroupIds : [])
+async function loadOrgHistoryTrees({ personId = null, unregisteredId = null, groupIds = [] } = {}) {
+  const groups = (Array.isArray(groupIds) ? groupIds : [])
     .map(g => String(g || '').trim())
     .filter(Boolean)
 
-  await Promise.all(groups.map(async (groupName) => {
-    try {
-      const periods = await api.getOrgTreePeriods(groupName)
-      if (!periods?.length) return
-      await Promise.all(periods.map(async (period) => {
-        try {
-          const tree  = await api.getOrgTreePeriod(groupName, period.id)
-          const nodes = tree.nodes || []
-          const edges = tree.edges || []
-          if (!nodes.some(nodeMatcher)) return
-          allPeriodTrees.push({ groupName, period, nodes, edges })
-        } catch { /* skip */ }
-      }))
-    } catch { /* skip */ }
-  }))
-
-  return allPeriodTrees
+  const res = await api.getOrgTreeHistory({ personId, unregisteredId, groupIds: groups })
+  return Array.isArray(res?.items) ? res.items : []
 }
 
 // ── Org history tab (registered) ──────────────────────────────────────────────
@@ -1270,7 +3863,7 @@ function OrgTab({ personId, orgContext, onViewProfile, relevantGroupIds }) {
   useEffect(() => {
     let cancelled = false
     const matcher = (n) => String(n.personId) === String(personId)
-    loadAllPeriodTrees(matcher, relevantGroupIds)
+    loadOrgHistoryTrees({ personId, groupIds: relevantGroupIds })
       .then(trees => { if (!cancelled) { setEntries(buildOrgHistory(matcher, trees)); setLoading(false) } })
       .catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -1288,7 +3881,7 @@ function OrgTabUnregistered({ unregisteredId, orgContext, onViewProfile, relevan
   useEffect(() => {
     let cancelled = false
     const matcher = (n) => String(n.unregisteredId) === String(unregisteredId)
-    loadAllPeriodTrees(matcher, relevantGroupIds)
+    loadOrgHistoryTrees({ unregisteredId, groupIds: relevantGroupIds })
       .then(trees => { if (!cancelled) { setEntries(buildOrgHistory(matcher, trees)); setLoading(false) } })
       .catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -1300,24 +3893,6 @@ function OrgTabUnregistered({ unregisteredId, orgContext, onViewProfile, relevan
 
 // ── GS org history helpers ─────────────────────────────────────────────────────
 const GS_GROUP_KEY_PROFILE = 'GS'
-
-async function loadGSPeriodTrees(nodeMatcher) {
-  const allPeriodTrees = []
-  try {
-    const periods = await api.getOrgTreePeriods(GS_GROUP_KEY_PROFILE)
-    if (!periods?.length) return allPeriodTrees
-    await Promise.all(periods.map(async (period) => {
-      try {
-        const tree  = await api.getOrgTreePeriod(GS_GROUP_KEY_PROFILE, period.id)
-        const nodes = tree.nodes || []
-        const edges = tree.edges || []
-        if (!nodes.some(nodeMatcher)) return
-        allPeriodTrees.push({ groupName: 'الأمانة العامة', period, nodes, edges })
-      } catch { /* skip */ }
-    }))
-  } catch { /* skip */ }
-  return allPeriodTrees
-}
 
 // Classification helpers matching GeneralSecretariatTree for hull/bubble logic in profile
 const GS_COMMITTEES_PROFILE = [
@@ -1484,18 +4059,18 @@ function _gsGroupKeyLabel(key) {
 }
 
 // Better label for committee_head keys — needs the nodes list to look up the head
-function _gsGroupKeyLabelWithNodes(key, nodes) {
-  if (key.startsWith('committee_head:')) {
-    const headId = key.slice('committee_head:'.length)
-    const head = nodes.find(n => n.id === headId)
-    if (head) {
-      const c = _classifyGSRole(head.role)
-      if (c?.committeeKey) return c.committeeKey
-      return head.role || 'لجنة'
+  function _gsGroupKeyLabelWithNodes(key, nodes) {
+    if (key.startsWith('committee_head:')) {
+      const headId = key.slice('committee_head:'.length)
+      const head = (nodes || []).find(n => n.id === headId)
+      if (head) {
+        const c = _classifyGSRole(head.role)
+        if (c?.committeeKey) return c.committeeKey
+        return head.role || 'لجنة'
+      }
+      return 'لجنة'
     }
-    return 'لجنة'
-  }
-  return _gsGroupKeyLabel(key)
+    return _gsGroupKeyLabel(key)
 }
 
 function buildGSOrgHistory(personIdOrMatcher, allPeriodTrees) {
@@ -1509,11 +4084,7 @@ function buildGSOrgHistory(personIdOrMatcher, allPeriodTrees) {
     for (const thisNode of myNodes) {
       const role    = thisNode.role || ''
       const jecYear = period?.jec_year ?? '—'
-      const stableId = thisNode.personId
-        ? `reg:${thisNode.personId}`
-        : thisNode.unregisteredId
-          ? `unreg:${thisNode.unregisteredId}`
-          : `node:${thisNode.id}`
+      const stableId = orgNodeStableId(thisNode)
       const key = `${groupName}|||${jecYear}|||${role}|||${stableId}`
 
       if (!entryMap.has(key)) entryMap.set(key, { groupName, jecYear, role, appearances: [] })
@@ -1549,7 +4120,7 @@ function buildGSOrgHistory(personIdOrMatcher, allPeriodTrees) {
 
   // Collapse appearances into entries (same logic as buildOrgHistory but using GS label helper)
   const entries = []
-  const connKey = (n) => n.personId ? `pid:${n.personId}` : n.unregisteredId ? `unreg:${n.unregisteredId}` : `nid:${n.id}`
+  const connKey = (n) => orgNodeConnectionKey(n)
 
   for (const { groupName, jecYear, role, appearances } of entryMap.values()) {
     const sorted = appearances.slice().sort((a, b) => {
@@ -1626,10 +4197,7 @@ function buildGSOrgHistory(personIdOrMatcher, allPeriodTrees) {
         const coversEnd   = connEnd === entryEnd || (!connEnd && !entryEnd) || (connEnd === null && entryEnd === null)
         members.push({ node, connStart, connEnd, needsAnnotation: !(coversStart && coversEnd) })
       })
-      members.sort((a, b) => {
-        if (!!a.node.personId !== !!b.node.personId) return a.node.personId ? -1 : 1
-        return (a.node.name || '').localeCompare(b.node.name || '', 'ar')
-      })
+      members.sort((a, b) => compareOrgNodes(a.node, b.node))
       // Use GS-specific label helper with node lookup for committee_head keys
       // Collect all nodes from this entry's appearances for label resolution
       const allNodesForLabel = sorted.flatMap(ap => ap._nodes || [])
@@ -1668,7 +4236,7 @@ function GSTab({ personId, onViewProfile }) {
   useEffect(() => {
     let cancelled = false
     const matcher = (n) => String(n.personId) === String(personId)
-    loadGSPeriodTrees(matcher)
+    loadOrgHistoryTrees({ personId, groupIds: [GS_GROUP_KEY_PROFILE] })
       .then(trees => { if (!cancelled) { setEntries(buildGSOrgHistory(matcher, trees)); setLoading(false) } })
       .catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -1686,7 +4254,7 @@ function GSTabUnregistered({ unregisteredId, onViewProfile }) {
   useEffect(() => {
     let cancelled = false
     const matcher = (n) => String(n.unregisteredId) === String(unregisteredId)
-    loadGSPeriodTrees(matcher)
+    loadOrgHistoryTrees({ unregisteredId, groupIds: [GS_GROUP_KEY_PROFILE] })
       .then(trees => { if (!cancelled) { setEntries(buildGSOrgHistory(matcher, trees)); setLoading(false) } })
       .catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -1729,16 +4297,52 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   const [photo, setPhoto]         = useState(null)
   const [loading, setLoading]     = useState(true)
   const [saving, setSaving]       = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
   const [promoting, setPromoting] = useState(false)
   const [activeTab, setActiveTab] = useState('info')
   const [filters, setFilters]     = useState({})
+  const [personTitles, setPersonTitles] = useState([])
+  const [schoolBranches, setSchoolBranches] = useState({})
   const [confirm, setConfirm]     = useState(null) // { action: 'delete' | 'archive' }
   const saveTimeout = useRef(null)
+  const filtersLoaded = useRef(false)
+  const editMetaLoaded = useRef(false)
 
-  // Load filter options once
   useEffect(() => {
-    api.filters().then(setFilters).catch(() => {})
+    if (filtersLoaded.current) return
+    let cancelled = false
+    api.filters()
+      .then((filtersResponse) => {
+        if (!cancelled) {
+          setFilters(filtersResponse || {})
+          filtersLoaded.current = true
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setFilters({})
+      })
+    return () => { cancelled = true }
   }, [])
+
+  useEffect(() => {
+    if (readOnly || !isEditing || editMetaLoaded.current) return
+    let cancelled = false
+    api.getConfig()
+      .then((configResponse) => {
+        if (!cancelled) {
+          setPersonTitles(normalizePersonTitles(configResponse?.config?.person_titles || []))
+          setSchoolBranches(normalizeSchoolBranches(configResponse?.config?.school_branches || {}))
+          editMetaLoaded.current = true
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPersonTitles([])
+          setSchoolBranches({})
+        }
+      })
+    return () => { cancelled = true }
+  }, [isEditing, readOnly])
 
   // Helper: get sorted option list for a filter key (count desc, value only)
   const opts = useCallback((key) =>
@@ -1747,6 +4351,47 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       label: key === 'youth_group' ? api.formatYouthGroupLabel(f.label || f.value) : (f.label || f.value),
     }))
   , [filters])
+
+  const personTitleMappings = useMemo(() => {
+    const arabicToEnglish = new Map()
+    const englishToArabic = new Map()
+    personTitles.forEach((row) => {
+      const arabicTitle = String(row?.arabic_title || '').replace(/\s+/g, ' ').trim()
+      const englishTitle = String(row?.english_title || '').replace(/\s+/g, ' ').trim()
+      if (!arabicTitle) return
+      arabicToEnglish.set(normalizeTitleLookupKey(arabicTitle), englishTitle)
+      if (englishTitle) englishToArabic.set(normalizeTitleLookupKey(englishTitle), arabicTitle)
+    })
+    return { arabicToEnglish, englishToArabic }
+  }, [personTitles])
+
+  const englishTitleForPerson = useMemo(() => {
+    const arabicTitle = String(data?.person?.title || '').replace(/\s+/g, ' ').trim()
+    if (!arabicTitle) return ''
+    return personTitleMappings.arabicToEnglish.get(normalizeTitleLookupKey(arabicTitle)) || ''
+  }, [data?.person?.title, personTitleMappings])
+
+  const personTitleOptions = useCallback((currentValue) => {
+    const configured = personTitles.map((row) => ({ value: row.arabic_title, label: row.arabic_title }))
+    const current = String(currentValue || '').trim()
+    if (current && !configured.some((option) => option.value === current)) {
+      configured.push({ value: current, label: current })
+    }
+    return configured
+  }, [personTitles])
+
+  const personEnglishTitleOptions = useCallback((currentArabicValue) => {
+    const configured = personTitles.map((row) => {
+      const arabicTitle = String(row?.arabic_title || '').replace(/\s+/g, ' ').trim()
+      const englishTitle = String(row?.english_title || '').replace(/\s+/g, ' ').trim() || arabicTitle
+      return { value: englishTitle, label: englishTitle }
+    })
+    const currentEnglish = personTitleMappings.arabicToEnglish.get(normalizeTitleLookupKey(currentArabicValue)) || String(currentArabicValue || '').trim()
+    if (currentEnglish && !configured.some((option) => option.value === currentEnglish)) {
+      configured.push({ value: currentEnglish, label: currentEnglish })
+    }
+    return configured
+  }, [personTitles, personTitleMappings])
 
   useEffect(() => {
     setLoading(true)
@@ -1760,6 +4405,8 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       if (!d.person)             d.person = {}
       if (!d.nationality)        d.nationality = []
       if (!d.mobile_numbers)     d.mobile_numbers = []
+      if (!d.emails)             d.emails = []
+      if (!d.social_media)       d.social_media = []
       if (!d.addresses)          d.addresses = []
       if (!d.schools)            d.schools = []
       if (!d.higher_education)   d.higher_education = []
@@ -1786,10 +4433,21 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
               governorate: personData.governorate || '',
               city: personData.city || '',
               address: personData.address || '',
+              lat: personData.lat ?? null,
+              lng: personData.lng ?? null,
               is_primary: true,
             }]
           : [{ ...DEFAULT_ADDRESS_ROW }]
       }
+      d.jobs = normalizeJobRows(d.jobs)
+      d.mobile_numbers = normalizeMobileNumberRows(d.mobile_numbers, { validJobIds: d.jobs.map((row) => row.job_id) })
+      d.emails = normalizeEmailRows(d.emails, { validJobIds: d.jobs.map((row) => row.job_id) })
+      d.social_media = normalizeSocialMediaRows(d.social_media)
+      d.nationality = normalizeNationalityRows(d.nationality)
+      personData.school_graduated = toBoolDefaultFalse(personData.school_graduated)
+      personData.school_system = normalizeSchoolSystemValue(personData.school_system)
+      d.schools = normalizeSchoolRows(d.schools, { graduatedFromSchools: personData.school_graduated })
+      d.higher_education = normalizeHigherEducationRows(d.higher_education)
       d.addresses = normalizeAddressEditorRows(d.addresses)
       d.person = personData
       setData(d)
@@ -1805,8 +4463,8 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       try {
         // Build a clean payload: strip person_id from sub-table rows to avoid
         // primary-key conflicts, and only send fields the backend understands.
-        const SUB_KEYS = ['nationality', 'mobile_numbers', 'schools', 'higher_education',
-                          'jobs', 'responsibilities', 'person_youth_group', 'hobbies_skills', 'addresses']
+          const SUB_KEYS = ['nationality', 'mobile_numbers', 'emails', 'social_media', 'schools', 'higher_education',
+              'jobs', 'responsibilities', 'person_youth_group', 'hobbies_skills', 'addresses']
         const stripId = (rows) =>
           Array.isArray(rows)
             ? rows.map(row => { const { person_id, ...rest } = row; return rest })
@@ -1815,16 +4473,24 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
           person: {
             ...(newData.person || {}),
             country: normalizeCountryValue(newData.person?.country),
+            school_system: storedSchoolSystemValue(newData.person?.school_system),
           },
           ...Object.fromEntries(SUB_KEYS.map(k => [k, stripId(newData[k])])),
         }
-        payload.addresses = normalizeAddressEditorRows(payload.addresses)
+        payload.nationality = serializeNationalityRows(payload.nationality, { dropEmpty: true })
+        payload.schools = normalizeSchoolRows(payload.schools, { dropEmpty: true, graduatedFromSchools: Boolean(newData.person?.school_graduated) })
+        payload.higher_education = normalizeHigherEducationRows(payload.higher_education, { dropEmpty: true })
+        payload.jobs = normalizeJobRows(payload.jobs, { dropEmpty: true })
+        payload.emails = serializeEmailRows(payload.emails, { validJobIds: payload.jobs.map((row) => row.job_id) })
+        payload.social_media = serializeSocialMediaRows(payload.social_media)
+        payload.mobile_numbers = serializeMobileNumberRows(payload.mobile_numbers, { validJobIds: payload.jobs.map((row) => row.job_id) })
+        payload.addresses = sanitizeAddressRows(payload.addresses)
         if (isUnregistered) {
           await api.updateUnregistered(personId, payload)
         } else {
           await api.updatePerson(personId, payload)
         }
-        toast('تم الحفظ تلقائياً ✓', 'success')
+        // Keep autosave quiet while the user is typing; the inline saving indicator is enough.
       } catch { toast('خطأ في الحفظ', 'error') }
       setSaving(false)
     }, 1200)
@@ -1832,14 +4498,49 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
 
   const update      = (changes)       => { const nd = { ...data, ...changes }; setData(nd); scheduleAutoSave(nd) }
   const updateField = (field, value)  => update({ person: { ...data.person, [field]: value } })
-  const updateSub   = (key, newRows)  => update({ [key]: newRows })
-  const updateBirthYear = (value) => {
-    update({ person: { ...data.person, birth_year: value ? parseInt(value, 10) : null } })
+  const updateSub   = (key, newRows)  => {
+    if (key === 'jobs') {
+      const normalizedJobs = normalizeJobRows(newRows)
+      update({
+        jobs: normalizedJobs,
+        mobile_numbers: normalizeMobileNumberRows(data.mobile_numbers, { validJobIds: normalizedJobs.map((row) => row.job_id) }),
+        emails: normalizeEmailRows(data.emails, { validJobIds: normalizedJobs.map((row) => row.job_id) }),
+      })
+      return
+    }
+    if (key === 'mobile_numbers') {
+      update({
+        mobile_numbers: normalizeMobileNumberRows(newRows, { validJobIds: (data.jobs || []).map((row) => row.job_id) }),
+      })
+      return
+    }
+    if (key === 'emails') {
+      update({
+        emails: normalizeEmailRows(newRows, { validJobIds: (data.jobs || []).map((row) => row.job_id) }),
+      })
+      return
+    }
+    if (key === 'social_media') {
+      update({
+        social_media: normalizeSocialMediaRows(newRows),
+      })
+      return
+    }
+    update({ [key]: newRows })
   }
-  const updateBirthDate = (day, month) => {
+  const updateArabicTitle = useCallback((value) => {
+    updateField('title', String(value || '').replace(/\s+/g, ' ').trim())
+  }, [updateField])
+  const updateEnglishTitle = useCallback((englishValue) => {
+    const normalizedEnglishValue = String(englishValue || '').replace(/\s+/g, ' ').trim()
+    const mappedArabic = personTitleMappings.englishToArabic.get(normalizeTitleLookupKey(normalizedEnglishValue)) || ''
+    updateField('title', mappedArabic)
+  }, [personTitleMappings, updateField])
+  const updateBirthDate = (year, day, month) => {
     update({
       person: {
         ...data.person,
+        birth_year: year ? parseInt(year, 10) : null,
         birth_day: day ? parseInt(day, 10) : null,
         birth_month: month ? parseInt(month, 10) : null,
       },
@@ -1904,7 +4605,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   if (loading) return <div className="loading-center"><div className="spinner" /></div>
   if (!data)   return <div>لم يُعثر على العضو</div>
 
-  const { person, nationality, mobile_numbers, addresses, schools, higher_education, jobs, hobbies_skills, person_youth_group, responsibilities } = data
+  const { person, nationality, mobile_numbers, emails, social_media, addresses, schools, higher_education, jobs, hobbies_skills, person_youth_group, responsibilities } = data
 
   const youthGroupName = (groupId) => {
     const gid = String(groupId || '').trim()
@@ -1934,22 +4635,69 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     ...visibleResponsibilities.map(r => r?.youth_group_id),
   ].map(v => String(v || '').trim()).filter(Boolean))]
 
+  const arabicProfileTitle = String(person?.title || '').replace(/\s+/g, ' ').trim()
   const fullName = [person?.first_name, person?.second_name, person?.third_name, person?.last_name]
     .filter(Boolean).join(' ') || 'بلا اسم'
   const englishFullName = [person?.english_first_name, person?.english_second_name, person?.english_third_name, person?.english_last_name]
     .filter(Boolean).join(' ')
+  const arabicNameParts = [
+    { key: 'title', label: 'اللقب', value: arabicProfileTitle },
+    { key: 'first_name', label: 'الاسم الأول', value: person?.first_name },
+    { key: 'second_name', label: 'الاسم الثاني', value: person?.second_name },
+    { key: 'third_name', label: 'الاسم الثالث', value: person?.third_name },
+    { key: 'last_name', label: 'اسم العائلة', value: person?.last_name },
+  ]
+  const motherArabicNameParts = [
+    { key: 'mother_first_name', label: 'الاسم الأول', value: person?.mother_first_name },
+    { key: 'mother_second_name', label: 'الاسم الثاني', value: person?.mother_second_name },
+    { key: 'mother_third_name', label: 'الاسم الثالث', value: person?.mother_third_name },
+  ]
+  const englishNameParts = [
+    { key: 'title', label: 'Title', value: englishTitleForPerson, dir: 'ltr' },
+    { key: 'english_first_name', label: 'First Name', value: person?.english_first_name, dir: 'ltr' },
+    { key: 'english_second_name', label: 'Second Name', value: person?.english_second_name, dir: 'ltr' },
+    { key: 'english_third_name', label: 'Third Name', value: person?.english_third_name, dir: 'ltr' },
+    { key: 'english_last_name', label: 'Last Name', value: person?.english_last_name, dir: 'ltr' },
+  ]
+  const motherEnglishNameParts = [
+    { key: 'mother_english_first_name', label: 'First Name', value: person?.mother_english_first_name, dir: 'ltr' },
+    { key: 'mother_english_second_name', label: 'Second Name', value: person?.mother_english_second_name, dir: 'ltr' },
+    { key: 'mother_english_third_name', label: 'Third Name', value: person?.mother_english_third_name, dir: 'ltr' },
+  ]
+  const birthDateParts = [
+    { key: 'birth_year', label: 'السنة', value: String(person?.birth_year || '').trim(), dir: 'ltr' },
+    { key: 'birth_month', label: 'الشهر', value: formatDateSegment(person?.birth_month), dir: 'ltr' },
+    { key: 'birth_day', label: 'اليوم', value: formatDateSegment(person?.birth_day), dir: 'ltr' },
+  ]
   const initials = firstNameInitial(person?.first_name)
   const editableYouthRows = (person_youth_group || []).map(row => ({
     ...row,
     status_label: row?.archived ? 'عضو قديم' : 'عضو حالي',
   }))
-  // For مكرّسين, prepend title to displayed name in header
-  const displayName = (isUnregistered && person?.title)
-    ? `${person.title} ${fullName}`.trim()
-    : fullName
+  const primaryAddress = (addresses || []).find(row => row?.is_primary) || addresses?.[0] || null
+  const heroLocation = [primaryAddress?.city, primaryAddress?.governorate, primaryAddress?.country]
+    .map(value => String(value || '').trim())
+    .filter(Boolean)
+    .join('، ')
+  const primaryNationality = nationality?.[0] || null
+  const arabicDisplayName = [arabicProfileTitle, fullName].filter(Boolean).join(' ')
+  const englishDisplayName = [englishTitleForPerson, englishFullName].filter(Boolean).join(' ')
+  const graduatedFromSchools = toBoolDefaultFalse(person?.school_graduated)
+  const schoolSystem = normalizeSchoolSystemValue(person?.school_system)
+  const schoolSystemOptions = buildSchoolSystemOptions((filters.school_system || []).map(item => item?.value), schoolSystem)
+  const schoolViewRows = normalizeSchoolRows(schools, { graduatedFromSchools })
+  const currentSchoolGrade = graduatedFromSchools ? '' : findHighestSchoolGrade(schoolViewRows)
+  const higherEducationViewRows = normalizeHigherEducationRows(higher_education)
+  const jobViewRows = normalizeJobRows(jobs)
+  const emailViewRows = normalizeEmailRows(emails, { validJobIds: jobViewRows.map((row) => row.job_id) })
+  const socialMediaViewRows = normalizeSocialMediaRows(social_media)
+  const jobOptions = extractJobOptions(jobViewRows)
+  const schoolHeaderStatus = graduatedFromSchools ? 'متخرّج من المدارس' : 'على مقاعد الدراسة'
+  const schoolHeaderSystem = schoolSystem || DEFAULT_SCHOOL_SYSTEM
 
   const TABS = [
     { id: 'info',    label: 'المعلومات الأساسية', icon: Shield },
+    { id: 'address', label: 'العناوين',            icon: MapPin },
     { id: 'youth',   label: 'الشبيبة',            icon: Users },
     { id: 'edu',     label: 'التعليم',             icon: GraduationCap },
     { id: 'work',    label: 'العمل',               icon: Briefcase },
@@ -1958,13 +4706,58 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     { id: 'gsorg', label: 'الأمانة العامة', icon: GitBranch },
   ]
 
+  const TAB_INTROS = {
+    info: {
+      tone: 'info',
+      title: 'بطاقة التعريف الأساسية',
+      text: 'البيانات الشخصية والجنسية ووسائل التواصل الأساسية في مكان واحد لقراءة أسرع وتحرير أوضح.',
+    },
+    address: {
+      tone: 'address',
+      title: 'العناوين والموقع',
+      text: 'العناوين مفصولة هنا لتسهيل مراجعة السكن والموقع الجغرافي دون مزاحمة البيانات الشخصية.',
+    },
+    youth: {
+      tone: 'youth',
+      title: 'الانتساب والمسؤوليات',
+      text: 'كل ما يرتبط بانتماء العضو داخل الشبيبة ومسؤولياته الحالية أو السابقة.',
+    },
+    edu: {
+      tone: 'edu',
+      title: 'المسار التعليمي',
+      text: 'المدارس والتعليم العالي ضمن تبويب واحد حتى يظهر التسلسل الدراسي كاملاً في مكان واحد.',
+    },
+    work: {
+      tone: 'work',
+      title: 'الحياة المهنية',
+      text: 'الوظائف والمؤسسات بشكل مبسط مع إبراز آخر المعلومات المهنية للعضو.',
+    },
+    hobbies: {
+      tone: 'hobbies',
+      title: 'الهوايات والمهارات',
+      text: 'عرض مختصر وواضح للهوايات والمهارات التي يمكن الاستفادة منها في الخدمة والأنشطة.',
+    },
+    org: {
+      tone: 'org',
+      title: 'المسار التنظيمي في الشبيبة',
+      text: 'استعراض تاريخ الأدوار والعلاقات التنظيمية داخل فرق الشبيبة عبر الفترات المختلفة.',
+    },
+    gsorg: {
+      tone: 'gsorg',
+      title: 'المسار التنظيمي في الأمانة العامة',
+      text: 'عرض متسلسل للأدوار والعلاقات المرتبطة بالأمانة العامة عبر السنوات والفترات.',
+    },
+  }
+
   // For photo upload in unregistered profile
   const handlePhotoChange = isUnregistered
     ? (newUrl) => setPhoto(newUrl)
     : (newUrl) => setPhoto(newUrl)
 
+  const isViewMode = readOnly || !isEditing
+
   return (
-    <div>
+    <div className="profile-page">
       <ConfirmDialog
         open={!!confirm}
         title={confirm?.action === 'delete' ? 'تأكيد الحذف النهائي' : 'تأكيد الأرشفة'}
@@ -1985,7 +4778,16 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
           <ArrowRight size={15} /> العودة للقائمة
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {saving && <span style={{ fontSize: '0.82rem', color: 'var(--gray-400)' }}>جارٍ الحفظ…</span>}
+          {!readOnly && (
+            <button
+              className={`btn btn-sm ${isEditing ? 'btn-ghost' : 'btn-primary'}`}
+              onClick={() => setIsEditing((current) => !current)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <Pencil size={14} /> {isEditing ? 'إنهاء التحرير' : 'تعديل الملف'}
+            </button>
+          )}
+          {isEditing && saving && <span style={{ fontSize: '0.82rem', color: 'var(--gray-400)' }}>جارٍ الحفظ…</span>}
           {isUnregistered && (
             <button
               className="btn btn-gold btn-sm"
@@ -2038,22 +4840,39 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
             onPhotoChange={setPhoto} toast={toast} />
         )}
         <div className="profile-details">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <div className="profile-identity-block">
             <div className="profile-name">
-              {displayName}
+              {arabicDisplayName}
             </div>
+            {englishDisplayName && (
+              <div className="profile-name-secondary">
+                {englishDisplayName}
+              </div>
+            )}
           </div>
-          {englishFullName && (
-            <div style={{ marginTop: 4, fontSize: '0.96rem', color: 'var(--gray-500)', direction: 'ltr', textAlign: 'right' }}>
-              {englishFullName}
-            </div>
-          )}
           <div className="profile-sub">
-            {(person?.address || person?.city || person?.governorate || person?.country) && <span>📍 {[person.address, person.city, person.governorate, person.country].filter(Boolean).join('، ')}</span>}
-            {person?.gender      && <span>{person.gender}</span>}
-            {person?.birth_year  && <span>🗓 {person.birth_year}</span>}
-            {nationality?.[0]    && <span>🌍 {nationality[0].nationality}</span>}
-
+            {heroLocation && (
+              <div className="profile-sub-item profile-sub-item-location">
+                <span className="profile-sub-icon" aria-hidden="true">📍</span>
+                <span>{heroLocation}</span>
+              </div>
+            )}
+            {person?.gender && (
+              <div className="profile-sub-item">
+                <span>{person.gender}</span>
+              </div>
+            )}
+            {person?.birth_year && (
+              <div className="profile-sub-item">
+                <span className="profile-sub-icon" aria-hidden="true">🗓</span>
+                <span>{person.birth_year}</span>
+              </div>
+            )}
+            {primaryNationality && (
+              <div className="profile-sub-item">
+                {renderNationalityLabel(primaryNationality, { fallbackIcon: '🌍', gap: 6 })}
+              </div>
+            )}
           </div>
           {orgContext?.nodes && (() => {
             const n = orgContext.nodes.find(x => x.id === orgContext.currentNodeId)
@@ -2071,76 +4890,353 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       </div>
 
       {/* Tabs */}
-      <div className="tabs">
-        {TABS.map(t => (
-          <button key={t.id} className={`tab${activeTab === t.id ? ' active' : ''}`}
-            onClick={() => setActiveTab(t.id)}>
-            <t.icon size={14} style={{ display: 'inline', marginLeft: 5 }} />{t.label}
-          </button>
-        ))}
+      <div className="tabs profile-tabs">
+        <div className="profile-tabs-scroll">
+          {TABS.map(t => (
+            <button key={t.id} className={`tab${activeTab === t.id ? ' active' : ''}`}
+              onClick={() => setActiveTab(t.id)}>
+              <t.icon size={15} style={{ flexShrink: 0 }} />
+              <span className="tab-label">{t.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ── Info ── */}
       {activeTab === 'info' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <div className="card">
-            <div className="card-header"><span className="card-title"><Shield size={15} /> البيانات الشخصية</span></div>
-            <div className="card-body">
-              <InlineComboField label="الاسم الأول"   value={person?.first_name}  onChange={v => updateField('first_name', v)}  options={opts('first_name')} />
-              <InlineComboField label="الاسم الثاني"  value={person?.second_name} onChange={v => updateField('second_name', v)} options={opts('second_name')} />
-              <InlineComboField label="الاسم الثالث"  value={person?.third_name}  onChange={v => updateField('third_name', v)}  options={opts('third_name')} />
-              <InlineComboField label="اسم العائلة"   value={person?.last_name}   onChange={v => updateField('last_name', v)}   options={opts('last_name')} />
-              <div style={{ margin: '10px 0 2px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--gray-400)' }}>الاسم بالإنجليزية</div>
-              <InlineField label="First Name"  value={person?.english_first_name}  onChange={v => updateField('english_first_name', v)} />
-              <InlineField label="Second Name" value={person?.english_second_name} onChange={v => updateField('english_second_name', v)} />
-              <InlineField label="Third Name"  value={person?.english_third_name}  onChange={v => updateField('english_third_name', v)} />
-              <InlineField label="Last Name"   value={person?.english_last_name}   onChange={v => updateField('english_last_name', v)} />
-              <InlineSelectField label="الجنس"        value={person?.gender}      onChange={v => updateField('gender', v)}       options={opts('gender')} />
-              <InlineYearField   label="سنة الميلاد"  value={person?.birth_year}  onChange={updateBirthYear} />
-              <InlineBirthDateField
-                label="تاريخ الميلاد"
-                day={person?.birth_day}
-                month={person?.birth_month}
-                legacyValue={person?.birth_date}
-                onChange={updateBirthDate}
-              />
-              {isUnregistered && (
-                <InlineField label="اللقب / العنوان" value={person?.title} onChange={v => updateField('title', v)} />
-              )}
+        <div className="profile-tab-panel">
+          <div className={`profile-tab-intro ${TAB_INTROS.info.tone}`}>
+            <div className="profile-tab-intro-icon"><Shield size={18} /></div>
+            <div>
+              <div className="profile-tab-intro-title">{TAB_INTROS.info.title}</div>
+              <div className="profile-tab-intro-text">{TAB_INTROS.info.text}</div>
             </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div className="card">
-              <div className="card-header"><span className="card-title"><Globe size={15} /> الجنسية</span></div>
-              <div className="card-body">
-                <TagField items={nationality} valueKey="nationality" placeholder="أضف جنسية…"
-                  options={opts('nationality')}
-                  onAdd={v => updateSub('nationality', [...nationality, { nationality: v }])}
-                  onRemove={i => updateSub('nationality', nationality.filter((_, idx) => idx !== i))} />
+          {isViewMode ? (
+            <div className="profile-two-column-layout profile-view-grid">
+              <div className="profile-stack-column">
+              <div className="card">
+                <div className="card-header"><span className="card-title"><Shield size={15} /> البيانات الشخصية</span></div>
+                <div className="card-body" style={{ display: 'grid', gap: 12 }}>
+                  <ViewSegmentedField label="الاسم الكامل" parts={arabicNameParts} />
+                  <ViewSegmentedField label="English Name" parts={englishNameParts} dir="ltr" valueDir="ltr" tone="subtle" />
+                  <ViewSegmentedField label="اسم الأم" parts={motherArabicNameParts} />
+                  <ViewSegmentedField label="Mother's Name" parts={motherEnglishNameParts} dir="ltr" valueDir="ltr" tone="subtle" />
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 0.7fr) minmax(220px, 1.3fr)', gap: 10, alignItems: 'start' }}>
+                    <ViewField label="الجنس" value={person?.gender} />
+                    <ViewSegmentedField label="تاريخ الميلاد" parts={birthDateParts} dir="ltr" valueDir="ltr" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="card-header"><span className="card-title"><Globe size={15} /> الجنسية</span></div>
+                <div className="card-body" style={{ display: 'grid', gap: 10 }}>
+                  {nationality.length ? nationality.map((row, index) => {
+                    const details = [
+                      row?.national_id ? `الرقم الوطني: ${row.national_id}` : '',
+                      row?.passport_number ? `جواز السفر: ${row.passport_number}` : '',
+                      row?.jordanian_mothers_children_serial ? `الرقم المتسلسل: ${row.jordanian_mothers_children_serial}` : '',
+                    ].filter(Boolean)
+                    return <ViewRecordCard key={`${row?.nationality || 'nat'}-${index}`} title={renderNationalityLabel(row, { fallbackIcon: '🌍' })}>{details.length ? <ViewChipList values={details} /> : <ViewEmptyState text="لا توجد معرّفات إضافية" />}</ViewRecordCard>
+                  }) : <ViewEmptyState text="لا توجد بيانات جنسية" />}
+                </div>
               </div>
             </div>
-            <div className="card">
-              <div className="card-header"><span className="card-title"><Phone size={15} /> أرقام الموبايل</span></div>
-              <div className="card-body">
-                <TagField items={mobile_numbers} valueKey="mobile_number" placeholder="أضف رقم هاتف…"
-                  onAdd={v => updateSub('mobile_numbers', [...mobile_numbers, { mobile_number: v }])}
-                  onRemove={i => updateSub('mobile_numbers', mobile_numbers.filter((_, idx) => idx !== i))} />
+
+            <div className="profile-stack-column">
+              <div className="card">
+                <div className="card-header"><span className="card-title"><Phone size={15} /> أرقام الموبايل</span></div>
+                <div className="card-body" style={{ display: 'grid', gap: 10 }}>
+                  {mobile_numbers.length ? mobile_numbers.map((row, index) => {
+                    const country = detectPhoneCountry(row?.mobile_number)
+                    const whatsAppUrl = row?.whatsapp_flag ? buildWhatsAppWebChatUrl(row?.mobile_number) : ''
+                    const linkedJobLabels = parseLinkedJobIds(row?.linked_job_ids)
+                      .map((jobId) => jobOptions.find((option) => option.value === jobId)?.label || '')
+                      .filter(Boolean)
+                    const actions = (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
+                        {row?.phone_calls_flag ? (
+                          <span
+                            title="اتصالات"
+                            aria-label="اتصالات"
+                            style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 999, background: 'white', border: '1px solid var(--gray-200)', color: 'var(--navy)' }}
+                          >
+                            <PhoneCall size={13} />
+                          </span>
+                        ) : null}
+                        {row?.whatsapp_flag ? (
+                          whatsAppUrl ? (
+                            <a
+                              href={whatsAppUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="فتح محادثة واتساب"
+                              aria-label="فتح محادثة واتساب"
+                              onClick={(event) => event.stopPropagation()}
+                              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 999, background: '#ffffff', border: '1px solid rgba(15,23,42,0.08)', color: '#25D366', textDecoration: 'none', boxShadow: '0 4px 10px rgba(15,23,42,0.06)' }}
+                            >
+                              <WhatsAppIcon size={20} />
+                            </a>
+                          ) : (
+                            <span
+                              title="واتساب"
+                              aria-label="واتساب"
+                              style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 999, background: '#ffffff', border: '1px solid rgba(15,23,42,0.08)', boxShadow: '0 4px 10px rgba(15,23,42,0.06)' }}
+                            >
+                              <WhatsAppIcon size={20} />
+                            </span>
+                          )
+                        ) : null}
+                      </div>
+                    )
+
+                    return (
+                      <ViewRecordCard
+                        key={`phone-${index}`}
+                        title={(
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'nowrap' }}>
+                            {country?.flag ? (
+                              <img
+                                src={emojiAssetUrlFromEmoji(country.flag)}
+                                alt={country.name}
+                                title={country.name}
+                                width="20"
+                                height="20"
+                                style={{ width: 20, height: 20, flexShrink: 0 }}
+                              />
+                            ) : null}
+                            <span dir="ltr" style={{ direction: 'ltr', unicodeBidi: 'plaintext' }}>{formatDisplayPhoneNumber(row?.mobile_number) || '—'}</span>
+                          </span>
+                        )}
+                        badge={phoneNumberTypeLabel(row?.type)}
+                        actions={actions}
+                      >
+                        {parseMobileNumberTypeMeta(row?.type).baseType === 'work'
+                          ? <ViewChipList values={linkedJobLabels} emptyText="غير مرتبط بأي سجل عمل" />
+                          : null}
+                      </ViewRecordCard>
+                    )
+                  }) : <ViewEmptyState text="لا توجد أرقام موبايل" />}
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="card-header"><span className="card-title"><Mail size={15} /> البريد الإلكتروني</span></div>
+                <div className="card-body" style={{ display: 'grid', gap: 10 }}>
+                  {emailViewRows.length ? emailViewRows.map((row, index) => {
+                    const linkedJobLabels = parseLinkedJobIds(row?.linked_job_ids)
+                      .map((jobId) => jobOptions.find((option) => option.value === jobId)?.label || '')
+                      .filter(Boolean)
+                    const badge = row?.type === 'personal'
+                      ? (row?.is_primary ? 'شخصي • الرئيسي' : 'شخصي')
+                      : 'عمل'
+
+                    return (
+                      <ViewRecordCard
+                        key={`email-${index}`}
+                        title={<span dir="ltr" style={{ direction: 'ltr', unicodeBidi: 'plaintext' }}>{row?.email || '—'}</span>}
+                        badge={badge}
+                        actions={row?.email ? (
+                          <a
+                            href={`mailto:${row.email}`}
+                            onClick={(event) => event.stopPropagation()}
+                            title="إرسال بريد إلكتروني"
+                            aria-label="إرسال بريد إلكتروني"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: 32,
+                              height: 32,
+                              borderRadius: 999,
+                              background: '#ffffff',
+                              border: '1px solid rgba(15,23,42,0.08)',
+                              boxShadow: '0 4px 10px rgba(15,23,42,0.06)',
+                              color: 'var(--navy)',
+                              textDecoration: 'none',
+                            }}
+                          >
+                            <Mail size={16} />
+                          </a>
+                        ) : null}
+                      >
+                        {row?.type === 'work'
+                          ? <ViewChipList values={linkedJobLabels} emptyText="غير مرتبط بأي سجل عمل" />
+                          : null}
+                      </ViewRecordCard>
+                    )
+                  }) : <ViewEmptyState text="لا توجد عناوين بريد إلكتروني" />}
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="card-header"><span className="card-title"><Globe size={15} /> وسائل التواصل الاجتماعي</span></div>
+                <div className="card-body" style={{ display: 'grid', gap: 10 }}>
+                  {socialMediaViewRows.length ? socialMediaViewRows.map((row, index) => {
+                    const href = buildSocialProfileUrl(row?.url)
+                    const badge = row?.is_primary
+                      ? `${socialPlatformLabel(row?.platform)} • الرئيسي`
+                      : socialPlatformLabel(row?.platform)
+
+                    return (
+                      <ViewRecordCard
+                        key={`social-${index}`}
+                        title={(
+                          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, borderRadius: 999, background: '#ffffff', border: '1px solid rgba(15,23,42,0.08)', boxShadow: '0 4px 10px rgba(15,23,42,0.06)', color: 'var(--navy)' }}>
+                            {socialPlatformIcon(row?.platform, 18)}
+                          </span>
+                        )}
+                        badge={badge}
+                        actions={href ? (
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(event) => event.stopPropagation()}
+                            title="فتح الرابط"
+                            aria-label="فتح الرابط"
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              width: 32,
+                              height: 32,
+                              borderRadius: 999,
+                              background: '#ffffff',
+                              border: '1px solid rgba(15,23,42,0.08)',
+                              boxShadow: '0 4px 10px rgba(15,23,42,0.06)',
+                              color: 'var(--navy)',
+                              textDecoration: 'none',
+                            }}
+                          >
+                            <ExternalLink size={16} />
+                          </a>
+                        ) : null}
+                      />
+                    )
+                  }) : <ViewEmptyState text="لا توجد حسابات تواصل اجتماعي" />}
+                </div>
               </div>
             </div>
-            <div className="card">
-              <div className="card-header"><span className="card-title"><MapPin size={15} /> العناوين</span></div>
+            </div>
+          ) : (
+            <div className="profile-two-column-layout">
+              <div className="card">
+              <div className="card-header"><span className="card-title"><Shield size={15} /> البيانات الشخصية</span></div>
               <div className="card-body">
+                <div className="profile-name-columns">
+                  <div className="profile-name-section">
+                    <div className="profile-name-section-title">الاسم بالعربية</div>
+                    {isUnregistered && (
+                      <InlineSelectField label="اللقب" value={person?.title} onChange={updateArabicTitle} options={personTitleOptions(person?.title)} />
+                    )}
+                    <InlineComboField label="الاسم الأول"   value={person?.first_name}  onChange={v => updateField('first_name', v)}  options={opts('first_name')} />
+                    <InlineComboField label="الاسم الثاني"  value={person?.second_name} onChange={v => updateField('second_name', v)} options={opts('second_name')} />
+                    <InlineComboField label="الاسم الثالث"  value={person?.third_name}  onChange={v => updateField('third_name', v)}  options={opts('third_name')} />
+                    <InlineComboField label="اسم العائلة"   value={person?.last_name}   onChange={v => updateField('last_name', v)}   options={opts('last_name')} />
+                    <div className="profile-name-section-title" style={{ marginTop: 12 }}>اسم الأم</div>
+                    <InlineComboField label="الاسم الأول" value={person?.mother_first_name} onChange={v => updateField('mother_first_name', v)} options={opts('mother_first_name')} />
+                    <InlineComboField label="الاسم الثاني" value={person?.mother_second_name} onChange={v => updateField('mother_second_name', v)} options={opts('mother_second_name')} />
+                    <InlineComboField label="الاسم الثالث" value={person?.mother_third_name} onChange={v => updateField('mother_third_name', v)} options={opts('mother_third_name')} />
+                  </div>
+                  <div className="profile-name-section profile-name-section-english">
+                    <div className="profile-name-section-title">English Name</div>
+                    {isUnregistered && (
+                      <InlineSelectField label="Title" value={englishTitleForPerson} onChange={updateEnglishTitle} options={personEnglishTitleOptions(person?.title)} dir="ltr" />
+                    )}
+                    <InlineComboField label="First Name"  value={person?.english_first_name}  onChange={v => updateField('english_first_name', v)} options={opts('english_first_name')} dir="ltr" />
+                    <InlineComboField label="Second Name" value={person?.english_second_name} onChange={v => updateField('english_second_name', v)} options={opts('english_second_name')} dir="ltr" />
+                    <InlineComboField label="Third Name"  value={person?.english_third_name}  onChange={v => updateField('english_third_name', v)} options={opts('english_third_name')} dir="ltr" />
+                    <InlineComboField label="Last Name"   value={person?.english_last_name}   onChange={v => updateField('english_last_name', v)} options={opts('english_last_name')} dir="ltr" />
+                    <div className="profile-name-section-title" style={{ marginTop: 12 }}>Mother's Name</div>
+                    <InlineComboField label="First Name" value={person?.mother_english_first_name} onChange={v => updateField('mother_english_first_name', v)} options={opts('mother_english_first_name')} dir="ltr" />
+                    <InlineComboField label="Second Name" value={person?.mother_english_second_name} onChange={v => updateField('mother_english_second_name', v)} options={opts('mother_english_second_name')} dir="ltr" />
+                    <InlineComboField label="Third Name" value={person?.mother_english_third_name} onChange={v => updateField('mother_english_third_name', v)} options={opts('mother_english_third_name')} dir="ltr" />
+                  </div>
+                </div>
+                <InlineSelectField label="الجنس"        value={person?.gender}      onChange={v => updateField('gender', v)}       options={opts('gender')} />
+                <InlineDobField
+                  label="تاريخ الميلاد"
+                  year={person?.birth_year}
+                  day={person?.birth_day}
+                  month={person?.birth_month}
+                  legacyValue={person?.birth_date}
+                  onChange={updateBirthDate}
+                />
+              </div>
+            </div>
+            <div className="profile-stack-column">
+              <div className="card">
+                <div className="card-header"><span className="card-title"><Globe size={15} /> الجنسية</span></div>
+                <div className="card-body">
+                  <NationalityRowsEditor
+                    rows={nationality}
+                    onChange={rows => updateSub('nationality', rows)}
+                    options={opts('nationality')}
+                  />
+                </div>
+              </div>
+              <div className="card">
+                <div className="card-header"><span className="card-title"><Phone size={15} /> أرقام الموبايل</span></div>
+                <div className="card-body">
+                  <PhoneNumbersEditor rows={mobile_numbers} onChange={rows => updateSub('mobile_numbers', rows)} jobRows={jobs} />
+                </div>
+              </div>
+              <div className="card">
+                <div className="card-header"><span className="card-title"><Mail size={15} /> البريد الإلكتروني</span></div>
+                <div className="card-body">
+                  <EmailsEditor rows={emails} onChange={rows => updateSub('emails', rows)} jobRows={jobs} />
+                </div>
+              </div>
+              <div className="card">
+                <div className="card-header"><span className="card-title"><Globe size={15} /> وسائل التواصل الاجتماعي</span></div>
+                <div className="card-body">
+                  <SocialMediaEditor rows={social_media} onChange={rows => updateSub('social_media', rows)} />
+                </div>
+              </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'address' && (
+        <div className="profile-tab-panel">
+          <div className={`profile-tab-intro ${TAB_INTROS.address.tone}`}>
+            <div className="profile-tab-intro-icon"><MapPin size={18} /></div>
+            <div>
+              <div className="profile-tab-intro-title">{TAB_INTROS.address.title}</div>
+              <div className="profile-tab-intro-text">{TAB_INTROS.address.text}</div>
+            </div>
+          </div>
+          <div className="card">
+            <div className="card-header"><span className="card-title"><MapPin size={15} /> العناوين</span></div>
+            <div className="card-body">
+              {isViewMode ? (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {addresses.length ? addresses.map((row, index) => {
+                    const addressParts = [
+                      { key: 'country', label: 'البلد', value: row?.country },
+                      { key: 'governorate', label: 'المحافظة', value: row?.governorate },
+                      { key: 'city', label: 'المدينة', value: row?.city },
+                      { key: 'address', label: 'العنوان التفصيلي', value: row?.address },
+                    ]
+                    return (
+                      <ViewRecordCard
+                        key={`address-${index}`}
+                        title={`العنوان ${index + 1}`}
+                        badge={row?.is_primary ? 'الرئيسي' : ''}
+                        onOpenMap={buildGoogleMapsOpenUrl(row) ? () => window.open(buildGoogleMapsOpenUrl(row), '_blank', 'noopener,noreferrer') : null}
+                      >
+                        <ViewSegmentedField label="العنوان" parts={addressParts} />
+                      </ViewRecordCard>
+                    )
+                  }) : <ViewEmptyState text="لا توجد عناوين محفوظة" />}
+                </div>
+              ) : (
                 <AddressRowsEditor rows={addresses} onChange={rows => updateSub('addresses', rows)} governorateOptions={opts('governorate')} />
-              </div>
-            </div>
-            <div className="card">
-              <div className="card-header"><span className="card-title"><School size={15} /> المدرسة</span></div>
-              <div className="card-body">
-                <TagField items={schools} valueKey="school" placeholder="أضف مدرسة…"
-                  options={opts('school')}
-                  onAdd={v => updateSub('schools', [...schools, { school: v }])}
-                  onRemove={i => updateSub('schools', schools.filter((_, idx) => idx !== i))} />
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -2148,7 +5244,15 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
 
       {/* ── Youth ── */}
       {activeTab === 'youth' && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="profile-tab-panel">
+          <div className={`profile-tab-intro ${TAB_INTROS.youth.tone}`}>
+            <div className="profile-tab-intro-icon"><Users size={18} /></div>
+            <div>
+              <div className="profile-tab-intro-title">{TAB_INTROS.youth.title}</div>
+              <div className="profile-tab-intro-text">{TAB_INTROS.youth.text}</div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {shouldScopeToViewerGroups && (
             <div style={{
               background: '#fffbeb', border: '1px solid #e8b55a', borderRadius: 'var(--radius-md)',
@@ -2160,31 +5264,17 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
           <div className="card">
             <div className="card-header"><span className="card-title"><Users size={15} /> انتساب الشبيبة</span></div>
             <div className="card-body">
-              {readOnly ? (
-                <table className="sub-table">
-                  <thead>
-                    <tr>
-                      <th>اسم الشبيبة</th>
-                      <th>سنة الانتساب</th>
-                      <th>الفئة العمرية</th>
-                      <th>الحالة</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visiblePersonYouthGroup.length ? visiblePersonYouthGroup.map((row, i) => (
-                      <tr key={i}>
-                        <td>{youthGroupName(row?.youth_group_id)}</td>
-                        <td>{row?.youth_join_year || '—'}</td>
-                        <td>{row?.age_group || '—'}</td>
-                        <td>{row?.archived ? 'عضو قديم' : 'عضو حالي'}</td>
-                      </tr>
-                    )) : (
-                      <tr>
-                        <td colSpan={4} style={{ color: 'var(--gray-400)' }}>لا توجد بيانات ضمن مجموعاتك</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+              {isViewMode ? (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {visiblePersonYouthGroup.length ? visiblePersonYouthGroup.map((row, i) => (
+                    <ViewRecordCard key={`youth-${i}`} title={youthGroupName(row?.youth_group_id)} badge={row?.archived ? 'عضو قديم' : 'عضو حالي'}>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                        <ViewField label="سنة الانتساب" value={row?.youth_join_year} />
+                        <ViewField label="الفئة العمرية" value={row?.age_group} />
+                      </div>
+                    </ViewRecordCard>
+                  )) : <ViewEmptyState text="لا توجد بيانات ضمن مجموعاتك" />}
+                </div>
               ) : (
                 <SubTable rows={editableYouthRows}
                   setRows={rows => updateSub('person_youth_group', rows.map(({ status_label, ...rest }) => ({
@@ -2210,29 +5300,14 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
           <div className="card">
             <div className="card-header"><span className="card-title"><Shield size={15} /> المسؤوليات</span></div>
             <div className="card-body">
-              {readOnly ? (
-                <table className="sub-table">
-                  <thead>
-                    <tr>
-                      <th>الشبيبة</th>
-                      <th>الفترة</th>
-                      <th>المسؤولية</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleResponsibilities.length ? visibleResponsibilities.map((row, i) => (
-                      <tr key={i}>
-                        <td>{youthGroupName(row?.youth_group_id)}</td>
-                        <td>{row?.time || '—'}</td>
-                        <td>{row?.responsibility || '—'}</td>
-                      </tr>
-                    )) : (
-                      <tr>
-                        <td colSpan={3} style={{ color: 'var(--gray-400)' }}>لا توجد بيانات ضمن مجموعاتك</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+              {isViewMode ? (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {visibleResponsibilities.length ? visibleResponsibilities.map((row, i) => (
+                    <ViewRecordCard key={`resp-${i}`} title={row?.responsibility || 'المسؤولية'} badge={youthGroupName(row?.youth_group_id)}>
+                      <ViewField label="الفترة" value={row?.time} />
+                    </ViewRecordCard>
+                  )) : <ViewEmptyState text="لا توجد بيانات ضمن مجموعاتك" />}
+                </div>
               ) : (
                 <SubTable rows={responsibilities}
                   setRows={rows => updateSub('responsibilities', rows)}
@@ -2244,67 +5319,221 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
               )}
             </div>
           </div>
+          </div>
         </div>
       )}
 
       {/* ── Education ── */}
       {activeTab === 'edu' && (
-        <div className="card">
-          <div className="card-header"><span className="card-title"><GraduationCap size={15} /> التعليم العالي</span></div>
-          <div className="card-body">
-            <SubTable rows={higher_education}
-              setRows={rows => updateSub('higher_education', rows)}
-              columns={[
-                { key: 'university_college', label: 'الجامعة / الكلية', comboOptions: opts('university') },
-                { key: 'major',              label: 'التخصص',            comboOptions: opts('major') },
-                { key: 'degree',             label: 'الدرجة العلمية',    comboOptions: opts('degree').length ? opts('degree') : [
-                    { value: 'بكالوريوس' }, { value: 'ماجستير' }, { value: 'دكتوراه' }, { value: 'دبلوم' }
-                  ] },
-              ]} />
+        <div className="profile-tab-panel">
+          <div className={`profile-tab-intro ${TAB_INTROS.edu.tone}`}>
+            <div className="profile-tab-intro-icon"><GraduationCap size={18} /></div>
+            <div>
+              <div className="profile-tab-intro-title">{TAB_INTROS.edu.title}</div>
+              <div className="profile-tab-intro-text">{TAB_INTROS.edu.text}</div>
+            </div>
+          </div>
+          <div className="profile-two-column-layout">
+            <div className="card">
+              <div className="card-header">
+                <div className="profile-card-title-stack">
+                  <span className="card-title"><School size={15} /> المدارس</span>
+                  <div className="profile-card-meta-line">
+                    <span className="profile-card-meta-item">{schoolHeaderStatus}</span>
+                    <span className="profile-card-meta-separator" aria-hidden="true">•</span>
+                    {currentSchoolGrade ? (
+                      <>
+                        <span className="profile-card-meta-item">الصف الحالي: {currentSchoolGrade}</span>
+                        <span className="profile-card-meta-separator" aria-hidden="true">•</span>
+                      </>
+                    ) : null}
+                    <span className="profile-card-meta-item">نظام الدراسة: {schoolHeaderSystem}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="card-body">
+                {isViewMode ? (
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {schoolViewRows.length ? schoolViewRows.map((row, index) => {
+                      const meta = [
+                        formatSchoolPeriod(row) ? `الفترة: ${formatSchoolPeriod(row)}` : '',
+                      ].filter(Boolean)
+                      return (
+                        <ViewRecordCard key={`school-${index}`} title={formatSchoolDisplayName(row)} badge={row?.is_current ? 'حاليًّا' : ''}>
+                          {meta.length ? <ViewChipList values={meta} /> : null}
+                          {row?.grades_attended?.length ? <ViewField label="الصفوف" value={row.grades_attended.join('، ')} /> : null}
+                        </ViewRecordCard>
+                      )
+                    }) : <ViewEmptyState text="لا توجد مدارس محفوظة" />}
+                  </div>
+                ) : (
+                  <SchoolRowsEditor
+                    rows={schools}
+                    onChange={rows => updateSub('schools', rows)}
+                    schoolOptions={opts('school')}
+                    schoolBranches={schoolBranches}
+                    graduatedFromSchools={graduatedFromSchools}
+                    schoolSystem={schoolSystem}
+                    schoolSystemOptions={schoolSystemOptions}
+                    onGraduatedChange={value => update({
+                      person: { ...data.person, school_graduated: value, school_system: schoolSystem },
+                      schools: normalizeSchoolRows(schools, { graduatedFromSchools: value }),
+                    })}
+                    onSchoolSystemChange={value => updateField('school_system', normalizeSchoolSystemValue(value))}
+                  />
+                )}
+              </div>
+            </div>
+            <div className="card">
+              <div className="card-header"><span className="card-title"><GraduationCap size={15} /> التعليم العالي</span></div>
+              <div className="card-body">
+                {isViewMode ? (
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {higherEducationViewRows.length ? higherEducationViewRows.map((row, index) => {
+                      const meta = [
+                        formatHigherEducationPeriod(row) ? `الفترة: ${formatHigherEducationPeriod(row)}` : '',
+                      ].filter(Boolean)
+                      const stateBadge = higherEducationStateLabel(row?.state)
+                      return (
+                        <ViewRecordCard key={`edu-${index}`} title={row?.university_college || 'الجامعة / الكلية'} badge={stateBadge || row?.degree || ''}>
+                          {meta.length ? <ViewChipList values={meta} /> : null}
+                          <div className="profile-two-column-layout">
+                            <ViewField label="التخصّص" value={row?.major} />
+                            <ViewField label="الدرجة العلميّة" value={row?.degree} />
+                          </div>
+                        </ViewRecordCard>
+                      )
+                    }) : <ViewEmptyState text="لا توجد بيانات تعليم عالٍ" />}
+                  </div>
+                ) : (
+                  <HigherEducationRowsEditor
+                    rows={higher_education}
+                    onChange={rows => updateSub('higher_education', rows)}
+                    universityOptions={opts('university')}
+                    majorOptions={opts('major')}
+                    degreeOptions={opts('degree')}
+                  />
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
 
       {/* ── Work ── */}
       {activeTab === 'work' && (
-        <div className="card">
-          <div className="card-header"><span className="card-title"><Briefcase size={15} /> التوظيف</span></div>
-          <div className="card-body">
-            <SubTable rows={jobs}
-              setRows={rows => updateSub('jobs', rows)}
-              columns={[
-                { key: 'job_title', label: 'المسمى الوظيفي',    comboOptions: opts('job_title') },
-                { key: 'company',   label: 'الشركة / المؤسسة',  comboOptions: opts('company') },
-              ]} />
+        <div className="profile-tab-panel">
+          <div className={`profile-tab-intro ${TAB_INTROS.work.tone}`}>
+            <div className="profile-tab-intro-icon"><Briefcase size={18} /></div>
+            <div>
+              <div className="profile-tab-intro-title">{TAB_INTROS.work.title}</div>
+              <div className="profile-tab-intro-text">{TAB_INTROS.work.text}</div>
+            </div>
+          </div>
+          <div className="card">
+            <div className="card-header"><span className="card-title"><Briefcase size={15} /> التوظيف</span></div>
+            <div className="card-body">
+              {isViewMode ? (
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {jobViewRows.length ? jobViewRows.map((row, index) => {
+                    const meta = [
+                      formatJobPeriod(row) ? `الفترة: ${formatJobPeriod(row)}` : '',
+                    ].filter(Boolean)
+                    return (
+                      <ViewRecordCard key={`job-${index}`} title={row?.job_title || 'الوظيفة'} badge={jobStateLabel(row?.state)}>
+                        {meta.length ? <ViewChipList values={meta} /> : null}
+                        <ViewField label="الشركة / المؤسسة" value={row?.company} />
+                      </ViewRecordCard>
+                    )
+                  }) : <ViewEmptyState text="لا توجد بيانات عمل" />}
+                </div>
+              ) : (
+                <JobRowsEditor
+                  rows={jobs}
+                  onChange={rows => updateSub('jobs', rows)}
+                  jobTitleOptions={opts('job_title')}
+                  companyOptions={opts('company')}
+                />
+              )}
+            </div>
           </div>
         </div>
       )}
 
       {/* ── Hobbies ── */}
       {activeTab === 'hobbies' && (
-        <div className="card">
-          <div className="card-header"><span className="card-title"><Heart size={15} /> الهوايات والمهارات</span></div>
-          <div className="card-body">
-            <TagField items={hobbies_skills} valueKey="hobby_skill" placeholder="أضف هواية أو مهارة…"
-              options={opts('hobby_skill')}
-              onAdd={v => updateSub('hobbies_skills', [...hobbies_skills, { hobby_skill: v }])}
-              onRemove={i => updateSub('hobbies_skills', hobbies_skills.filter((_, idx) => idx !== i))} />
+        <div className="profile-tab-panel">
+          <div className={`profile-tab-intro ${TAB_INTROS.hobbies.tone}`}>
+            <div className="profile-tab-intro-icon"><Heart size={18} /></div>
+            <div>
+              <div className="profile-tab-intro-title">{TAB_INTROS.hobbies.title}</div>
+              <div className="profile-tab-intro-text">{TAB_INTROS.hobbies.text}</div>
+            </div>
+          </div>
+          <div className="card">
+            <div className="card-header"><span className="card-title"><Heart size={15} /> الهوايات والمهارات</span></div>
+            <div className="card-body">
+              {isViewMode ? (
+                <ViewChipList values={hobbies_skills.map((row) => row?.hobby_skill).filter(Boolean)} emptyText="لا توجد هوايات أو مهارات محفوظة" />
+              ) : (
+                <TagField items={hobbies_skills} valueKey="hobby_skill" placeholder="أضف هواية أو مهارة…"
+                  options={opts('hobby_skill')}
+                  onAdd={v => updateSub('hobbies_skills', [...hobbies_skills, { hobby_skill: v }])}
+                  onRemove={i => updateSub('hobbies_skills', hobbies_skills.filter((_, idx) => idx !== i))} />
+              )}
+            </div>
           </div>
         </div>
       )}
 
       {/* ── Org tab ── */}
       {activeTab === 'org' && !isUnregistered && (
-        <OrgTab personId={personId} orgContext={orgContext} onViewProfile={onViewProfile} relevantGroupIds={relevantGroupIds} />
+        <div className="profile-tab-panel">
+          <div className={`profile-tab-intro ${TAB_INTROS.org.tone}`}>
+            <div className="profile-tab-intro-icon"><GitBranch size={18} /></div>
+            <div>
+              <div className="profile-tab-intro-title">{TAB_INTROS.org.title}</div>
+              <div className="profile-tab-intro-text">{TAB_INTROS.org.text}</div>
+            </div>
+          </div>
+          <OrgTab personId={personId} orgContext={orgContext} onViewProfile={onViewProfile} relevantGroupIds={relevantGroupIds} />
+        </div>
       )}
       {activeTab === 'org' && isUnregistered && (
-        <OrgTabUnregistered unregisteredId={personId} orgContext={orgContext} onViewProfile={onViewProfile} relevantGroupIds={relevantGroupIds} />
+        <div className="profile-tab-panel">
+          <div className={`profile-tab-intro ${TAB_INTROS.org.tone}`}>
+            <div className="profile-tab-intro-icon"><GitBranch size={18} /></div>
+            <div>
+              <div className="profile-tab-intro-title">{TAB_INTROS.org.title}</div>
+              <div className="profile-tab-intro-text">{TAB_INTROS.org.text}</div>
+            </div>
+          </div>
+          <OrgTabUnregistered unregisteredId={personId} orgContext={orgContext} onViewProfile={onViewProfile} relevantGroupIds={relevantGroupIds} />
+        </div>
       )}
       {activeTab === 'gsorg' && !isUnregistered && (
-        <GSTab personId={personId} onViewProfile={onViewProfile} />
+        <div className="profile-tab-panel">
+          <div className={`profile-tab-intro ${TAB_INTROS.gsorg.tone}`}>
+            <div className="profile-tab-intro-icon"><GitBranch size={18} /></div>
+            <div>
+              <div className="profile-tab-intro-title">{TAB_INTROS.gsorg.title}</div>
+              <div className="profile-tab-intro-text">{TAB_INTROS.gsorg.text}</div>
+            </div>
+          </div>
+          <GSTab personId={personId} onViewProfile={onViewProfile} />
+        </div>
       )}
       {activeTab === 'gsorg' && isUnregistered && (
-        <GSTabUnregistered unregisteredId={personId} onViewProfile={onViewProfile} />
+        <div className="profile-tab-panel">
+          <div className={`profile-tab-intro ${TAB_INTROS.gsorg.tone}`}>
+            <div className="profile-tab-intro-icon"><GitBranch size={18} /></div>
+            <div>
+              <div className="profile-tab-intro-title">{TAB_INTROS.gsorg.title}</div>
+              <div className="profile-tab-intro-text">{TAB_INTROS.gsorg.text}</div>
+            </div>
+          </div>
+          <GSTabUnregistered unregisteredId={personId} onViewProfile={onViewProfile} />
+        </div>
       )}
     </div>
   )

@@ -8,6 +8,10 @@ import pandas as pd
 
 
 class Database:
+    person_sheet_address_projection_columns = (
+        "country", "governorate", "city", "address", "location_url", "lat", "lng",
+    )
+
     def __init__(self, backend_file: str):
         self.backend_dir = os.path.dirname(backend_file)
         self.workspace_dir = os.path.abspath(os.path.join(self.backend_dir, ".."))
@@ -60,13 +64,59 @@ class Database:
             text = text[:-2]
         return text
 
+    def _is_boolean_column_name(self, column_name: Any) -> bool:
+        name = str(column_name or "").strip().lower()
+        if not name:
+            return False
+        if name in {"registered", "archived", "school_graduated"}:
+            return True
+        if name.startswith(("is_", "has_", "use_", "inherit_")):
+            return True
+        if name.endswith(("_flag", "_active", "_enabled", "_disabled")):
+            return True
+        return False
+
+    def _normalize_boolean_value(self, value: Any):
+        if isinstance(value, bool):
+            return value
+        if value is None or pd.isna(value):
+            return None
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if float(value) == 1.0:
+                return True
+            if float(value) == 0.0:
+                return False
+            return value
+        text = str(value).strip().lower()
+        if text in ("1", "1.0", "true", "yes", "y", "t"):
+            return True
+        if text in ("0", "0.0", "false", "no", "n", "f"):
+            return False
+        return value
+
+    def normalize_boolean_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty:
+            return df
+        normalized = df.copy()
+        for column in normalized.columns:
+            if not self._is_boolean_column_name(column):
+                continue
+            normalized[column] = normalized[column].apply(self._normalize_boolean_value)
+        return normalized
+
     def load_excel_sheets(self, sheets: list[str]) -> dict[str, pd.DataFrame]:
         store: dict[str, pd.DataFrame] = {}
         xf = pd.ExcelFile(self.excel_path)
         for sheet in sheets:
             if sheet in xf.sheet_names:
                 if sheet == "mobile_numbers":
-                    df = xf.parse(sheet, dtype={"mobile_number": str})
+                    df = xf.parse(sheet, dtype={"mobile_number": str, "type": str, "linked_job_ids": str})
+                elif sheet == "emails":
+                    df = xf.parse(sheet, dtype={"email": str, "type": str, "linked_job_ids": str})
+                elif sheet == "social_media":
+                    df = xf.parse(sheet, dtype={"platform": str, "url": str})
+                elif sheet == "jobs":
+                    df = xf.parse(sheet, dtype={"job_id": str, "job_title": str, "company": str, "start_date": str, "end_date": str, "state": str})
                 else:
                     df = xf.parse(sheet)
                 if sheet == "persons":
@@ -74,6 +124,7 @@ class Database:
                         df["birth_date"] = df["birth_date"].where(df["birth_date"].isna(), df["birth_date"].astype(str))
                 if sheet == "mobile_numbers" and "mobile_number" in df.columns:
                     df["mobile_number"] = df["mobile_number"].apply(self._normalize_mobile_number)
+                df = self.normalize_boolean_columns(df)
                 store[sheet] = df
         return store
 
@@ -82,11 +133,21 @@ class Database:
             # Replace only target sheets and preserve any unrelated sheets (e.g., auth_users).
             with pd.ExcelWriter(self.excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
                 for sheet, df in store.items():
+                    df = self.normalize_boolean_columns(df)
+                    if sheet == "persons":
+                        drop_cols = [col for col in self.person_sheet_address_projection_columns if col in df.columns]
+                        if drop_cols:
+                            df = df.drop(columns=drop_cols)
                     df.to_excel(writer, sheet_name=sheet, index=False)
             return
 
         with pd.ExcelWriter(self.excel_path, engine="openpyxl") as writer:
             for sheet, df in store.items():
+                df = self.normalize_boolean_columns(df)
+                if sheet == "persons":
+                    drop_cols = [col for col in self.person_sheet_address_projection_columns if col in df.columns]
+                    if drop_cols:
+                        df = df.drop(columns=drop_cols)
                 df.to_excel(writer, sheet_name=sheet, index=False)
 
     def load_json_file(self, path: str, default: Any):

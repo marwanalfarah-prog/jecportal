@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { X, UserPlus, ChevronRight, ChevronLeft, Check, AlertCircle } from 'lucide-react'
+import { X, UserPlus, ChevronRight, ChevronLeft, Check, AlertCircle, MapPin, Pencil } from 'lucide-react'
 import { api } from '../api.js'
+import { buildGoogleMapsOpenUrl, parseGoogleMapsUrl, sanitizeStoredCoordinate } from '../location.js'
 
 // Strip non-Arabic characters — allows Arabic letters, diacritics, tatweel, spaces, and common Arabic punctuation
 function stripToArabic(str) {
@@ -23,6 +24,81 @@ function normalizeLoose(str) {
   return String(str || '').replace(/\s+/g, ' ').trim()
 }
 
+function preserveLooseInput(str) {
+  return String(str ?? '')
+}
+
+function normalizeSchoolLookupKey(value) {
+  return normalizeLoose(value).replace(/[أإآ]/g, 'ا').toLowerCase()
+}
+
+function normalizeSchoolBranches(raw) {
+  const out = {}
+  if (!raw || typeof raw !== 'object') return out
+
+  const entries = Array.isArray(raw)
+    ? raw.map((row) => [row?.school, row?.branches])
+    : Object.entries(raw)
+
+  for (const [schoolRaw, branchesRaw] of entries) {
+    const school = normalizeLoose(schoolRaw)
+    if (!school) continue
+
+    const source = Array.isArray(branchesRaw) ? branchesRaw : (typeof branchesRaw === 'string' ? [branchesRaw] : [])
+    const seen = new Set()
+    const branches = []
+    for (const branchRaw of source) {
+      const branch = normalizeLoose(branchRaw)
+      if (!branch || seen.has(branch)) continue
+      seen.add(branch)
+      branches.push(branch)
+    }
+
+    out[school] = branches
+  }
+
+  return out
+}
+
+function schoolBranchesForName(schoolBranches, schoolName) {
+  const school = normalizeLoose(schoolName)
+  if (!school) return []
+  const lookupKey = normalizeSchoolLookupKey(school)
+  const entry = Object.entries(normalizeSchoolBranches(schoolBranches)).find(([name]) => normalizeSchoolLookupKey(name) === lookupKey)
+  return entry ? entry[1] : []
+}
+
+function normalizeSchoolGradeValue(value) {
+  return normalizeLoose(value)
+}
+
+function normalizeSchoolGrades(values) {
+  const source = Array.isArray(values)
+    ? values
+    : String(values || '').split('|')
+
+  const seen = new Set()
+  const ordered = []
+  for (const option of SCHOOL_GRADE_OPTIONS) {
+    const exists = source.some((value) => normalizeSchoolGradeValue(value) === option)
+    if (exists && !seen.has(option)) {
+      seen.add(option)
+      ordered.push(option)
+    }
+  }
+
+  return ordered
+}
+
+function serializeSchoolGrades(values) {
+  return normalizeSchoolGrades(values).join('|')
+}
+
+function sanitizeDateInput(value) {
+  const text = String(value || '').trim()
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : ''
+}
+
 function normalizeCountryValue(str) {
   const text = normalizeLoose(str)
   if (!text) return 'الأردن'
@@ -42,13 +118,115 @@ function normalizeCountryValue(str) {
   return text
 }
 
+const NATIONALITY_JORDANIAN = 'أردنيّة'
+const NATIONALITY_CHILDREN_OF_JORDANIAN_MOTHERS = 'أبناء الأردنيّات'
+
+function normalizeNationalityValue(value) {
+  return normalizeLoose(value)
+}
+
+function normalizeNationalityLookupKey(value) {
+  return normalizeNationalityValue(value).replace(/[أإآ]/g, 'ا').toLowerCase()
+}
+
+function isJordanianNationality(value) {
+  return normalizeNationalityLookupKey(value) === normalizeNationalityLookupKey(NATIONALITY_JORDANIAN)
+}
+
+function isChildrenOfJordanianMothersNationality(value) {
+  return normalizeNationalityLookupKey(value) === normalizeNationalityLookupKey(NATIONALITY_CHILDREN_OF_JORDANIAN_MOTHERS)
+}
+
+function sanitizeNationalityIdentifierValue(field, value) {
+  const text = String(value ?? '').trim()
+  if (!text) return ''
+  if (field === 'passport_number') return text.replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+  return text.replace(/\D/g, '')
+}
+
+function normalizeNationalityRows(rows, { dropEmpty = false } = {}) {
+  const source = Array.isArray(rows) ? rows : []
+  const seen = new Set()
+  const normalized = []
+
+  for (const row of source) {
+    const nationality = normalizeNationalityValue(row?.nationality)
+    if (!nationality) continue
+
+    const lookupKey = normalizeNationalityLookupKey(nationality)
+    if (seen.has(lookupKey)) continue
+    seen.add(lookupKey)
+
+    normalized.push({
+      nationality,
+      national_id: isJordanianNationality(nationality)
+        ? sanitizeNationalityIdentifierValue('national_id', row?.national_id)
+        : '',
+      passport_number: isChildrenOfJordanianMothersNationality(nationality)
+        ? ''
+        : sanitizeNationalityIdentifierValue('passport_number', row?.passport_number),
+      jordanian_mothers_children_serial: isChildrenOfJordanianMothersNationality(nationality)
+        ? sanitizeNationalityIdentifierValue('jordanian_mothers_children_serial', row?.jordanian_mothers_children_serial)
+        : '',
+    })
+  }
+
+  return dropEmpty ? normalized.filter((row) => row.nationality) : normalized
+}
+
+function getNationalitySelectionError(rows, candidate) {
+  const nationality = normalizeNationalityValue(candidate)
+  if (!nationality) return 'يرجى إدخال الجنسية أولاً'
+
+  const normalizedRows = normalizeNationalityRows(rows)
+  if (normalizedRows.some((row) => normalizeNationalityLookupKey(row.nationality) === normalizeNationalityLookupKey(nationality))) {
+    return 'هذه الجنسية مضافة بالفعل'
+  }
+
+  const hasJordanian = normalizedRows.some((row) => isJordanianNationality(row.nationality))
+  const hasChildren = normalizedRows.some((row) => isChildrenOfJordanianMothersNationality(row.nationality))
+
+  if (isJordanianNationality(nationality) && hasChildren) {
+    return 'لا يمكن اختيار الجنسية الأردنيّة مع أبناء الأردنيّات'
+  }
+
+  if (isChildrenOfJordanianMothersNationality(nationality) && hasJordanian) {
+    return 'لا يمكن اختيار أبناء الأردنيّات مع الجنسية الأردنيّة'
+  }
+
+  return ''
+}
+
+function nationalityIdentifierFields(row) {
+  const fields = []
+
+  if (isJordanianNationality(row?.nationality)) {
+    fields.unshift({ key: 'national_id', label: 'الرقم الوطني', hint: 'أرقام فقط', dir: 'ltr', inputMode: 'numeric' })
+  }
+
+  if (isChildrenOfJordanianMothersNationality(row?.nationality)) {
+    fields.unshift({
+      key: 'jordanian_mothers_children_serial',
+      label: 'الرقم المتسلسل لهويّة أبناء الأردنيّات',
+      hint: 'أرقام فقط',
+      dir: 'ltr',
+      inputMode: 'numeric',
+    })
+    return fields
+  }
+
+  fields.unshift({ key: 'passport_number', label: 'رقم جواز السفر', hint: 'أحرف وأرقام فقط', dir: 'ltr', inputMode: 'text' })
+
+  return fields
+}
+
 
 // ─────────────────────────────────────────────────────────────────
 // Static data  (mirrors Google Form exactly)
 // ─────────────────────────────────────────────────────────────────
 const GENDER_OPTIONS = ['ذكر', 'أنثى']
 
-const NATIONALITIES = ['أردنيّة', 'عراقيّة', 'سوريّة', 'مصريّة']
+const NATIONALITIES = ['أردنيّة', 'أبناء الأردنيّات', 'عراقيّة', 'سوريّة', 'مصريّة']
 
 const AGE_GROUPS = ['البراعم', 'الإعدادي', 'الثانوي', 'الجامعيّة', 'العاملة']
 
@@ -58,6 +236,50 @@ const SCHOOL_OPTIONS = [
   'كليّة دي لاسال - الفرير','الروم الكاثوليك','الأورثوذكسيّة',
   'المطران للبنين','الأهليّة للبنات','المعمدانيّة',
 ]
+
+const SCHOOL_GRADE_OPTIONS = [
+  'الروضة الصغرى (KG1)',
+  'الروضة الكبرى (KG2)',
+  'الصف الأول',
+  'الصف الثاني',
+  'الصف الثالث',
+  'الصف الرابع',
+  'الصف الخامس',
+  'الصف السادس',
+  'الصف السابع',
+  'الصف الثامن',
+  'الصف التاسع',
+  'الصف العاشر',
+  'الصف الحادي عشر (الأول ثانوي)',
+  'الصف الثاني عشر (التوجيهي)',
+]
+
+const DEFAULT_SCHOOL_SYSTEM = 'النظام الوطني الأردني'
+const SCHOOL_SYSTEM_OPTIONS = [DEFAULT_SCHOOL_SYSTEM, 'IGCSE', 'IB', 'SAT']
+
+function normalizeSchoolSystemValue(value) {
+  const text = normalizeLoose(value)
+  if (text === 'وطني') return DEFAULT_SCHOOL_SYSTEM
+  return text
+}
+
+function storedSchoolSystemValue(value) {
+  return normalizeSchoolSystemValue(value) || DEFAULT_SCHOOL_SYSTEM
+}
+
+function buildSchoolSystemOptions(values = [], currentValue = '') {
+  const seen = new Set()
+  const ordered = []
+
+  for (const source of [...SCHOOL_SYSTEM_OPTIONS, ...values, currentValue]) {
+    const option = normalizeSchoolSystemValue(source)
+    if (!option || seen.has(option)) continue
+    seen.add(option)
+    ordered.push(option)
+  }
+
+  return ordered
+}
 
 const UNIVERSITY_OPTIONS = [
   'لم أدرس في الجامعة أو الكليّة',
@@ -107,7 +329,7 @@ const MONTHS_DATA = [
   {en:'Nov',ar:'تشرين الثاني',num:11},{en:'Dec',ar:'كانون الأول',num:12},
 ]
 
-const DEFAULT_ADDRESS = { country: 'الأردن', governorate: '', city: '', address: '', is_primary: true }
+const DEFAULT_ADDRESS = { country: 'الأردن', governorate: '', city: '', address: '', location_url: '', lat: null, lng: null, is_primary: true }
 
 // ─────────────────────────────────────────────────────────────────
 // Small reusable input atoms
@@ -156,6 +378,94 @@ function CheckList({ options, selected, onChange, otherVal, onOtherChange }) {
           value={otherVal || ''}
           onChange={e => onOtherChange(e.target.value)} />
       </div>
+    </div>
+  )
+}
+
+function MultiSelectChips({ options, selected, onChange }) {
+  const selectedSet = new Set(Array.isArray(selected) ? selected : [])
+  const toggle = (option) => {
+    if (selectedSet.has(option)) {
+      onChange((selected || []).filter((value) => value !== option))
+      return
+    }
+    onChange([...(selected || []), option])
+  }
+
+  return (
+    <div className="am-option-list am-checklist">
+      {options.map((option) => {
+        const active = selectedSet.has(option)
+        return (
+          <button key={option} type="button"
+            className={'am-option-item' + (active ? ' am-selected' : '')}
+            onClick={() => toggle(option)}>
+            <span className={'am-check-box' + (active ? ' am-selected' : '')}>
+              {active && <Check size={11} strokeWidth={3} />}
+            </span>
+            {option}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function CompactMultiSelect({ options, selected, onChange, placeholder = 'اختر…' }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  const normalizedSelected = Array.isArray(selected) ? selected : []
+  const selectedSet = new Set(normalizedSelected)
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [])
+
+  const toggle = (option) => {
+    if (selectedSet.has(option)) {
+      onChange(normalizedSelected.filter((value) => value !== option))
+      return
+    }
+    onChange([...normalizedSelected, option])
+  }
+
+  const summary = normalizedSelected.length === 0
+    ? placeholder
+    : normalizedSelected.length <= 2
+      ? normalizedSelected.join('، ')
+      : `${normalizedSelected.length} صفوف محددة`
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button type="button" className="am-select-trigger" onClick={() => setOpen((current) => !current)}>
+        <span className={'am-select-value' + (!normalizedSelected.length ? ' am-placeholder' : '')}>{summary}</span>
+        <ChevronLeft size={15} className={'am-chevron' + (open ? ' am-open' : '')} />
+      </button>
+      {open && (
+        <div className="am-dropdown">
+          <div className="am-dropdown-list" style={{ maxHeight: 260 }}>
+            {options.map((option) => {
+              const active = selectedSet.has(option)
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  className={'am-dropdown-item' + (active ? ' am-selected' : '')}
+                  onClick={() => toggle(option)}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}
+                >
+                  <span>{option}</span>
+                  {active && <Check size={13} strokeWidth={3} />}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -283,12 +593,13 @@ function BirthDatePicker({ day, month, onDayChange, onMonthChange }) {
 
 /** Unified nationalities picker — tags for all selected nationalities + dropdown to add more */
 function NationalitiesPicker({ values, onChange, knownOptions }) {
-  // values: string[]  —  the full list of selected nationalities (primary first)
   const [open,    setOpen]    = useState(false)
   const [custom,  setCustom]  = useState(false)
   const [query,   setQuery]   = useState('')
   const [freeVal, setFreeVal] = useState('')
+  const [message, setMessage] = useState('')
   const ref = useRef(null)
+  const rows = normalizeNationalityRows(values)
 
   useEffect(() => {
     const h = e => { if (ref.current && !ref.current.contains(e.target)) { setOpen(false); setQuery('') } }
@@ -296,39 +607,76 @@ function NationalitiesPicker({ values, onChange, knownOptions }) {
     return () => document.removeEventListener('mousedown', h)
   }, [])
 
+  const commit = (nextRows) => onChange(normalizeNationalityRows(nextRows))
+
   const add = (val) => {
-    const v = normalizeAr(val)
-    if (!v || values.includes(v)) return
-    onChange([...values, v])
+    const nationality = normalizeNationalityValue(val)
+    const error = getNationalitySelectionError(rows, nationality)
+    if (error) {
+      setMessage(error)
+      return
+    }
+
+    commit([...rows, { nationality, national_id: '', passport_number: '', jordanian_mothers_children_serial: '' }])
+    setMessage('')
     setOpen(false); setQuery(''); setFreeVal(''); setCustom(false)
   }
-  const remove = (idx) => onChange(values.filter((_, i) => i !== idx))
+  const remove = (idx) => { setMessage(''); commit(rows.filter((_, i) => i !== idx)) }
+  const updateRow = (idx, key, value) => commit(rows.map((row, i) => (
+    i === idx ? { ...row, [key]: sanitizeNationalityIdentifierValue(key, value) } : row
+  )))
 
-  const available = knownOptions.filter(o => o && !values.includes(o))
-  const filtered  = available.filter(o => o.includes(query))
+  const available = Array.from(new Map(
+    knownOptions
+      .map(option => {
+        const value = normalizeNationalityValue(option)
+        return value ? [normalizeNationalityLookupKey(value), value] : null
+      })
+      .filter(Boolean)
+  ).values()).filter(option => !getNationalitySelectionError(rows, option))
+  const filtered  = available.filter(o => o.toLowerCase().includes(query.toLowerCase()))
+  const conflictHint = rows.some(row => isJordanianNationality(row.nationality))
+    ? 'لا يمكن اختيار أبناء الأردنيّات مع الجنسية الأردنيّة.'
+    : rows.some(row => isChildrenOfJordanianMothersNationality(row.nationality))
+      ? 'لا يمكن اختيار الجنسية الأردنيّة مع أبناء الأردنيّات.'
+      : ''
 
   return (
-    <div>
-      {/* Selected nationalities as removable tags */}
-      {values.length > 0 && (
-        <div className="tag-list" style={{ marginBottom: 8 }}>
-          {values.map((n, i) => (
-            <span key={i} className="tag">
-              {n}
-              <span className="tag-remove" onClick={() => remove(i)}>×</span>
-            </span>
-          ))}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {rows.map((row, index) => (
+        <div key={`${row.nationality}-${index}`} style={{ border: '1px solid var(--gray-200)', borderRadius: '16px', padding: '12px 14px', background: 'var(--gray-50)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{row.nationality}</div>
+            <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--red, #dc2626)' }} onClick={() => remove(index)}>
+              حذف
+            </button>
+          </div>
+          <div style={{ display: 'grid', gap: 10 }}>
+            {nationalityIdentifierFields(row).map(field => (
+              <label key={field.key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>{field.label}</span>
+                <input
+                  className="form-control"
+                  value={row[field.key] || ''}
+                  dir={field.dir}
+                  inputMode={field.inputMode}
+                  placeholder={field.hint}
+                  onChange={e => updateRow(index, field.key, e.target.value)}
+                />
+              </label>
+            ))}
+          </div>
         </div>
-      )}
+      ))}
 
       {/* Add nationality button */}
       {!custom ? (
         <div ref={ref} style={{ position: 'relative' }}>
           <button type="button" className="am-select-trigger"
-            style={values.length > 0 ? { background: 'var(--gray-50)', borderStyle: 'dashed' } : {}}
-            onClick={() => { setOpen(o => !o); setQuery('') }}>
-            <span className={'am-select-value' + (values.length === 0 ? ' am-placeholder' : '')}>
-              {values.length === 0 ? 'اختر الجنسية…' : '＋ إضافة جنسية أخرى'}
+            style={rows.length > 0 ? { background: 'var(--gray-50)', borderStyle: 'dashed' } : {}}
+            onClick={() => { setOpen(o => !o); setQuery(''); setMessage('') }}>
+            <span className={'am-select-value' + (rows.length === 0 ? ' am-placeholder' : '')}>
+              {rows.length === 0 ? 'اختر الجنسية…' : '＋ إضافة جنسية أخرى'}
             </span>
             <ChevronLeft size={15} className={'am-chevron' + (open ? ' am-open' : '')} />
           </button>
@@ -359,31 +707,40 @@ function NationalitiesPicker({ values, onChange, knownOptions }) {
           <input autoFocus className="form-control am-other-free" lang="ar"
             placeholder="اكتب الجنسية…"
             value={freeVal}
-            onChange={e => setFreeVal(stripToArabic(e.target.value))}
+            onChange={e => setFreeVal(e.target.value)}
             onKeyDown={e => {
               if (e.key === 'Enter') add(freeVal)
-              if (e.key === 'Escape') { setCustom(false); setFreeVal('') }
+              if (e.key === 'Escape') { setCustom(false); setFreeVal(''); setMessage('') }
             }}
           />
           <button type="button" className="btn btn-ghost btn-sm"
             onClick={() => add(freeVal)}>إضافة</button>
           <button type="button" className="btn btn-ghost btn-sm"
-            onClick={() => { setCustom(false); setFreeVal('') }}>✕</button>
+            onClick={() => { setCustom(false); setFreeVal(''); setMessage('') }}>✕</button>
         </div>
       )}
+
+      {conflictHint && <div className="am-field-hint" style={{ color: '#92400e' }}>{conflictHint}</div>}
+      {message && <div className="am-field-error"><AlertCircle size={13} style={{ flexShrink: 0 }} /> {message}</div>}
     </div>
   )
 }
 
 function AddressEntriesField({ entries, onChange, governorateOptions = [], errors = {} }) {
   const rows = Array.isArray(entries) && entries.length ? entries : [{ ...DEFAULT_ADDRESS }]
+  const [mapDrafts, setMapDrafts] = useState({})
+  const [mapEditors, setMapEditors] = useState({})
+  const [mapErrors, setMapErrors] = useState({})
 
   const setRows = (nextRows) => {
     const normalized = nextRows.length ? nextRows.map((row) => ({
       country: normalizeCountryValue(row.country),
-      governorate: normalizeLoose(row.governorate),
-      city: normalizeLoose(row.city),
-      address: normalizeLoose(row.address),
+      governorate: preserveLooseInput(row.governorate),
+      city: preserveLooseInput(row.city),
+      address: preserveLooseInput(row.address),
+      location_url: String(row.location_url || '').trim(),
+      lat: sanitizeStoredCoordinate(row.lat, 'lat'),
+      lng: sanitizeStoredCoordinate(row.lng, 'lng'),
       is_primary: Boolean(row.is_primary),
     })) : [{ ...DEFAULT_ADDRESS }]
 
@@ -397,6 +754,64 @@ function AddressEntriesField({ entries, onChange, governorateOptions = [], error
   const updateRow = (index, key, value) => setRows(rows.map((row, rowIndex) => (
     rowIndex === index ? { ...row, [key]: value } : row
   )))
+
+  const openMapEditor = (index) => {
+    setMapEditors(prev => ({ ...prev, [index]: true }))
+    setMapErrors(prev => ({ ...prev, [index]: '' }))
+  }
+
+  const closeMapEditor = (index) => {
+    setMapEditors(prev => ({ ...prev, [index]: false }))
+    setMapDrafts(prev => ({ ...prev, [index]: '' }))
+    setMapErrors(prev => ({ ...prev, [index]: '' }))
+  }
+
+  const applyMapUrl = async (index) => {
+    const draft = String(mapDrafts[index] || '').trim()
+    if (!draft) {
+      setMapErrors(prev => ({ ...prev, [index]: 'ألصق رابط Google Maps أولاً' }))
+      return
+    }
+    const parsed = parseGoogleMapsUrl(draft)
+    if (!parsed.isGoogleMapsUrl) {
+      setMapErrors(prev => ({ ...prev, [index]: 'الرابط ليس من Google Maps' }))
+      return
+    }
+    let lat = sanitizeStoredCoordinate(parsed.lat, 'lat')
+    let lng = sanitizeStoredCoordinate(parsed.lng, 'lng')
+    if (lat == null || lng == null) {
+      try {
+        const resolved = await api.resolveGoogleMapsLocation(draft)
+        lat = sanitizeStoredCoordinate(resolved?.lat, 'lat')
+        lng = sanitizeStoredCoordinate(resolved?.lng, 'lng')
+      } catch {
+        setMapErrors(prev => ({ ...prev, [index]: 'تعذر استخراج الموقع من هذا الرابط' }))
+        return
+      }
+    }
+    if (lat == null || lng == null) {
+      setMapErrors(prev => ({ ...prev, [index]: 'تعذر استخراج الموقع من هذا الرابط' }))
+      return
+    }
+    setRows(rows.map((row, rowIndex) => (
+      rowIndex === index
+        ? {
+            ...row,
+            location_url: draft,
+            lat,
+            lng,
+          }
+        : row
+    )))
+    closeMapEditor(index)
+  }
+
+  const clearMapLocation = (index) => {
+    setRows(rows.map((row, rowIndex) => (
+      rowIndex === index ? { ...row, location_url: '', lat: null, lng: null } : row
+    )))
+    openMapEditor(index)
+  }
 
   const setPrimary = (index) => setRows(rows.map((row, rowIndex) => ({ ...row, is_primary: rowIndex === index })))
 
@@ -419,7 +834,7 @@ function AddressEntriesField({ entries, onChange, governorateOptions = [], error
           <div className="am-address-card-header">
             <div>
               <div className="am-address-card-title">عنوان {index + 1}</div>
-              <div className="am-address-card-subtitle">أدخل المحافظة ثم المدينة ثم العنوان التفصيلي</div>
+              <div className="am-address-card-subtitle">أدخل المحافظة ثم المدينة ثم العنوان التفصيلي، ثم أضف موقع المنزل عند الحاجة</div>
             </div>
             <div className="am-address-card-actions">
               {!row.is_primary && (
@@ -483,6 +898,39 @@ function AddressEntriesField({ entries, onChange, governorateOptions = [], error
               />
               {errors[`address_text_${index}`] && <div className="am-field-error"><AlertCircle size={13} style={{ flexShrink: 0 }} /> {errors[`address_text_${index}`]}</div>}
             </div>
+
+            <div className="am-address-field am-address-field-wide">
+              <div className="am-field-hint am-address-label">موقع المنزل</div>
+              {(!buildGoogleMapsOpenUrl(row) || mapEditors[index]) ? (
+                <div className="am-address-map-editor">
+                  <input
+                    className="form-control"
+                    value={mapDrafts[index] || ''}
+                    onChange={e => {
+                      const nextValue = e.target.value
+                      setMapDrafts(prev => ({ ...prev, [index]: nextValue }))
+                      setMapErrors(prev => ({ ...prev, [index]: '' }))
+                    }}
+                    placeholder="ألصق رابط Google Maps هنا"
+                    dir="ltr"
+                  />
+                  <div className="am-address-map-editor-actions">
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => applyMapUrl(index)}>حفظ الموقع</button>
+                    {buildGoogleMapsOpenUrl(row) && <button type="button" className="btn btn-ghost btn-sm" onClick={() => closeMapEditor(index)}>إلغاء</button>}
+                  </div>
+                  {mapErrors[index] && <div className="am-field-error"><AlertCircle size={13} style={{ flexShrink: 0 }} /> {mapErrors[index]}</div>}
+                </div>
+              ) : (
+                <div className="am-address-map-meta">
+                  <button type="button" className="am-address-map-icon active" title="فتح موقع المنزل" onClick={() => window.open(buildGoogleMapsOpenUrl(row), '_blank', 'noopener,noreferrer')}>
+                    <MapPin size={16} />
+                  </button>
+                  <button type="button" className="am-address-map-icon" title="تعديل موقع المنزل" onClick={() => clearMapLocation(index)}>
+                    <Pencil size={15} />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       ))}
@@ -543,12 +991,14 @@ const BLANK = {
   // step 0
   first_name: '', second_name: '', third_name: '', last_name: '',
   english_first_name: '', english_second_name: '', english_third_name: '', english_last_name: '',
+  mother_first_name: '', mother_second_name: '', mother_third_name: '',
+  mother_english_first_name: '', mother_english_second_name: '', mother_english_third_name: '',
   gender: '', birth_year: '', birth_day: '', birth_month: '',
   nationalities: [], mobile: '', addresses: [{ ...DEFAULT_ADDRESS }],
   // step 1
   youth_groups: [{ youth_group: '', join_year: '', age_group: '' }],
   // step 2 – school
-  school: '', school_other: '', hobbies_school: [], hobbies_school_other: '',
+  school: '', school_other: '', school_section: '', school_system: '', school_start_date: '', school_end_date: '', school_is_current: true, school_graduated: false, school_grades: [], hobbies_school: [], hobbies_school_other: '',
   // step 2 – adult
   university: '', university_other: '', major: '',
   job_title: '', company: '',
@@ -562,9 +1012,21 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
   const [errors,  setErrors]  = useState({})
   const [saving,  setSaving]  = useState(false)
   const [filters, setFilters] = useState({})
+  const [schoolBranches, setSchoolBranches] = useState({})
   const bodyRef = useRef(null)
 
   useEffect(() => { api.filters().then(setFilters).catch(() => {}) }, [])
+  useEffect(() => {
+    let cancelled = false
+    api.getConfig()
+      .then((response) => {
+        if (!cancelled) setSchoolBranches(normalizeSchoolBranches(response?.config?.school_branches || {}))
+      })
+      .catch(() => {
+        if (!cancelled) setSchoolBranches({})
+      })
+    return () => { cancelled = true }
+  }, [])
   useEffect(() => {
     if (!prefillName.trim()) return
     const pts = prefillName.trim().split(/\s+/)
@@ -593,12 +1055,25 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
   const primaryAgeGroup = form.youth_groups[0]?.age_group || ''
   const isSchool = YOUTH_SCHOOL_GROUPS.includes(primaryAgeGroup)
   const isAdult  = ADULT_GROUPS.includes(primaryAgeGroup)
+  const selectedSchoolName = form.school === 'أخرى' ? normalizeLoose(form.school_other) : normalizeLoose(form.school)
+  const selectedSchoolSections = schoolBranchesForName(schoolBranches, selectedSchoolName)
+  const schoolSystemOptions = buildSchoolSystemOptions(dynOpt('school_system'), form.school_system)
 
   const STEP_LABELS = [
     'البيانات الشخصيّة',
     'معلومات الشبيبة',
     isSchool ? 'المدرسة والهوايات' : isAdult ? 'التعليم والعمل' : 'التفاصيل',
   ]
+
+  useEffect(() => {
+    if (!selectedSchoolSections.length) {
+      if (form.school_section) set('school_section', '')
+      return
+    }
+    if (form.school_section && !selectedSchoolSections.includes(form.school_section)) {
+      set('school_section', '')
+    }
+  }, [selectedSchoolSections, form.school_section])
 
   useEffect(() => { if (bodyRef.current) bodyRef.current.scrollTop = 0 }, [step])
 
@@ -654,6 +1129,9 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
     if (s === 2 && isSchool) {
       const sch = form.school === 'أخرى' ? form.school_other : form.school
       if (!sch.trim()) e.school = 'هذا الحقل مطلوب'
+      const startDate = sanitizeDateInput(form.school_start_date)
+      const endDate = sanitizeDateInput(form.school_end_date)
+      if (startDate && endDate && endDate < startDate) e.school_end_date = 'تاريخ النهاية يجب أن يكون بعد تاريخ البداية'
       const h = [...form.hobbies_school, ...(form.hobbies_school_other.trim() ? [form.hobbies_school_other] : [])]
       if (!h.length)   e.hobbies = 'يرجى اختيار هواية واحدة على الأقل'
     }
@@ -685,6 +1163,10 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
     try {
       const school      = form.school      === 'أخرى' ? form.school_other      : form.school
       const university  = form.university  === 'أخرى' ? form.university_other  : form.university
+      const schoolSection = selectedSchoolSections.includes(form.school_section) ? form.school_section : ''
+      const schoolStartDate = sanitizeDateInput(form.school_start_date)
+      const schoolEndDate = form.school_is_current ? '' : sanitizeDateInput(form.school_end_date)
+      const schoolGrades = normalizeSchoolGrades(form.school_grades)
 
       const hobbies = isSchool
         ? [...form.hobbies_school, ...(form.hobbies_school_other.trim() ? [form.hobbies_school_other.trim()] : [])]
@@ -700,9 +1182,12 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
           governorate: normalizeLoose(entry.governorate) || null,
           city: normalizeLoose(entry.city) || null,
           address: normalizeLoose(entry.address) || null,
+          location_url: String(entry.location_url || '').trim() || null,
+          lat: sanitizeStoredCoordinate(entry.lat, 'lat'),
+          lng: sanitizeStoredCoordinate(entry.lng, 'lng'),
           is_primary: Boolean(entry.is_primary) || index === 0,
         }))
-        .filter(entry => entry.governorate || entry.city || entry.address)
+        .filter(entry => entry.governorate || entry.city || entry.address || entry.location_url || entry.lat != null || entry.lng != null)
 
       const body = {
         person: {
@@ -712,15 +1197,35 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
           english_second_name: normalizeEn(form.english_second_name) || null,
           english_third_name: normalizeEn(form.english_third_name) || null,
           english_last_name: normalizeEn(form.english_last_name) || null,
+          mother_first_name: normalizeAr(form.mother_first_name) || null,
+          mother_second_name: normalizeAr(form.mother_second_name) || null,
+          mother_third_name: normalizeAr(form.mother_third_name) || null,
+          mother_english_first_name: normalizeEn(form.mother_english_first_name) || null,
+          mother_english_second_name: normalizeEn(form.mother_english_second_name) || null,
+          mother_english_third_name: normalizeEn(form.mother_english_third_name) || null,
           gender:      form.gender || null,
           birth_year:  form.birth_year ? parseInt(form.birth_year, 10) : null,
           birth_day:   form.birth_day ? parseInt(form.birth_day, 10) : null,
           birth_month: form.birth_month ? parseInt(form.birth_month, 10) : null,
+          school_graduated: Boolean(form.school_graduated),
+          school_system: storedSchoolSystemValue(form.school_system),
         },
-        nationality:        form.nationalities.map(n => ({ nationality: n })),
-        mobile_numbers:     form.mobile.trim() ? [{ mobile_number: form.mobile.trim() }] : [],
+        nationality:        normalizeNationalityRows(form.nationalities, { dropEmpty: true }).map(row => ({
+          nationality: row.nationality,
+          national_id: row.national_id || null,
+          passport_number: row.passport_number || null,
+          jordanian_mothers_children_serial: row.jordanian_mothers_children_serial || null,
+        })),
+        mobile_numbers:     form.mobile.trim() ? [{ mobile_number: form.mobile.trim(), type: 'personal', phone_calls_flag: true, whatsapp_flag: true }] : [],
         addresses,
-        schools:            school ? [{ school }] : [],
+        schools:            school ? [{
+          school,
+          section: schoolSection || null,
+          start_date: schoolStartDate || null,
+          end_date: schoolEndDate || null,
+          is_current: Boolean(form.school_is_current) && !Boolean(form.school_graduated),
+          grades_attended: serializeSchoolGrades(schoolGrades) || null,
+        }] : [],
         person_youth_group: form.youth_groups.filter(g => g.youth_group).map(g => ({
           youth_group_id:   g.youth_group,
           youth_join_year:  g.join_year || null,
@@ -833,6 +1338,44 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
                 placeholder="Example: Hanna" />
             </Field>
 
+            <div className="am-field-hint" style={{ marginTop: 14, marginBottom: 8, fontStyle: 'italic', color: 'var(--gray-500)', fontSize: '0.82rem' }}>
+              اسم الأم الثلاثي اختياري
+            </div>
+            <Field label="اسم الأم الأول">
+              <input className="form-control" value={form.mother_first_name} lang="ar"
+                onChange={e => set('mother_first_name', stripToArabic(e.target.value))}
+                placeholder="مثال: ماري" />
+            </Field>
+            <Field label="اسم الأم الثاني">
+              <input className="form-control" value={form.mother_second_name} lang="ar"
+                onChange={e => set('mother_second_name', stripToArabic(e.target.value))}
+                placeholder="مثال: مي" />
+            </Field>
+            <Field label="اسم الأم الثالث">
+              <input className="form-control" value={form.mother_third_name} lang="ar"
+                onChange={e => set('mother_third_name', stripToArabic(e.target.value))}
+                placeholder="مثال: سليم" />
+            </Field>
+
+            <div className="am-field-hint" style={{ marginBottom: 8, fontStyle: 'italic', color: 'var(--gray-500)', fontSize: '0.82rem', direction: 'ltr', textAlign: 'left' }}>
+              Mother's English three-part name is optional
+            </div>
+            <Field label="Mother's English First Name">
+              <input className="form-control" value={form.mother_english_first_name} dir="ltr"
+                onChange={e => set('mother_english_first_name', e.target.value)}
+                placeholder="Example: Mary" />
+            </Field>
+            <Field label="Mother's English Second Name">
+              <input className="form-control" value={form.mother_english_second_name} dir="ltr"
+                onChange={e => set('mother_english_second_name', e.target.value)}
+                placeholder="Example: May" />
+            </Field>
+            <Field label="Mother's English Third Name">
+              <input className="form-control" value={form.mother_english_third_name} dir="ltr"
+                onChange={e => set('mother_english_third_name', e.target.value)}
+                placeholder="Example: Salim" />
+            </Field>
+
             <Field label="الجنس" required error={errors.gender}>
               <RadioList options={GENDER_OPTIONS} value={form.gender}
                 onChange={v => set('gender', v)} />
@@ -930,7 +1473,11 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
               <RadioList
                 options={[...SCHOOL_OPTIONS, 'أخرى']}
                 value={form.school}
-                onChange={v => { set('school', v); if (v !== 'أخرى') set('school_other', '') }}
+                onChange={v => {
+                  set('school', v)
+                  set('school_section', '')
+                  if (v !== 'أخرى') set('school_other', '')
+                }}
               />
               {form.school === 'أخرى' && (
                 <input className="form-control am-other-free" autoFocus
@@ -938,6 +1485,88 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
                   value={form.school_other}
                   onChange={e => set('school_other', e.target.value)} />
               )}
+            </Field>
+
+            {selectedSchoolSections.length > 0 && (
+              <Field label="القسم / الفرع" hint="يظهر هذا الحقل فقط إذا كانت للمدرسة أقسام محددة في صفحة الإعدادات">
+                <SearchSelect
+                  value={form.school_section}
+                  onChange={v => set('school_section', v)}
+                  options={selectedSchoolSections}
+                  placeholder="اختر القسم…"
+                  allowOther={false}
+                />
+              </Field>
+            )}
+
+            <Field label="نظام الدراسة" hint="هذا الحقل عام على مستوى المدارس كلها">
+              <SearchSelect
+                value={form.school_system}
+                onChange={v => set('school_system', normalizeSchoolSystemValue(v))}
+                options={schoolSystemOptions}
+                placeholder="اختر نظام الدراسة…"
+              />
+            </Field>
+
+            <Field label="تاريخ البداية" hint="تاريخ بدء الدراسة في هذه المدرسة">
+              <input
+                className="form-control"
+                type="date"
+                value={form.school_start_date}
+                onChange={e => set('school_start_date', e.target.value)}
+                dir="ltr"
+              />
+            </Field>
+
+            <Field label="الحالة وتاريخ النهاية" error={errors.school_end_date} hint="إذا كان الطالب متخرجًا فلن تبقى أي مدرسة نشطة">
+              <div style={{ display: 'grid', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.9rem', color: 'var(--navy)' }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(form.school_is_current)}
+                      disabled={Boolean(form.school_graduated)}
+                      onChange={e => {
+                        set('school_is_current', e.target.checked)
+                        if (e.target.checked) set('school_end_date', '')
+                      }}
+                    />
+                    حاليًّا
+                  </label>
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.9rem', color: 'var(--navy)' }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(form.school_graduated)}
+                      onChange={e => {
+                        set('school_graduated', e.target.checked)
+                        if (e.target.checked) {
+                          set('school_is_current', false)
+                        }
+                      }}
+                    />
+                    متخرّج من المدارس
+                  </label>
+                </div>
+                {!form.school_is_current && (
+                  <input
+                    className="form-control"
+                    type="date"
+                    value={form.school_end_date}
+                    onChange={e => set('school_end_date', e.target.value)}
+                    dir="ltr"
+                  />
+                )}
+                {form.school_graduated && <div style={{ fontSize: '0.78rem', color: 'var(--gray-400)' }}>لا يمكن وجود مدرسة نشطة بعد التخرّج، لكن يمكن حفظ تاريخ النهاية</div>}
+              </div>
+            </Field>
+
+            <Field label="الصفوف التي دَرَسها في هذه المدرسة" hint="يمكن اختيار أكثر من صف">
+              <CompactMultiSelect
+                options={SCHOOL_GRADE_OPTIONS}
+                selected={form.school_grades}
+                onChange={v => set('school_grades', normalizeSchoolGrades(v))}
+                placeholder="اختر الصفوف…"
+              />
             </Field>
 
             <Field label="الهوايات والمهارات" required error={errors.hobbies}
