@@ -17,8 +17,7 @@ YOUTH_GROUP_SPECIAL_LOGOS_DIR = os.path.join(S.PHOTOS_ROOT_DIR, "logos", "youth_
 PARISH_LOGOS_DIR = os.path.join(S.PHOTOS_ROOT_DIR, "logos", "parishes")
 os.makedirs(YOUTH_GROUP_LOGOS_DIR, exist_ok=True)
 os.makedirs(YOUTH_GROUP_SPECIAL_LOGOS_DIR, exist_ok=True)
-CHURCHES_FILE = "churches.json"
-SPECIAL_LOGOS_META_FILE = "youth_group_special_logos.json"
+LEGACY_SPECIAL_LOGOS_META_FILE = "youth_group_special_logos.json"
 SOCIAL_MEDIA_META_FILE = "youth_group_social_media.json"
 ALLOWED_SOCIAL_PLATFORMS = {"facebook", "instagram", "linkedin"}
 ALL_AGE_GROUPS = ['البراعم', 'الإعدادي', 'الثانوي', 'الجامعيّة', 'العاملة']
@@ -112,7 +111,7 @@ def _parish_logo_filename(parish_id: str):
 
 
 def _special_logos_meta_path() -> str:
-    return os.path.join(S.db.data_dir, SPECIAL_LOGOS_META_FILE)
+    return os.path.join(S.db.data_dir, LEGACY_SPECIAL_LOGOS_META_FILE)
 
 
 def _social_media_meta_path() -> str:
@@ -124,10 +123,6 @@ def _load_special_logos_meta() -> dict:
     if not isinstance(raw, dict):
         return {}
     return raw
-
-
-def _save_special_logos_meta(payload: dict):
-    S.db.save_json_file(_special_logos_meta_path(), payload)
 
 
 def _load_social_media_meta() -> dict:
@@ -221,7 +216,7 @@ def _save_group_social_media(group_id: str, rows: list[dict]):
 
 def _parish_social_media_entries(parish: dict | None) -> list[dict]:
     row = parish if isinstance(parish, dict) else {}
-    parish_id = _normalize_text(row.get("id")) or "unknown"
+    parish_id = _normalize_text(row.get(S.PARISH_ID_COL) or row.get("id")) or "unknown"
     entries = []
 
     facebook = _normalize_url(row.get("facebook_url"))
@@ -277,55 +272,116 @@ def _is_valid_iso_date(value: str | None) -> bool:
 
 def _normalize_special_logo_entry(entry: dict) -> dict:
     item = entry if isinstance(entry, dict) else {}
-    logo_id = _normalize_text(item.get("id"))
+    logo_id = _normalize_text(item.get(S.SPECIAL_LOGO_ID_COL) or item.get("id"))
     occasion = _normalize_text(item.get("occasion"))
     start_date = _normalize_text(item.get("start_date"))
     end_date = _normalize_text(item.get("end_date"))
-    file_name = _normalize_text(item.get("file_name"))
-    is_active = bool(item.get("is_active") or False)
+    file_name = _normalize_text(item.get("logo_file_name") or item.get("file_name"))
+    is_active = bool(S._to_bool(item.get("is_active"))) if hasattr(S, "_to_bool") else bool(item.get("is_active") or False)
 
     return {
-        "id": logo_id,
+        S.SPECIAL_LOGO_ID_COL: logo_id,
         "occasion": occasion,
         "start_date": start_date,
         "end_date": end_date,
-        "file_name": file_name,
+        "logo_file_name": file_name,
         "is_active": is_active,
     }
 
 
-def _group_special_logos(group_id: str) -> list[dict]:
-    payload = _load_special_logos_meta()
-    rows = payload.get(group_id) if isinstance(payload, dict) else []
-    if not isinstance(rows, list):
+def _special_logo_rows_df() -> pd.DataFrame:
+    df = S.store.get(S.YOUTH_GROUP_SPECIAL_LOGO_SHEET, pd.DataFrame()).copy()
+    if df.empty:
+        return pd.DataFrame(columns=S.YOUTH_GROUP_SPECIAL_LOGO_COLUMNS)
+    for col in S.YOUTH_GROUP_SPECIAL_LOGO_COLUMNS:
+        if col not in df.columns:
+            df[col] = None
+    return df[S.YOUTH_GROUP_SPECIAL_LOGO_COLUMNS].copy()
+
+
+def _special_logo_sheet_rows() -> list[dict]:
+    df = _special_logo_rows_df()
+    if df.empty:
         return []
+    return df.replace({pd.NA: None}).to_dict(orient="records")
+
+
+def _maybe_migrate_legacy_special_logos() -> bool:
+    legacy_path = _special_logos_meta_path()
+    if not os.path.exists(legacy_path):
+        return False
+
+    existing_df = S.store.get(S.YOUTH_GROUP_SPECIAL_LOGO_SHEET, pd.DataFrame())
+    if existing_df is not None and not existing_df.empty:
+        return False
+
+    payload = _load_special_logos_meta()
+    rows = []
+    for raw_group_id, entries in payload.items():
+        group_id = _resolve_group_id(raw_group_id) or _normalize_text(raw_group_id)
+        if not group_id or not isinstance(entries, list):
+            continue
+        for entry in entries:
+            normalized = _normalize_special_logo_entry(entry)
+            if not normalized.get(S.SPECIAL_LOGO_ID_COL) or not normalized.get("logo_file_name"):
+                continue
+            rows.append({
+                "youth_group_id": group_id,
+                **normalized,
+            })
+
+    S.store[S.YOUTH_GROUP_SPECIAL_LOGO_SHEET] = pd.DataFrame(
+        S.normalize_youth_group_special_logo_rows(rows),
+        columns=S.YOUTH_GROUP_SPECIAL_LOGO_COLUMNS,
+    )
+    S.save()
+    return True
+
+
+def _group_special_logos(group_id: str) -> list[dict]:
+    _maybe_migrate_legacy_special_logos()
+
+    rows = []
+    for row in _special_logo_sheet_rows():
+        if _normalize_text(row.get("youth_group_id")) != str(group_id):
+            continue
+        rows.append(row)
 
     out = []
     for row in rows:
         norm = _normalize_special_logo_entry(row)
-        if not norm.get("id") or not norm.get("file_name"):
+        if not norm.get(S.SPECIAL_LOGO_ID_COL) or not norm.get("logo_file_name"):
             continue
-        if not os.path.exists(os.path.join(YOUTH_GROUP_SPECIAL_LOGOS_DIR, norm["file_name"])):
+        if not os.path.exists(os.path.join(YOUTH_GROUP_SPECIAL_LOGOS_DIR, norm["logo_file_name"])):
             continue
         out.append(norm)
     return out
 
 
 def _save_group_special_logos(group_id: str, rows: list[dict]):
-    payload = _load_special_logos_meta()
-    clean = []
-    for row in rows:
-        norm = _normalize_special_logo_entry(row)
-        if not norm.get("id") or not norm.get("file_name"):
-            continue
-        clean.append(norm)
+    _maybe_migrate_legacy_special_logos()
 
-    if clean:
-        payload[group_id] = clean
-    elif group_id in payload:
-        del payload[group_id]
+    with S.lock:
+        existing_rows = [
+            row for row in _special_logo_sheet_rows()
+            if _normalize_text(row.get("youth_group_id")) != str(group_id)
+        ]
 
-    _save_special_logos_meta(payload)
+        for row in rows:
+            norm = _normalize_special_logo_entry(row)
+            if not norm.get(S.SPECIAL_LOGO_ID_COL) or not norm.get("logo_file_name"):
+                continue
+            existing_rows.append({
+                "youth_group_id": group_id,
+                **norm,
+            })
+
+        normalized_rows = S.normalize_youth_group_special_logo_rows(existing_rows)
+        S.store[S.YOUTH_GROUP_SPECIAL_LOGO_SHEET] = pd.DataFrame(
+            normalized_rows,
+            columns=S.YOUTH_GROUP_SPECIAL_LOGO_COLUMNS,
+        )
+        S.save()
 
 
 def _active_special_logo_entry(group_id: str, rows: list[dict] | None = None) -> dict | None:
@@ -350,23 +406,30 @@ def _special_logo_url(group_id: str, logo_id: str | None) -> str | None:
 
 def _special_logo_payload(group_id: str, entry: dict) -> dict:
     row = _normalize_special_logo_entry(entry)
+    logo_id = row.get(S.SPECIAL_LOGO_ID_COL)
     return {
-        "id": row.get("id"),
+        S.SPECIAL_LOGO_ID_COL: logo_id,
+        "id": logo_id,
         "occasion": row.get("occasion"),
         "start_date": row.get("start_date"),
         "end_date": row.get("end_date"),
         "is_active": bool(row.get("is_active") or False),
-        "logo_url": _special_logo_url(group_id, row.get("id")),
+        "logo_url": _special_logo_url(group_id, logo_id),
     }
 
 
 def _parish_inherited_fields(parish: dict | None) -> dict:
     row = parish if isinstance(parish, dict) else {}
-    parish_id = _normalize_text(row.get("id"))
+    parish_id = _normalize_text(row.get(S.PARISH_ID_COL) or row.get("id"))
     parish_logo = f"/api/parishes/{parish_id}/logo" if _parish_logo_filename(parish_id) else None
+    patron = _normalize_text(row.get("patron_saint"))
+    area = _normalize_text(row.get("area"))
+    parish_name = _normalize_text(row.get("name"))
+    if not parish_name and patron and area:
+        parish_name = f"رعية {patron} - {area}"
 
     return {
-        "parish_name": _normalize_text(row.get("name")),
+        "parish_name": parish_name,
         "parish_logo_url": parish_logo,
         "parish_lpj_url": _normalize_text(row.get("lpj_url")),
         "parish_facebook_url": _normalize_text(row.get("facebook_url")),
@@ -377,21 +440,22 @@ def _parish_inherited_fields(parish: dict | None) -> dict:
     }
 
 
-def _churches_payload_path() -> str:
-    return os.path.join(S.db.data_dir, CHURCHES_FILE)
-
-
 def _parish_by_id() -> dict[str, dict]:
-    payload = S.db.load_json_file(_churches_payload_path(), {"parishes": [], "churches": []})
-    parishes = payload.get("parishes") if isinstance(payload, dict) else []
-    if not isinstance(parishes, list):
+    parishes_df = S.store.get(S.PARISH_SHEET, pd.DataFrame()).copy()
+    if parishes_df.empty:
         return {}
+
+    for col in S.PARISH_COLUMNS:
+        if col not in parishes_df.columns:
+            parishes_df[col] = None
+
+    parishes = parishes_df[S.PARISH_COLUMNS].where(pd.notna(parishes_df[S.PARISH_COLUMNS]), None).to_dict(orient="records")
 
     out = {}
     for parish in parishes:
         if not isinstance(parish, dict):
             continue
-        pid = _normalize_text(parish.get("id"))
+        pid = _normalize_text(parish.get(S.PARISH_ID_COL) or parish.get("id"))
         if not pid:
             continue
         out[pid] = parish
@@ -403,22 +467,29 @@ def _churches_for_parish(parish_id: str | None) -> list[dict]:
     if not pid:
         return []
 
-    payload = S.db.load_json_file(_churches_payload_path(), {"parishes": [], "churches": []})
-    churches = payload.get("churches") if isinstance(payload, dict) else []
-    if not isinstance(churches, list):
+    churches_df = S.store.get(S.CHURCH_SHEET, pd.DataFrame()).copy()
+    if churches_df.empty:
         return []
+
+    for col in S.CHURCH_COLUMNS:
+        if col not in churches_df.columns:
+            churches_df[col] = None
+
+    churches = churches_df[S.CHURCH_COLUMNS].where(pd.notna(churches_df[S.CHURCH_COLUMNS]), None).to_dict(orient="records")
 
     out = []
     for church in churches:
         if not isinstance(church, dict):
             continue
-        if _normalize_text(church.get("parish_id")) != pid:
+        if _normalize_text(church.get(S.PARISH_ID_COL) or church.get("parish_id")) != pid:
             continue
 
         patron = _normalize_text(church.get("patron_saint"))
         area = _normalize_text(church.get("area"))
+        church_id = _normalize_text(church.get(S.CHURCH_ID_COL) or church.get("id"))
         out.append({
-            "id": _normalize_text(church.get("id")),
+            S.CHURCH_ID_COL: church_id,
+            "id": church_id,
             "name": f"كنيسة {patron} - {area}" if patron or area else None,
             "patron_saint": patron,
             "area": area,
@@ -474,16 +545,12 @@ def _group_meta(group_id: str) -> dict:
     parish_id = _normalize_text(r.get(S.YOUTH_GROUP_PARISH_ID_COL))
     use_parish_logo = bool(S._to_bool(r.get(S.YOUTH_GROUP_USE_PARISH_LOGO_COL))) if hasattr(S, "_to_bool") else bool(r.get(S.YOUTH_GROUP_USE_PARISH_LOGO_COL))
     inherit_parish_social_media = bool(S._to_bool(r.get(S.YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL))) if hasattr(S, "_to_bool") else bool(r.get(S.YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL))
-    special_logo_active = bool(S._to_bool(r.get(S.YOUTH_GROUP_SPECIAL_LOGO_ACTIVE_COL))) if hasattr(S, "_to_bool") else bool(r.get(S.YOUTH_GROUP_SPECIAL_LOGO_ACTIVE_COL))
-    special_logo_occasion = _normalize_text(r.get(S.YOUTH_GROUP_SPECIAL_LOGO_OCCASION_COL))
     parish = parish_map.get(parish_id or "", {})
     meta["patron"] = r.get(S.YOUTH_GROUP_PATRON_COL)
     meta["short_name"] = r.get(S.YOUTH_GROUP_SHORT_NAME_COL)
     meta["parish_id"] = parish_id
     meta["use_parish_logo"] = use_parish_logo
     meta["inherit_parish_social_media"] = inherit_parish_social_media
-    meta["special_logo_active"] = special_logo_active
-    meta["special_logo_occasion"] = special_logo_occasion
     meta.update(_parish_inherited_fields(parish))
     meta["parish_churches"] = _churches_for_parish(parish_id)
     group_social_media = _group_social_media(group_id)
@@ -529,12 +596,12 @@ def _effective_group_special_logo_url(group_id: str, meta: dict | None = None, o
             break
 
     if only_if_active:
-        return _special_logo_url(group_id, active.get("id")) if active else None
+        return _special_logo_url(group_id, active.get(S.SPECIAL_LOGO_ID_COL) or active.get("id")) if active else None
 
     target = active or (entries[-1] if entries else None)
     if not target:
         return None
-    return _special_logo_url(group_id, target.get("id"))
+    return _special_logo_url(group_id, target.get(S.SPECIAL_LOGO_ID_COL) or target.get("id"))
 
 
 def _registered_member_rows(group_id: str) -> list[dict]:
@@ -563,13 +630,13 @@ def _registered_member_rows(group_id: str) -> list[dict]:
         person = person_map.get(pid_key, {})
         full_name = " ".join(
             str(person.get(k) or "").strip()
-            for k in ("first_name", "second_name", "third_name", "last_name")
+            for k in ("ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name")
             if str(person.get(k) or "").strip()
         ).strip()
         if not full_name:
             full_name = " ".join(
                 str(person.get(k) or "").strip()
-                for k in ("first_name", "last_name")
+                for k in ("ar_first_name", "ar_last_name")
                 if str(person.get(k) or "").strip()
             ).strip() or pid_key
         pid_as_int = _as_int_or_none(pid_key)
@@ -594,7 +661,7 @@ def _unregistered_member_rows(group_id: str) -> list[dict]:
     if rows.empty or "person_id" not in rows.columns:
         return []
 
-    persons = S.unreg_store.get("persons", pd.DataFrame())
+    persons = S.unregistered_persons_view_df()
     person_map = {}
     if not persons.empty and "person_id" in persons.columns:
         for r in persons.replace({pd.NA: None}).to_dict(orient="records"):
@@ -611,13 +678,13 @@ def _unregistered_member_rows(group_id: str) -> list[dict]:
         person = person_map.get(pid_key, {})
         full_name = " ".join(
             str(person.get(k) or "").strip()
-            for k in ("first_name", "second_name", "third_name", "last_name")
+            for k in ("title", "ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name")
             if str(person.get(k) or "").strip()
         ).strip()
         if not full_name:
             full_name = " ".join(
                 str(person.get(k) or "").strip()
-                for k in ("first_name", "last_name")
+                for k in ("ar_first_name", "ar_last_name")
                 if str(person.get(k) or "").strip()
             ).strip() or pid_key
         out.append({
@@ -662,7 +729,7 @@ def _schools_by_person_key(person_type: str) -> dict[str, list[str]]:
     out = {}
     for row in schools_df.replace({pd.NA: None}).to_dict(orient="records"):
         pid = _pid_key(row.get("person_id"))
-        school = _normalize_text(row.get("school"))
+        school = _normalize_text(row.get(S.SCHOOL_NAME_COL) or row.get("school"))
         if not pid or not school:
             continue
         out.setdefault(pid, []).append(school)
@@ -673,7 +740,7 @@ def _person_rows_by_key(person_type: str) -> dict[str, dict]:
     if person_type == "registered":
         persons_df = S._registered_persons_df().copy()
     else:
-        persons_df = S.unreg_store.get("persons", pd.DataFrame()).copy()
+        persons_df = S.unregistered_persons_view_df().copy()
 
     if persons_df.empty or "person_id" not in persons_df.columns:
         return {}
@@ -693,10 +760,10 @@ def _member_problem_issues(member: dict, person_row: dict | None, schools: list[
     missing_name_parts = [
         label
         for key, label in (
-            ("first_name", "الاسم الأول"),
-            ("second_name", "اسم الأب"),
-            ("third_name", "اسم الجد"),
-            ("last_name", "اسم العائلة"),
+            ("ar_first_name", "الاسم الأول"),
+            ("ar_second_name", "اسم الأب"),
+            ("ar_third_name", "اسم الجد"),
+            ("ar_last_name", "اسم العائلة"),
         )
         if not _normalize_text(person.get(key))
     ]
@@ -1060,36 +1127,15 @@ def register_youth_group_routes(app):
                 item["is_active"] = False
 
         new_entry = {
-            "id": logo_id,
+            S.SPECIAL_LOGO_ID_COL: logo_id,
             "occasion": occasion,
             "start_date": start_date,
             "end_date": end_date,
             "is_active": is_active,
-            "file_name": dest_name,
+            "logo_file_name": dest_name,
         }
         entries.append(new_entry)
         _save_group_special_logos(group_id, entries)
-
-        with S.lock:
-            yg = S.store.get(S.YOUTH_GROUP_SHEET, pd.DataFrame()).copy()
-            if yg.empty or S.YOUTH_GROUP_ID_COL not in yg.columns:
-                return jsonify({"error": "not found"}), 404
-
-            if S.YOUTH_GROUP_SPECIAL_LOGO_OCCASION_COL not in yg.columns:
-                yg[S.YOUTH_GROUP_SPECIAL_LOGO_OCCASION_COL] = None
-            if S.YOUTH_GROUP_SPECIAL_LOGO_ACTIVE_COL not in yg.columns:
-                yg[S.YOUTH_GROUP_SPECIAL_LOGO_ACTIVE_COL] = False
-
-            mask = yg[S.YOUTH_GROUP_ID_COL].astype(str) == str(group_id)
-            if not mask.any():
-                return jsonify({"error": "not found"}), 404
-
-            active_entry = _active_special_logo_entry(group_id, entries)
-            yg.loc[mask, S.YOUTH_GROUP_SPECIAL_LOGO_OCCASION_COL] = _normalize_text(active_entry.get("occasion")) if active_entry else None
-            yg.loc[mask, S.YOUTH_GROUP_SPECIAL_LOGO_ACTIVE_COL] = bool(active_entry)
-            S.store[S.YOUTH_GROUP_SHEET] = yg
-            S.db.save_excel_sheets(S.store)
-            S.invalidate_enriched_cache()
 
         return jsonify({
             "ok": True,
@@ -1119,10 +1165,10 @@ def register_youth_group_routes(app):
             return jsonify({"error": "no special logos uploaded"}), 400
 
         if special_logo_active:
-            target_id = special_logo_id or _normalize_text(entries[-1].get("id"))
+            target_id = special_logo_id or _normalize_text(entries[-1].get(S.SPECIAL_LOGO_ID_COL) or entries[-1].get("id"))
             found = False
             for item in entries:
-                is_target = _normalize_text(item.get("id")) == target_id
+                is_target = _normalize_text(item.get(S.SPECIAL_LOGO_ID_COL) or item.get("id")) == target_id
                 item["is_active"] = bool(is_target)
                 if is_target:
                     item["end_date"] = None
@@ -1133,7 +1179,7 @@ def register_youth_group_routes(app):
             if special_logo_id:
                 found = False
                 for item in entries:
-                    if _normalize_text(item.get("id")) == special_logo_id:
+                    if _normalize_text(item.get(S.SPECIAL_LOGO_ID_COL) or item.get("id")) == special_logo_id:
                         item["is_active"] = False
                         found = True
                 if not found:
@@ -1143,27 +1189,6 @@ def register_youth_group_routes(app):
                     item["is_active"] = False
 
         _save_group_special_logos(group_id, entries)
-
-        with S.lock:
-            yg = S.store.get(S.YOUTH_GROUP_SHEET, pd.DataFrame()).copy()
-            if yg.empty or S.YOUTH_GROUP_ID_COL not in yg.columns:
-                return jsonify({"error": "not found"}), 404
-
-            if S.YOUTH_GROUP_SPECIAL_LOGO_ACTIVE_COL not in yg.columns:
-                yg[S.YOUTH_GROUP_SPECIAL_LOGO_ACTIVE_COL] = False
-            if S.YOUTH_GROUP_SPECIAL_LOGO_OCCASION_COL not in yg.columns:
-                yg[S.YOUTH_GROUP_SPECIAL_LOGO_OCCASION_COL] = None
-
-            mask = yg[S.YOUTH_GROUP_ID_COL].astype(str) == str(group_id)
-            if not mask.any():
-                return jsonify({"error": "not found"}), 404
-
-            active_entry = _active_special_logo_entry(group_id, entries)
-            yg.loc[mask, S.YOUTH_GROUP_SPECIAL_LOGO_ACTIVE_COL] = bool(active_entry)
-            yg.loc[mask, S.YOUTH_GROUP_SPECIAL_LOGO_OCCASION_COL] = _normalize_text(active_entry.get("occasion")) if active_entry else None
-            S.store[S.YOUTH_GROUP_SHEET] = yg
-            S.db.save_excel_sheets(S.store)
-            S.invalidate_enriched_cache()
 
         meta = _group_meta(group_id)
         special_logo_url = _effective_group_special_logo_url(group_id, meta)
@@ -1204,7 +1229,7 @@ def register_youth_group_routes(app):
 
         entry = _active_special_logo_entry(group_id) or _latest_special_logo_entry(group_id)
         if entry:
-            logo_name = _normalize_text(entry.get("file_name"))
+            logo_name = _normalize_text(entry.get("logo_file_name") or entry.get("file_name"))
             if logo_name:
                 return send_from_directory(YOUTH_GROUP_SPECIAL_LOGOS_DIR, logo_name)
         return jsonify({"error": "not found"}), 404
@@ -1220,9 +1245,9 @@ def register_youth_group_routes(app):
             return jsonify({"error": "not found"}), 404
 
         for item in _group_special_logos(group_id):
-            if _normalize_text(item.get("id")) != lid:
+            if _normalize_text(item.get(S.SPECIAL_LOGO_ID_COL) or item.get("id")) != lid:
                 continue
-            logo_name = _normalize_text(item.get("file_name"))
+            logo_name = _normalize_text(item.get("logo_file_name") or item.get("file_name"))
             if logo_name:
                 return send_from_directory(YOUTH_GROUP_SPECIAL_LOGOS_DIR, logo_name)
             break
@@ -1240,7 +1265,7 @@ def register_youth_group_routes(app):
 
         active_entry = _active_special_logo_entry(group_id)
         if active_entry:
-            logo_name = _normalize_text(active_entry.get("file_name"))
+            logo_name = _normalize_text(active_entry.get("logo_file_name") or active_entry.get("file_name"))
             if logo_name:
                 return send_from_directory(YOUTH_GROUP_SPECIAL_LOGOS_DIR, logo_name)
         return jsonify({"error": "not found"}), 404

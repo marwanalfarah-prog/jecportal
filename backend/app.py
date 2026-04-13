@@ -11,6 +11,7 @@ from core.routes_questionnaires_notifications import register_questionnaires_not
 from core.routes_registered import register_registered_routes
 from core.routes_unregistered import register_unregistered_routes
 from core.routes_config import register_config_routes
+from core.routes_data_admin import register_data_admin_routes
 from core.routes_youth_groups import register_youth_group_routes
 from core.routes_parishes import register_churches_routes
 from core.routes_bible_reader import register_bible_reader_routes
@@ -32,6 +33,7 @@ register_auth_routes(app)
 register_promotions_routes(app)
 register_questionnaires_notifications_routes(app)
 register_config_routes(app)
+register_data_admin_routes(app)
 register_youth_group_routes(app)
 register_churches_routes(app)
 register_bible_reader_routes(app)

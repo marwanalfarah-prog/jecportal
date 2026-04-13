@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 
 from flask import jsonify, request, send_from_directory
+import pandas as pd
 from werkzeug.utils import secure_filename
 
 from core import state as S
@@ -13,9 +14,34 @@ from core.routes_auth import exports as auth_exports
 MOTTO_LOGOS_DIR = os.path.join(S.PHOTOS_ROOT_DIR, "logos", "mottos")
 os.makedirs(MOTTO_LOGOS_DIR, exist_ok=True)
 
+SCHOOL_LOGOS_DIR = os.path.join(S.PHOTOS_ROOT_DIR, "logos", "schools")
+UNIVERSITY_LOGOS_DIR = os.path.join(S.PHOTOS_ROOT_DIR, "logos", "universities")
+SCHOOL_LOGO_ID_PREFIXES = {
+    "school": "SCLG",
+    "university": "UNLG",
+}
+SCHOOL_LOGO_ID_RE = re.compile(r"^(SCLG|UNLG)(\d{6})$")
+SCHOOL_LOGO_RECOVERY_ENTRIES = [
+    {S.SCHOOL_LOGO_ID_COL: "SCLG000001", S.INSTITUTION_TYPE_COL: "school", S.INSTITUTION_NAME_COL: "البطريركيّة اللاتينيّة", S.INSTITUTION_SECTION_COL: "", "logo_file_name": "SCLG000001.png"},
+    {S.SCHOOL_LOGO_ID_COL: "SCLG000002", S.INSTITUTION_TYPE_COL: "school", S.INSTITUTION_NAME_COL: "أكاديميّة كاترينا للأطفال", S.INSTITUTION_SECTION_COL: "", "logo_file_name": "SCLG000002.png"},
+    {S.SCHOOL_LOGO_ID_COL: "SCLG000003", S.INSTITUTION_TYPE_COL: "school", S.INSTITUTION_NAME_COL: "كليّة دي لاسال - الفرير", S.INSTITUTION_SECTION_COL: "", "logo_file_name": "SCLG000003.png"},
+    {S.SCHOOL_LOGO_ID_COL: "SCLG000004", S.INSTITUTION_TYPE_COL: "school", S.INSTITUTION_NAME_COL: "المدرسة الإنجليزيّة الحديثة", S.INSTITUTION_SECTION_COL: "", "logo_file_name": "SCLG000004.png"},
+    {S.SCHOOL_LOGO_ID_COL: "UNLG000001", S.INSTITUTION_TYPE_COL: "university", S.INSTITUTION_NAME_COL: "جامعة الحسين التقنيّة", S.INSTITUTION_SECTION_COL: "", "logo_file_name": "UNLG000001.png"},
+    {S.SCHOOL_LOGO_ID_COL: "UNLG000002", S.INSTITUTION_TYPE_COL: "university", S.INSTITUTION_NAME_COL: "الجامعة الهاشميّة", S.INSTITUTION_SECTION_COL: "", "logo_file_name": "UNLG000002.png"},
+    {S.SCHOOL_LOGO_ID_COL: "UNLG000003", S.INSTITUTION_TYPE_COL: "university", S.INSTITUTION_NAME_COL: "جامعة البلقاء التطبيقيّة", S.INSTITUTION_SECTION_COL: "", "logo_file_name": "UNLG000003.png"},
+    {S.SCHOOL_LOGO_ID_COL: "UNLG000004", S.INSTITUTION_TYPE_COL: "university", S.INSTITUTION_NAME_COL: "جامعة العلوم والتكنولوجيا الأردنيّة", S.INSTITUTION_SECTION_COL: "", "logo_file_name": "UNLG000004.png"},
+    {S.SCHOOL_LOGO_ID_COL: "SCLG000005", S.INSTITUTION_TYPE_COL: "school", S.INSTITUTION_NAME_COL: "أكاديميّة لوريت", S.INSTITUTION_SECTION_COL: "", "logo_file_name": "SCLG000005.png"},
+    {S.SCHOOL_LOGO_ID_COL: "SCLG000006", S.INSTITUTION_TYPE_COL: "school", S.INSTITUTION_NAME_COL: "الأردنيّة الدوليّة", S.INSTITUTION_SECTION_COL: "", "logo_file_name": "SCLG000006.png"},
+    {S.SCHOOL_LOGO_ID_COL: "SCLG000007", S.INSTITUTION_TYPE_COL: "school", S.INSTITUTION_NAME_COL: "الأسقفيّة الإنجيليّة العربيّة", S.INSTITUTION_SECTION_COL: "", "logo_file_name": "SCLG000007.png"},
+    {S.SCHOOL_LOGO_ID_COL: "UNLG000005", S.INSTITUTION_TYPE_COL: "university", S.INSTITUTION_NAME_COL: "جامعة مؤتة", S.INSTITUTION_SECTION_COL: "", "logo_file_name": "UNLG000005.png"},
+    {S.SCHOOL_LOGO_ID_COL: "UNLG000006", S.INSTITUTION_TYPE_COL: "university", S.INSTITUTION_NAME_COL: "الجامعة الأردنيّة", S.INSTITUTION_SECTION_COL: "", "logo_file_name": "UNLG000006.png"},
+]
+os.makedirs(SCHOOL_LOGOS_DIR, exist_ok=True)
+os.makedirs(UNIVERSITY_LOGOS_DIR, exist_ok=True)
+
 
 def _bible_books_tree_path() -> str:
-    return os.path.join(S.db.data_dir, "bible_books_tree.json")
+    return os.path.join(S.db.data_dir, "bible_books.json")
 
 
 def _load_bible_books_tree() -> list[dict]:
@@ -193,6 +219,7 @@ def _normalize_school_branches(raw):
 
 def _default_config():
     return {
+        "active_jec_year": "",
         "name_variations": {},
         "person_titles": [],
         "school_branches": {},
@@ -716,14 +743,321 @@ def _load_config():
     if not isinstance(data, dict):
         data = _default_config()
     config = dict(data)
+    config["active_jec_year"] = _normalize_year_label(config.get("active_jec_year"))
     config["name_variations"] = _normalize_name_variations(config.get("name_variations", {}))
     config["person_titles"] = _normalize_person_titles(config.get("person_titles", []))
     config["school_branches"] = _normalize_school_branches(config.get("school_branches", {}))
     return config
 
 
+# ── School / University Logos ─────────────────────────────────────────────────
+
+
+def _normalize_school_logo_entries(raw_entries) -> list[dict]:
+    entries = raw_entries if isinstance(raw_entries, list) else []
+    normalized = []
+    seen_ids = set()
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+
+        entry_id = _clean_text(entry.get(S.SCHOOL_LOGO_ID_COL) or entry.get("id"))
+        entry_type = _clean_text(entry.get(S.INSTITUTION_TYPE_COL) or entry.get("type"))
+        name = _clean_text(entry.get(S.INSTITUTION_NAME_COL) or entry.get("name"))
+        section = _clean_text(entry.get(S.INSTITUTION_SECTION_COL) or entry.get("section") or "")
+        logo_file_name = _clean_text(entry.get("logo_file_name") or "")
+
+        if not entry_id or entry_id in seen_ids:
+            continue
+        if entry_type not in ("school", "university"):
+            continue
+        if not name:
+            continue
+
+        seen_ids.add(entry_id)
+        normalized.append({
+            S.SCHOOL_LOGO_ID_COL: entry_id,
+            S.INSTITUTION_TYPE_COL: entry_type,
+            S.INSTITUTION_NAME_COL: name,
+            S.INSTITUTION_SECTION_COL: section,
+            "id": entry_id,
+            "type": entry_type,
+            "name": name,
+            "section": section,
+            "logo_file_name": logo_file_name,
+        })
+
+    return normalized
+
+
+def _school_logo_dir(entry_type: str) -> str:
+    return UNIVERSITY_LOGOS_DIR if entry_type == "university" else SCHOOL_LOGOS_DIR
+
+
+def _school_logo_prefix(entry_type: str) -> str:
+    return SCHOOL_LOGO_ID_PREFIXES.get(entry_type, "SCLG")
+
+
+def _school_logo_id_matches_type(entry_id: str, entry_type: str) -> bool:
+    text = _clean_text(entry_id)
+    match = SCHOOL_LOGO_ID_RE.match(text)
+    if not match:
+        return False
+    return match.group(1) == _school_logo_prefix(entry_type)
+
+
+def _next_school_logo_id(existing_rows: list[dict], entry_type: str) -> str:
+    prefix = _school_logo_prefix(entry_type)
+    max_num = 0
+    for row in existing_rows:
+        entry_id = _clean_text(row.get(S.SCHOOL_LOGO_ID_COL) or row.get("id"))
+        match = SCHOOL_LOGO_ID_RE.match(entry_id)
+        if not match or match.group(1) != prefix:
+            continue
+        max_num = max(max_num, int(match.group(2)))
+    return f"{prefix}{max_num + 1:06d}"
+
+
+def _school_logo_entry_ext(entry: dict) -> str:
+    file_name = _clean_text(entry.get("logo_file_name"))
+    if "." not in file_name:
+        return ""
+    ext = file_name.rsplit(".", 1)[1].lower()
+    return ext if ext in S.ALLOWED_EXTENSIONS else ""
+
+
+def _school_logo_candidate_paths(entry_id: str, logo_file_name: str) -> list[str]:
+    candidates = []
+    eid = _clean_text(entry_id)
+    file_name = _clean_text(logo_file_name)
+
+    if file_name:
+        candidates.extend([
+            os.path.join(SCHOOL_LOGOS_DIR, file_name),
+            os.path.join(UNIVERSITY_LOGOS_DIR, file_name),
+        ])
+
+    if eid:
+        for ext in S.ALLOWED_EXTENSIONS:
+            legacy_name = f"{eid}.{ext}"
+            candidates.extend([
+                os.path.join(SCHOOL_LOGOS_DIR, legacy_name),
+                os.path.join(UNIVERSITY_LOGOS_DIR, legacy_name),
+            ])
+
+    deduped = []
+    seen = set()
+    for path in candidates:
+        norm = os.path.normcase(os.path.normpath(path))
+        if norm in seen:
+            continue
+        seen.add(norm)
+        deduped.append(path)
+    return deduped
+
+
+def _locate_school_logo_file(entry: dict) -> str | None:
+    entry_id = _clean_text(entry.get(S.SCHOOL_LOGO_ID_COL) or entry.get("id"))
+    file_name = _clean_text(entry.get("logo_file_name"))
+    for path in _school_logo_candidate_paths(entry_id, file_name):
+        if os.path.exists(path):
+            return path
+    return None
+
+
+def _find_school_logo_entry(entry_id: str, entries: list[dict] | None = None) -> dict | None:
+    eid = _clean_text(entry_id)
+    if not eid:
+        return None
+    rows = entries if isinstance(entries, list) else _school_logo_sheet_rows()
+    for entry in rows:
+        if _clean_text(entry.get(S.SCHOOL_LOGO_ID_COL) or entry.get("id")) == eid:
+            return entry
+    return None
+
+
+def _school_logo_file_path(entry_id: str, entries: list[dict] | None = None) -> str | None:
+    entry = _find_school_logo_entry(entry_id, entries)
+    if not entry:
+        return None
+    return _locate_school_logo_file(entry)
+
+
+def _recover_school_logo_rows_from_files() -> list[dict]:
+    recovered = []
+    for entry in SCHOOL_LOGO_RECOVERY_ENTRIES:
+        file_name = _clean_text(entry.get("logo_file_name"))
+        entry_type = _clean_text(entry.get(S.INSTITUTION_TYPE_COL))
+        if not file_name or not entry_type:
+            continue
+        path = os.path.join(_school_logo_dir(entry_type), file_name)
+        if not os.path.exists(path):
+            continue
+        recovered.append(dict(entry))
+    return _normalize_school_logo_entries(recovered)
+
+
+def _migrate_school_logo_storage() -> bool:
+    current_df = S.store.get(S.SCHOOL_LOGO_SHEET, pd.DataFrame()).copy()
+    if current_df.empty and S.SCHOOL_LOGO_SHEET not in S.store:
+        return False
+
+    if current_df.empty:
+        current_rows = []
+    else:
+        for col in S.SCHOOL_LOGO_COLUMNS:
+            if col not in current_df.columns:
+                current_df[col] = None
+        current_rows = _normalize_school_logo_entries(
+            current_df[S.SCHOOL_LOGO_COLUMNS].where(pd.notna(current_df[S.SCHOOL_LOGO_COLUMNS]), None).to_dict(orient="records")
+        )
+
+    migrated_rows = []
+    used_ids = set()
+    changed = False
+
+    for row in current_rows:
+        entry = dict(row)
+        entry_type = _clean_text(entry.get(S.INSTITUTION_TYPE_COL) or entry.get("type"))
+        old_id = _clean_text(entry.get(S.SCHOOL_LOGO_ID_COL) or entry.get("id"))
+        old_file_name = _clean_text(entry.get("logo_file_name"))
+        new_id = old_id
+
+        if not _school_logo_id_matches_type(old_id, entry_type) or old_id in used_ids:
+            new_id = _next_school_logo_id(migrated_rows, entry_type)
+
+        used_ids.add(new_id)
+
+        source_path = _locate_school_logo_file(entry)
+        ext = _school_logo_entry_ext(entry)
+        if not ext and source_path and "." in os.path.basename(source_path):
+            ext = os.path.basename(source_path).rsplit(".", 1)[1].lower()
+        if ext and ext not in S.ALLOWED_EXTENSIONS:
+            ext = ""
+
+        new_file_name = f"{new_id}.{ext}" if ext else ""
+
+        if source_path and new_file_name:
+            dest_dir = _school_logo_dir(entry_type)
+            dest_path = os.path.join(dest_dir, new_file_name)
+            if os.path.normcase(os.path.normpath(source_path)) != os.path.normcase(os.path.normpath(dest_path)):
+                if os.path.exists(dest_path):
+                    try:
+                        os.remove(dest_path)
+                    except OSError:
+                        pass
+                os.replace(source_path, dest_path)
+                changed = True
+
+        if new_id != old_id or new_file_name != old_file_name:
+            changed = True
+
+        migrated_rows.append({
+            S.SCHOOL_LOGO_ID_COL: new_id,
+            S.INSTITUTION_TYPE_COL: entry_type,
+            S.INSTITUTION_NAME_COL: _clean_text(entry.get(S.INSTITUTION_NAME_COL) or entry.get("name")),
+            S.INSTITUTION_SECTION_COL: _clean_text(entry.get(S.INSTITUTION_SECTION_COL) or entry.get("section") or ""),
+            "id": new_id,
+            "type": entry_type,
+            "name": _clean_text(entry.get(S.INSTITUTION_NAME_COL) or entry.get("name")),
+            "section": _clean_text(entry.get(S.INSTITUTION_SECTION_COL) or entry.get("section") or ""),
+            "logo_file_name": new_file_name,
+        })
+
+    if changed:
+        S.store[S.SCHOOL_LOGO_SHEET] = _school_logo_rows_df(migrated_rows)
+        S.db.save_excel_sheets(S.store)
+    return changed
+
+
+def _school_logo_rows_df(rows: list[dict] | None = None) -> pd.DataFrame:
+    normalized_rows = _normalize_school_logo_entries(rows if rows is not None else [])
+    return pd.DataFrame(normalized_rows, columns=S.SCHOOL_LOGO_COLUMNS)
+
+
+def _school_logo_sheet_rows() -> list[dict]:
+    df = S.store.get(S.SCHOOL_LOGO_SHEET, pd.DataFrame()).copy()
+    if df.empty:
+        return []
+    for col in S.SCHOOL_LOGO_COLUMNS:
+        if col not in df.columns:
+            df[col] = None
+    rows = df[S.SCHOOL_LOGO_COLUMNS].where(pd.notna(df[S.SCHOOL_LOGO_COLUMNS]), None).to_dict(orient="records")
+    return _normalize_school_logo_entries(rows)
+
+
+def _ensure_school_logo_sheet() -> bool:
+    current_df = S.store.get(S.SCHOOL_LOGO_SHEET, pd.DataFrame()).copy()
+
+    if current_df.empty and S.SCHOOL_LOGO_SHEET not in S.store:
+        recovered_rows = _recover_school_logo_rows_from_files()
+        S.store[S.SCHOOL_LOGO_SHEET] = _school_logo_rows_df(recovered_rows)
+        S.db.save_excel_sheets(S.store)
+        return True
+
+    if current_df.empty:
+        current_rows = []
+    else:
+        for col in S.SCHOOL_LOGO_COLUMNS:
+            if col not in current_df.columns:
+                current_df[col] = None
+        current_rows = _normalize_school_logo_entries(
+            current_df[S.SCHOOL_LOGO_COLUMNS].where(pd.notna(current_df[S.SCHOOL_LOGO_COLUMNS]), None).to_dict(orient="records")
+        )
+
+    if not current_rows:
+        recovered_rows = _recover_school_logo_rows_from_files()
+        if recovered_rows:
+            S.store[S.SCHOOL_LOGO_SHEET] = _school_logo_rows_df(recovered_rows)
+            S.db.save_excel_sheets(S.store)
+            return True
+
+    if current_rows != _normalize_school_logo_entries(current_rows):
+        S.store[S.SCHOOL_LOGO_SHEET] = _school_logo_rows_df(current_rows)
+        S.db.save_excel_sheets(S.store)
+        return True
+
+    if _migrate_school_logo_storage():
+        return True
+
+    return False
+
+
+def _load_school_logos() -> dict:
+    _ensure_school_logo_sheet()
+    return {"entries": _school_logo_sheet_rows()}
+
+
+def _save_school_logos(payload: dict) -> None:
+    entries = _normalize_school_logo_entries(payload.get("entries")) if isinstance(payload, dict) else []
+    S.store[S.SCHOOL_LOGO_SHEET] = _school_logo_rows_df(entries)
+    S.db.save_excel_sheets(S.store)
+    _migrate_school_logo_storage()
+
+
+def _school_logo_filename(entry_id: str) -> str | None:
+    path = _school_logo_file_path(entry_id)
+    return os.path.basename(path) if path else None
+
+
+def _serialize_school_logo_entry(row: dict) -> dict:
+    item = dict(row or {})
+    eid = _clean_text(item.get(S.SCHOOL_LOGO_ID_COL) or item.get("id"))
+    file_name = _school_logo_filename(eid) if eid else None
+    item[S.SCHOOL_LOGO_ID_COL] = eid
+    item["id"] = eid
+    item["type"] = _clean_text(item.get(S.INSTITUTION_TYPE_COL) or item.get("type"))
+    item["name"] = _clean_text(item.get(S.INSTITUTION_NAME_COL) or item.get("name"))
+    item["section"] = _clean_text(item.get(S.INSTITUTION_SECTION_COL) or item.get("section"))
+    item["logo_file_name"] = file_name or _clean_text(item.get("logo_file_name"))
+    item["logo_url"] = f"/api/config/school-logos/{eid}/logo" if (eid and file_name) else None
+    return item
+
+
 def _save_config(config):
     payload = {
+        "active_jec_year": _normalize_year_label(config.get("active_jec_year")),
         "name_variations": _normalize_name_variations(config.get("name_variations", {})),
         "person_titles": _normalize_person_titles(config.get("person_titles", [])),
         "school_branches": _normalize_school_branches(config.get("school_branches", {})),
@@ -967,6 +1301,8 @@ def register_config_routes(app):
         with S.lock:
             current = _load_config()
             merged = dict(current)
+            if "active_jec_year" in body:
+                merged["active_jec_year"] = _normalize_year_label(body.get("active_jec_year"))
             if "name_variations" in body:
                 merged["name_variations"] = _normalize_name_variations(body.get("name_variations"))
             if "person_titles" in body:
@@ -1012,3 +1348,139 @@ def register_config_routes(app):
     @app.post("/api/config/maintenance/reload")
     def reload_data_placeholder():
         return jsonify({"ok": True})
+
+    # ── School / University Logo routes ──────────────────────────────────────
+
+    @app.get("/api/config/school-logos")
+    def list_school_logos():
+        err = auth_exports["_require_auth"]()
+        if err:
+            return err
+        payload = _load_school_logos()
+        entries = [_serialize_school_logo_entry(e) for e in payload.get("entries", [])]
+        return jsonify({"ok": True, "entries": entries})
+
+    @app.post("/api/config/school-logos")
+    def create_school_logo_entry():
+        err = auth_exports["_require_admin"]()
+        if err:
+            return err
+        body = request.json or {}
+        if not isinstance(body, dict):
+            return jsonify({"error": "invalid payload"}), 400
+
+        entry_type = _clean_text(body.get("type"))
+        name = _clean_text(body.get("name"))
+        section = _clean_text(body.get("section") or "")
+
+        if entry_type not in ("school", "university"):
+            return jsonify({"error": "type must be 'school' or 'university'"}), 400
+        if not name:
+            return jsonify({"error": "name is required"}), 400
+
+        with S.lock:
+            payload = _load_school_logos()
+            entries = payload.get("entries", [])
+            for e in entries:
+                if (
+                    _clean_text(e.get("type")) == entry_type
+                    and _clean_text(e.get("name")) == name
+                    and _clean_text(e.get("section") or "") == section
+                ):
+                    return jsonify({"error": "entry already exists"}), 409
+
+            entry_id = _next_school_logo_id(entries, entry_type)
+            entry = {
+                "id": entry_id,
+                "type": entry_type,
+                "name": name,
+                "section": section,
+                "logo_file_name": "",
+            }
+            entries.append(entry)
+            payload["entries"] = entries
+            _save_school_logos(payload)
+
+        return jsonify({"ok": True, "entry": _serialize_school_logo_entry(entry)}), 201
+
+    @app.delete("/api/config/school-logos/<entry_id>")
+    def delete_school_logo_entry(entry_id):
+        err = auth_exports["_require_admin"]()
+        if err:
+            return err
+
+        with S.lock:
+            payload = _load_school_logos()
+            entries = payload.get("entries", [])
+            target_entry = next((e for e in entries if _clean_text(e.get("id")) == _clean_text(entry_id)), None)
+            filtered = [e for e in entries if _clean_text(e.get("id")) != _clean_text(entry_id)]
+            if len(filtered) == len(entries):
+                return jsonify({"error": "entry not found"}), 404
+            payload["entries"] = filtered
+            _save_school_logos(payload)
+
+        if target_entry:
+            logo_path = _locate_school_logo_file(target_entry)
+            if logo_path and os.path.exists(logo_path):
+                try:
+                    os.remove(logo_path)
+                except OSError:
+                    pass
+
+        return jsonify({"ok": True})
+
+    @app.post("/api/config/school-logos/<entry_id>/logo")
+    def upload_school_logo_file(entry_id):
+        err = auth_exports["_require_admin"]()
+        if err:
+            return err
+
+        file = request.files.get("logo")
+        if not file or not file.filename:
+            return jsonify({"error": "logo file is required"}), 400
+
+        original_name = secure_filename(file.filename)
+        if "." not in original_name:
+            return jsonify({"error": "file extension is required"}), 400
+        ext = original_name.rsplit(".", 1)[1].lower()
+        if ext not in S.ALLOWED_EXTENSIONS:
+            return jsonify({"error": "unsupported logo type"}), 400
+
+        with S.lock:
+            payload = _load_school_logos()
+            entries = payload.get("entries", [])
+            idx = next(
+                (i for i, e in enumerate(entries) if _clean_text(e.get("id")) == _clean_text(entry_id)),
+                -1,
+            )
+            if idx < 0:
+                return jsonify({"error": "entry not found"}), 404
+
+            entry = entries[idx]
+            entry_type = _clean_text(entry.get(S.INSTITUTION_TYPE_COL) or entry.get("type"))
+            existing = _locate_school_logo_file(entry)
+            if existing and os.path.exists(existing):
+                try:
+                    os.remove(existing)
+                except OSError:
+                    pass
+
+            file_name = f"{entry_id}.{ext}"
+            file.save(os.path.join(_school_logo_dir(entry_type), file_name))
+
+            entries[idx] = {**entries[idx], "logo_file_name": file_name}
+            payload["entries"] = entries
+            _save_school_logos(payload)
+
+        return jsonify({"ok": True, "entry": _serialize_school_logo_entry(entries[idx])})
+
+    @app.get("/api/config/school-logos/<entry_id>/logo")
+    def get_school_logo_file(entry_id):
+        err = auth_exports["_require_auth"]()
+        if err:
+            return err
+        entry = _find_school_logo_entry(entry_id)
+        file_path = _school_logo_file_path(entry_id, [entry] if entry else None)
+        if not entry or not file_path:
+            return jsonify({"error": "logo not found"}), 404
+        return send_from_directory(os.path.dirname(file_path), os.path.basename(file_path))

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { LayoutDashboard, Users, GitBranch, UserPlus, LogOut, ShieldCheck, User as UserIcon, Eye, X, Search, ClipboardList, Settings, Building2, ImageOff, Key, MapPin, Map, BookOpenText } from 'lucide-react'
+import { Component, useState, useEffect } from 'react'
+import { LayoutDashboard, Users, GitBranch, UserPlus, LogOut, ShieldCheck, User as UserIcon, Eye, X, Search, ClipboardList, Settings, Building2, ImageOff, Key, MapPin, Map, BookOpenText, Database, Menu } from 'lucide-react'
 import Dashboard from './pages/Dashboard.jsx'
 import Members from './pages/Members.jsx'
 import Profile from './pages/Profile.jsx'
@@ -19,7 +19,54 @@ import ChurchesAdmin from './pages/ChurchesAdmin.jsx'
 import ChurchesMap from './pages/ChurchesMap.jsx'
 import PeopleLocationsMap from './pages/PeopleLocationsMap.jsx'
 import BibleReader from './pages/BibleReader.jsx'
+import DataWorkbookAdmin from './pages/DataWorkbookAdmin.jsx'
 import { api } from './api.js'
+import { buildMottoBibleReaderTarget, formatMottoTextWithSource } from './mottoBibleReference.js'
+
+class ProfileRouteErrorBoundary extends Component {
+  constructor(props) {
+    super(props)
+    this.state = { error: null }
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error }
+  }
+
+  componentDidCatch(error) {
+    console.error('Profile route crashed', error)
+  }
+
+  componentDidUpdate(prevProps) {
+    if (prevProps.resetKey !== this.props.resetKey && this.state.error) {
+      this.setState({ error: null })
+    }
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children
+
+    const message = String(this.state.error?.message || 'Unexpected profile rendering error')
+    return (
+      <div style={{ padding: 24, display: 'grid', gap: 16 }}>
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">تعذّر عرض الملف الشخصي</span>
+          </div>
+          <div className="card-body" style={{ display: 'grid', gap: 12 }}>
+            <div style={{ color: 'var(--red)', fontWeight: 700 }}>{message}</div>
+            <div style={{ color: 'var(--gray-500)', fontSize: '0.88rem' }}>
+              تم منع الصفحة من التحول إلى شاشة بيضاء. يمكن الرجوع ثم فتح الملف مجددًا بعد المتابعة بالإصلاح.
+            </div>
+            <div>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={this.props.onBack}>رجوع</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+}
 
 // ── ViewAsPicker Modal ────────────────────────────────────────────────────────
 function ViewAsPicker({ currentAdminUser, onSelect, onClose }) {
@@ -289,12 +336,13 @@ function MemberYouthGroupLogoTile({ groupId, label }) {
   )
 }
 
-function MemberMottoTile({ logoUrl, verseText, scopeLabel }) {
+function MemberMottoTile({ logoUrl, verseText, scopeLabel, onVerseClick }) {
   const [missing, setMissing] = useState(false)
+  const isVerseClickable = typeof onVerseClick === 'function'
 
   useEffect(() => {
     setMissing(false)
-  }, [logoUrl, verseText, scopeLabel])
+  }, [logoUrl, verseText, scopeLabel, onVerseClick])
 
   return (
     <div
@@ -345,20 +393,48 @@ function MemberMottoTile({ logoUrl, verseText, scopeLabel }) {
       )}
 
       <div style={{ minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: '0.78rem',
-            color: 'var(--navy)',
-            lineHeight: 1.25,
-            marginBottom: 2,
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-          }}
-        >
-          {verseText || '—'}
-        </div>
+        {isVerseClickable ? (
+          <button
+            type="button"
+            onClick={onVerseClick}
+            style={{
+              fontFamily: 'inherit',
+              fontSize: '0.78rem',
+              color: 'var(--navy)',
+              lineHeight: 1.25,
+              marginBottom: 2,
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              border: 'none',
+              background: 'none',
+              padding: 0,
+              textAlign: 'right',
+              width: '100%',
+              cursor: 'pointer',
+              textDecoration: 'none',
+            }}
+            title="افتح المرجع في قارئ الكتاب المقدس"
+          >
+            {verseText || '—'}
+          </button>
+        ) : (
+          <div
+            style={{
+              fontSize: '0.78rem',
+              color: 'var(--navy)',
+              lineHeight: 1.25,
+              marginBottom: 2,
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+            }}
+          >
+            {verseText || '—'}
+          </div>
+        )}
         <div
           style={{
             fontSize: '0.84rem',
@@ -376,40 +452,6 @@ function MemberMottoTile({ logoUrl, verseText, scopeLabel }) {
   )
 }
 
-function formatMottoSource(ref) {
-  if (!ref || typeof ref !== 'object') return ''
-  const abbr = String(ref?.book?.book_abbr || ref?.book?.abbr || ref?.book?.book_name || '').trim()
-  const verseObj = ref?.verse && typeof ref.verse === 'object' ? ref.verse : {}
-  let verseRaw = String(verseObj?.raw || '').trim()
-  if (!verseRaw) {
-    const segments = Array.isArray(verseObj?.segments) ? verseObj.segments : []
-    const rendered = segments.map((seg) => {
-      const start = seg?.start || {}
-      const end = seg?.end || {}
-      const sc = Number(start?.chapter)
-      const sv = Number(start?.verse)
-      const ec = Number(end?.chapter)
-      const ev = Number(end?.verse)
-      if (!sc || !sv || !ec || !ev) return ''
-      if (sc === ec && sv === ev) return `${sc}: ${sv}`
-      if (sc === ec) return `${sc}: ${sv}-${ev}`
-      return `${sc}: ${sv}-${ec}: ${ev}`
-    }).filter(Boolean)
-    verseRaw = rendered.join(', ')
-  }
-  verseRaw = verseRaw.replace(/:\s*/g, ': ')
-  if (!abbr || !verseRaw) return ''
-  return `(${abbr} ${verseRaw})`
-}
-
-function formatMottoTextWithSource(motto) {
-  const title = String(motto?.title || '').trim()
-  if (!title) return '—'
-  const references = Array.isArray(motto?.bible_references) ? motto.bible_references : []
-  const source = formatMottoSource(references[0])
-  return source ? `${title} ${source}` : title
-}
-
 const PAGE_TITLES = {
   dashboard:           'لوحة المعلومات',
   members:             'الأعضاء',
@@ -423,10 +465,21 @@ const PAGE_TITLES = {
   churches:            'الكنائس',
   churches_map:        'خريطة الكنائس',
   people_locations_map:'خريطة مواقع الأشخاص',
+  data_workbook:       'بيانات JECJordanData',
   bible_reader:        'قارئ الكتاب المقدس',
 }
 
 export default function App() {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      const stored = window.localStorage.getItem('jec-sidebar-collapsed')
+      if (stored !== null) return stored === '1'
+    } catch {
+      // Ignore localStorage errors and fall back to viewport width.
+    }
+    return window.innerWidth <= 900
+  })
   const [authUser, setAuthUser]         = useState(undefined) // undefined = loading
   const [page, setPage]                 = useState('dashboard')
   const [selectedPid, setSelected]      = useState(null)
@@ -444,6 +497,7 @@ export default function App() {
   const [savingCreds, setSavingCreds] = useState(false)
   const [youthGroupLabels, setYouthGroupLabels] = useState({})
   const [memberMottoByGroup, setMemberMottoByGroup] = useState({})
+  const [bibleReaderTarget, setBibleReaderTarget] = useState(null)
   const { toasts, toast }               = useToast()
 
   useEffect(() => {
@@ -457,6 +511,32 @@ export default function App() {
         setProfileReturnPage('orgtree')
       }
     }).catch(() => setAuthUser(null))
+  }, [])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('jec-sidebar-collapsed', sidebarCollapsed ? '1' : '0')
+    } catch {
+      // Ignore localStorage errors.
+    }
+  }, [sidebarCollapsed])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined
+    const mediaQuery = window.matchMedia('(max-width: 900px)')
+    const handleViewportChange = (event) => {
+      if (event.matches) setSidebarCollapsed(true)
+    }
+
+    if (mediaQuery.matches) setSidebarCollapsed(true)
+
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', handleViewportChange)
+      return () => mediaQuery.removeEventListener('change', handleViewportChange)
+    }
+
+    mediaQuery.addListener(handleViewportChange)
+    return () => mediaQuery.removeListener(handleViewportChange)
   }, [])
 
   const handleLogin = (user) => {
@@ -477,6 +557,12 @@ export default function App() {
     setAuthUser(null)
     setPage('dashboard')
     setSelected(null)
+  }
+
+  const closeSidebarOnMobile = () => {
+    if (typeof window !== 'undefined' && window.innerWidth <= 900) {
+      setSidebarCollapsed(true)
+    }
   }
 
   const openCredentialsModal = () => {
@@ -558,6 +644,7 @@ export default function App() {
       memberMottoByGroup[gid]?.yearLabel,
     ),
     mottoVerseText: memberMottoByGroup[gid]?.mottoText || '',
+    mottoTarget: memberMottoByGroup[gid]?.mottoTarget || null,
   }))
 
   useEffect(() => {
@@ -610,6 +697,7 @@ export default function App() {
           const sourceRow = directLogo ? directRow : globalRow
           const yearLabel = String(sourceRow?.year_label || '').trim()
           const mottoText = formatMottoTextWithSource(sourceRow)
+          const mottoTarget = buildMottoBibleReaderTarget(sourceRow)
 
           const sameAsJecJordan = !!globalLogo && (
             !directRow
@@ -617,7 +705,7 @@ export default function App() {
             || directLogo === globalLogo
           )
 
-          byGroup[gid] = { logoUrl, sameAsJecJordan, yearLabel, mottoText }
+          byGroup[gid] = { logoUrl, sameAsJecJordan, yearLabel, mottoText, mottoTarget }
         }
 
         setMemberMottoByGroup(byGroup)
@@ -644,6 +732,7 @@ export default function App() {
     { id: 'churches',             label: 'الكنائس',                       icon: MapPin },
     { id: 'churches_map',         label: 'خريطة الكنائس',                 icon: MapPin },
     { id: 'people_locations_map', label: 'خريطة مواقع الأشخاص',           icon: Map },
+    { id: 'data_workbook',        label: 'بيانات JECJordanData',          icon: Database },
     { id: 'bible_reader',         label: 'قارئ الكتاب المقدس',            icon: BookOpenText },
     { id: 'config',               label: 'الإعدادات',                    icon: Settings },
   ] : [
@@ -691,11 +780,22 @@ export default function App() {
 
   const navigate = (p) => {
     const allowed = isAdmin
-      ? ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches', 'churches_map', 'people_locations_map', 'bible_reader', 'config']
+      ? ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches', 'churches_map', 'people_locations_map', 'data_workbook', 'bible_reader', 'config']
       : ['profile', 'orgtree', 'council_members', 'bible_reader', 'my_questions']
     if (!allowed.includes(p)) return
     setPage(p)
     if (p !== 'profile') { setSelected(null); setOrgContext(null); setIsUnreg(false) }
+    closeSidebarOnMobile()
+  }
+
+  const openBibleReaderReference = (target) => {
+    if (!target?.bookId) return
+    if ((!Array.isArray(target?.refs) || !target.refs.length) && !String(target?.expression || '').trim()) return
+    setBibleReaderTarget({
+      ...target,
+      requestId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    })
+    navigate('bible_reader')
   }
 
   const handleNavClick = (id) => {
@@ -704,6 +804,7 @@ export default function App() {
       setIsUnreg(effectiveUser.person_type === 'unregistered')
       setPage('profile')
       setProfileReturnPage('orgtree')
+      closeSidebarOnMobile()
     } else {
       navigate(id)
     }
@@ -758,7 +859,14 @@ export default function App() {
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <button
+        type="button"
+        className={`sidebar-backdrop${sidebarCollapsed ? '' : ' visible'}`}
+        aria-label="إغلاق الشريط الجانبي"
+        onClick={() => setSidebarCollapsed(true)}
+      />
+
+      <aside className={`sidebar${sidebarCollapsed ? ' collapsed' : ''}`}>
         <div className="sidebar-logo">
           <img
             src="/api/logo"
@@ -782,9 +890,9 @@ export default function App() {
               || (page === 'profile' && n.id === 'profile')
               || (page === 'profile' && profileReturnPage === n.id && n.id !== 'profile' && !isMember)
             return (
-              <button key={n.id} className={`nav-item${isActive ? ' active' : ''}`} onClick={() => handleNavClick(n.id)}>
+              <button key={n.id} className={`nav-item${isActive ? ' active' : ''}`} onClick={() => handleNavClick(n.id)} title={n.label} aria-label={n.label}>
                 <n.icon size={18} className="icon"/>
-                {n.label}
+                <span className="nav-item-label">{n.label}</span>
               </button>
             )
           })}
@@ -792,20 +900,20 @@ export default function App() {
           {isAdmin && (
             <>
               <div className="nav-section-label" style={{ marginTop: 16 }}>إجراءات</div>
-              <button className="nav-item" onClick={() => { navigate('members'); setShowAdd(true) }}>
+              <button className="nav-item" onClick={() => { navigate('members'); setShowAdd(true) }} title="إضافة عضو جديد" aria-label="إضافة عضو جديد">
                 <UserPlus size={18} className="icon"/>
-                إضافة عضو جديد
+                <span className="nav-item-label">إضافة عضو جديد</span>
               </button>
-              <button className="nav-item" onClick={() => setShowViewAsPicker(true)}>
+              <button className="nav-item" onClick={() => { setShowViewAsPicker(true); closeSidebarOnMobile() }} title="عرض بصفة مستخدم" aria-label="عرض بصفة مستخدم">
                 <Eye size={18} className="icon"/>
-                عرض بصفة مستخدم
+                <span className="nav-item-label">عرض بصفة مستخدم</span>
               </button>
             </>
           )}
 
           {/* Council access badge */}
           {isCouncil && (
-            <div style={{
+            <div className="sidebar-council-card" style={{
               margin: '16px 8px 0', padding: '10px 12px',
               background: 'rgba(201,150,60,0.15)', borderRadius: 10,
               border: '1px solid rgba(201,150,60,0.3)',
@@ -827,8 +935,8 @@ export default function App() {
         </nav>
 
         {/* User info + logout */}
-        <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', padding: '14px 16px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <div className="sidebar-user-panel" style={{ borderTop: '1px solid rgba(255,255,255,0.08)', padding: '14px 16px' }}>
+          <div className="sidebar-user-row" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
             <div style={{
               width: 34, height: 34, borderRadius: '50%',
               background: 'rgba(201,150,60,0.25)',
@@ -837,7 +945,7 @@ export default function App() {
             }}>
               <ShieldCheck size={16} color="#c9963c"/>
             </div>
-            <div style={{ overflow: 'hidden', flex: 1 }}>
+            <div className="sidebar-user-text" style={{ overflow: 'hidden', flex: 1 }}>
               <div style={{ color: 'white', fontSize: '0.82rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {authUser.display_name || authUser.username}
               </div>
@@ -846,6 +954,9 @@ export default function App() {
           </div>
           <button
             onClick={handleLogout}
+            className="sidebar-logout-btn"
+            title="تسجيل الخروج"
+            aria-label="تسجيل الخروج"
             style={{
               width: '100%', display: 'flex', alignItems: 'center', gap: 8,
               background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.12)',
@@ -855,13 +966,14 @@ export default function App() {
             onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.14)' }}
             onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.07)' }}
           >
-            <LogOut size={14}/> تسجيل الخروج
+            <LogOut size={14}/>
+            <span className="nav-item-label">تسجيل الخروج</span>
           </button>
         </div>
         <div className="sidebar-footer">JEC Member Manager © 2025</div>
       </aside>
 
-      <div className="main-content">
+      <div className={`main-content${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
         {/* ── Impersonation banner ── */}
         {viewAsUser && (
           <div style={{
@@ -899,7 +1011,18 @@ export default function App() {
           </div>
         )}
         <header className="topbar">
-          <span className="topbar-title">{PAGE_TITLES[page] || ''}</span>
+          <div className="topbar-leading">
+            <button
+              type="button"
+              className="sidebar-toggle"
+              onClick={() => setSidebarCollapsed(prev => !prev)}
+              title={sidebarCollapsed ? 'فتح الشريط الجانبي' : 'طي الشريط الجانبي'}
+              aria-label={sidebarCollapsed ? 'فتح الشريط الجانبي' : 'طي الشريط الجانبي'}
+            >
+              <Menu size={18} />
+            </button>
+            <span className="topbar-title">{PAGE_TITLES[page] || ''}</span>
+          </div>
           <div className="topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {isAdmin && page === 'members' && (
               <button className="btn btn-gold btn-sm" onClick={() => setShowAdd(true)}>
@@ -936,6 +1059,7 @@ export default function App() {
                       logoUrl={g.mottoLogoUrl}
                       verseText={g.mottoVerseText}
                       scopeLabel={g.mottoScopeLabel}
+                      onVerseClick={g.mottoTarget ? () => openBibleReaderReference(g.mottoTarget) : undefined}
                     />
                   ) : null}
                 </div>
@@ -945,7 +1069,7 @@ export default function App() {
         )}
 
         <main className="page-body">
-          {isAdmin && page === 'dashboard' && <Dashboard/>}
+          {isAdmin && page === 'dashboard' && <Dashboard onOpenBibleReference={openBibleReaderReference} />}
 
           {isAdmin && page === 'members' && (
             <Members
@@ -957,18 +1081,20 @@ export default function App() {
           )}
 
           {page === 'profile' && (
-            <Profile
-              personId={selectedPid}
-              isUnregistered={isUnregistered}
-              onBack={goBack}
-              toast={toast}
-              orgContext={orgContext}
-              onViewProfile={(pid, unreg) => goProfile(pid, null, !!unreg, page)}
-              onPromoted={handlePromoted}
-              currentUser={effectiveUser}
-              // Council members or impersonating admin viewing others → read-only
-              readOnly={!!(viewAsUser) || (isMember && String(selectedPid) !== String(effectiveUser?.person_id))}
-            />
+            <ProfileRouteErrorBoundary resetKey={`${selectedPid}-${isUnregistered ? 'unreg' : 'reg'}`} onBack={goBack}>
+              <Profile
+                personId={selectedPid}
+                isUnregistered={isUnregistered}
+                onBack={goBack}
+                toast={toast}
+                orgContext={orgContext}
+                onViewProfile={(pid, unreg) => goProfile(pid, null, !!unreg, page)}
+                onPromoted={handlePromoted}
+                currentUser={effectiveUser}
+                // Council members or impersonating admin viewing others → read-only
+                readOnly={!!(viewAsUser) || (isMember && String(selectedPid) !== String(effectiveUser?.person_id))}
+              />
+            </ProfileRouteErrorBoundary>
           )}
 
           {page === 'orgtree' && (
@@ -1029,8 +1155,12 @@ export default function App() {
             <PeopleLocationsMap toast={toast} />
           )}
 
+          {isAdmin && page === 'data_workbook' && (
+            <DataWorkbookAdmin toast={toast} />
+          )}
+
           {page === 'bible_reader' && (
-            <BibleReader toast={toast} />
+            <BibleReader toast={toast} externalTarget={bibleReaderTarget} />
           )}
 
           {isAdmin && page === 'config' && (

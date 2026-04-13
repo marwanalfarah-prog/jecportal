@@ -93,10 +93,10 @@ function nameMatches(parts, qWordGroups) {
   return qi===qWordGroups.length
 }
 function getNameParts(p) {
-  return [p.first_name,p.second_name,p.third_name,p.last_name].filter(Boolean).map(normalizeArabic)
+  return [p.ar_first_name,p.ar_second_name,p.ar_third_name,p.ar_last_name].filter(Boolean).map(normalizeArabic)
 }
 function fullName(p) {
-  return [p.first_name,p.second_name,p.third_name,p.last_name].filter(Boolean).join(' ')
+  return [p.ar_first_name,p.ar_second_name,p.ar_third_name,p.ar_last_name].filter(Boolean).join(' ')
 }
 
 function firstNameInitial(value) {
@@ -250,6 +250,10 @@ const HOBBIES_ADULT = [
 ]
 
 function AdultDataModal({ onConfirm, onCancel, youthGroup }) {
+  const sanitizeDateInput = (value) => {
+    const text = String(value || '').trim()
+    return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : ''
+  }
   const [university,     setUniversity]     = useState('')
   const [universityOther,setUniversityOther]= useState('')
   const [major,          setMajor]          = useState('')
@@ -257,6 +261,10 @@ function AdultDataModal({ onConfirm, onCancel, youthGroup }) {
   const [company,        setCompany]        = useState('')
   const [hasResp,        setHasResp]        = useState('')
   const [respText,       setRespText]       = useState('')
+  const [respJecYear,    setRespJecYear]    = useState('')
+  const [respIsCurrent,  setRespIsCurrent]  = useState('حاليًّا')
+  const [respStartDate,  setRespStartDate]  = useState('')
+  const [respEndDate,    setRespEndDate]    = useState('')
   const [hobbies,        setHobbies]        = useState([])
   const [hobbiesOther,   setHobbiesOther]   = useState('')
   const [errors,         setErrors]         = useState({})
@@ -273,6 +281,11 @@ function AdultDataModal({ onConfirm, onCancel, youthGroup }) {
     if (!jobTitle.trim())      e.job_title  = 'هذا الحقل مطلوب'
     if (!company.trim())       e.company    = 'هذا الحقل مطلوب'
     if (!hasResp)              e.has_resp   = 'هذا الحقل مطلوب'
+    if (hasResp === 'نعم' && !respText.trim()) e.resp_text = 'هذا الحقل مطلوب'
+    if (hasResp === 'نعم' && !/^\d{4}$/.test(respJecYear.trim())) e.resp_jec_year = 'أدخل سنة JEC صحيحة'
+    const startDate = sanitizeDateInput(respStartDate)
+    const endDate = sanitizeDateInput(respEndDate)
+    if (startDate && endDate && endDate < startDate) e.resp_end_date = 'تاريخ النهاية يجب أن يكون بعد تاريخ البداية'
     const allH = [...hobbies, ...(hobbiesOther.trim() ? [hobbiesOther.trim()] : [])]
     if (!allH.length)          e.hobbies    = 'يرجى اختيار هواية واحدة على الأقل'
     return e
@@ -284,8 +297,8 @@ function AdultDataModal({ onConfirm, onCancel, youthGroup }) {
 
     const uni = university === 'أخرى' ? universityOther : university
     const allH = [...hobbies, ...(hobbiesOther.trim() ? [hobbiesOther.trim()] : [])]
-    const responsibilities = (hasResp === 'حاليًّا' || hasResp === 'سابقًا')
-      ? [{ youth_group_id: youthGroup, responsibility: respText, time: hasResp }]
+    const responsibilities = hasResp === 'نعم'
+      ? [{ youth_group_id: youthGroup, responsibility: respText, jec_year: /^\d{4}$/.test(respJecYear.trim()) ? parseInt(respJecYear.trim(), 10) : null, is_current: respIsCurrent === 'حاليًّا', start_date: sanitizeDateInput(respStartDate) || null, end_date: sanitizeDateInput(respEndDate) || null }]
       : []
 
     const extraData = {
@@ -419,11 +432,42 @@ function AdultDataModal({ onConfirm, onCancel, youthGroup }) {
           <div style={fieldStyle}>
             <label style={labelStyle}>هل لديك أي مسؤوليات في الشبيبة؟ <span style={{color:'#c62828'}}>*</span></label>
             <div style={{ display: 'flex', flexWrap: 'wrap', marginBottom: 4 }}>
-              {['لا','حاليًّا','سابقًا'].map(v => optBtn(v, hasResp, () => setHasResp(v)))}
+              {['لا','نعم'].map(v => optBtn(v, hasResp, () => setHasResp(v)))}
             </div>
-            {(hasResp === 'حاليًّا' || hasResp === 'سابقًا') && (
-              <input value={respText} onChange={e => setRespText(e.target.value)}
-                placeholder="اكتب مسؤولياتك…" style={{ ...inputStyle, marginTop: 8 }}/>
+            {hasResp === 'نعم' && (
+              <>
+                <input value={respText} onChange={e => setRespText(e.target.value)}
+                  placeholder="اكتب مسؤولياتك…" style={{ ...inputStyle, marginTop: 8 }}/>
+                {errors.resp_text && <div style={errorStyle}>⚠ {errors.resp_text}</div>}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginTop: 8 }}>
+                  <label style={{ display: 'grid', gap: 6 }}>
+                    <span style={{ fontSize: '0.76rem', color: '#6b778f', fontWeight: 700 }}>سنة JEC</span>
+                    <input value={respJecYear} onChange={e => setRespJecYear(String(e.target.value || '').replace(/[^\d]/g, '').slice(0, 4))}
+                      placeholder="2026" style={inputStyle} />
+                  </label>
+                  <label style={{ display: 'grid', gap: 6 }}>
+                    <span style={{ fontSize: '0.76rem', color: '#6b778f', fontWeight: 700 }}>الحالة</span>
+                    <select value={respIsCurrent} onChange={e => setRespIsCurrent(e.target.value)} style={inputStyle}>
+                      <option value="حاليًّا">حاليًّا</option>
+                      <option value="سابقًا">سابقًا</option>
+                    </select>
+                  </label>
+                </div>
+                {errors.resp_jec_year && <div style={errorStyle}>⚠ {errors.resp_jec_year}</div>}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginTop: 8 }}>
+                  <label style={{ display: 'grid', gap: 6 }}>
+                    <span style={{ fontSize: '0.76rem', color: '#6b778f', fontWeight: 700 }}>تاريخ البداية</span>
+                    <input type="date" value={respStartDate} onChange={e => setRespStartDate(sanitizeDateInput(e.target.value))}
+                      style={inputStyle} />
+                  </label>
+                  <label style={{ display: 'grid', gap: 6 }}>
+                    <span style={{ fontSize: '0.76rem', color: '#6b778f', fontWeight: 700 }}>تاريخ النهاية</span>
+                    <input type="date" value={respEndDate} onChange={e => setRespEndDate(sanitizeDateInput(e.target.value))}
+                      style={inputStyle} />
+                  </label>
+                </div>
+                {errors.resp_end_date && <div style={errorStyle}>⚠ {errors.resp_end_date}</div>}
+              </>
             )}
             {errors.has_resp && <div style={errorStyle}>⚠ {errors.has_resp}</div>}
           </div>

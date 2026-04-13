@@ -8,6 +8,16 @@ import pandas as pd
 from flask import jsonify, request, send_from_directory
 
 from core import state as S
+from core.routes_auth import _require_admin, _require_auth
+from core.routes_profile_common import (
+    build_location_only_address_rows,
+    build_profile_record,
+    get_profile_sub_rows,
+    profile_edit_scope,
+    require_profile_view_access,
+    replace_profile_sub_rows,
+    validate_responsibility_membership_groups,
+)
 
 
 def _is_allowed_google_maps_host(hostname: str | None) -> bool:
@@ -102,10 +112,10 @@ def _person_full_name(person: dict | None) -> str:
     payload = person if isinstance(person, dict) else {}
     parts = [
         payload.get("title"),
-        payload.get("first_name"),
-        payload.get("second_name"),
-        payload.get("third_name"),
-        payload.get("last_name"),
+        payload.get("ar_first_name"),
+        payload.get("ar_second_name"),
+        payload.get("ar_third_name"),
+        payload.get("ar_last_name"),
     ]
     return " ".join(str(part).strip() for part in parts if str(part or "").strip())
 
@@ -172,7 +182,7 @@ def _build_people_location_rows(persons_df: pd.DataFrame, addresses_df: pd.DataF
         country = S._normalize_text(address.get("country")) or S.DEFAULT_COUNTRY
         governorate = S._normalize_text(address.get("governorate"))
         city = S._normalize_text(address.get("city"))
-        full_address_line = S._normalize_text(address.get("address"))
+        full_address_line = S._normalize_text(address.get(S.STREET_ADDRESS_COL) or address.get("address"))
 
         rows.append({
             "location_key": f"{person_type}:{pid}:{index}",
@@ -200,50 +210,113 @@ def _build_people_location_rows(persons_df: pd.DataFrame, addresses_df: pd.DataF
     return rows
 
 
-def register_registered_routes(app):
-    def _normalize_membership_rows(rows):
-        out = []
-        for row in rows:
-            normalized = dict(row)
-            archived = normalized.get("archived")
-            normalized["archived"] = bool(archived) if archived is not None and str(archived) not in ("nan", "None", "") else False
-            out.append(normalized)
-        return out
+def _active_registered_person_ids() -> set[str]:
+    persons = S._registered_persons_df()
+    if persons.empty or "person_id" not in persons.columns:
+        return set()
 
+    pyg = S._sheet_for_registered("person_youth_group")
+    if pyg.empty or "person_id" not in pyg.columns:
+        return {str(S._normalize_person_id(pid)) for pid in persons["person_id"].dropna()}
+
+    membership_person_ids: set[str] = set()
+    active_person_ids: set[str] = set()
+    for _, row in pyg.iterrows():
+        person_id = S._normalize_person_id(row.get("person_id"))
+        if person_id in (None, ""):
+            continue
+        person_key = str(person_id)
+        membership_person_ids.add(person_key)
+
+        archived = row.get("archived")
+        if archived is not None and str(archived) not in ("nan", "None", "") and bool(archived):
+            continue
+        active_person_ids.add(person_key)
+
+    registered_person_ids = {str(S._normalize_person_id(pid)) for pid in persons["person_id"].dropna()}
+    no_membership_person_ids = registered_person_ids - membership_person_ids
+    return active_person_ids | no_membership_person_ids
+
+
+def _active_registered_persons_df() -> pd.DataFrame:
+    persons = S._registered_persons_df()
+    if persons.empty or "person_id" not in persons.columns:
+        return persons
+
+    active_person_ids = _active_registered_person_ids()
+    if not active_person_ids:
+        return persons.iloc[0:0].copy()
+    return persons[persons["person_id"].astype(str).isin(active_person_ids)].copy()
+
+
+def _filter_to_active_registered_people(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty or "person_id" not in df.columns:
+        return df
+
+    active_person_ids = _active_registered_person_ids()
+    if not active_person_ids:
+        return df.iloc[0:0].copy()
+    return df[df["person_id"].astype(str).isin(active_person_ids)].copy()
+
+
+def _active_registered_membership_df() -> pd.DataFrame:
+    pyg = _filter_to_active_registered_people(S._sheet_for_registered("person_youth_group"))
+    if pyg.empty:
+        return pyg
+
+    archived_series = pyg["archived"] if "archived" in pyg.columns else pd.Series(False, index=pyg.index)
+    archived_mask = archived_series.apply(
+        lambda value: value is not None and str(value) not in ("nan", "None", "") and bool(value)
+    )
+    return pyg[~archived_mask].copy()
+
+
+def register_registered_routes(app):
     @app.get("/api/stats")
     def stats():
-        persons = S._registered_persons_df()
-        pyg = S._sheet_for_registered("person_youth_group")
+        persons = _active_registered_persons_df()
+        pyg = _active_registered_membership_df()
+        higher_education = _filter_to_active_registered_people(S._sheet_for_registered("higher_education"))
+        jobs = _filter_to_active_registered_people(S._sheet_for_registered("jobs"))
+        nationality = _filter_to_active_registered_people(S._sheet_for_registered("nationality"))
         yg_count = 0
         if not pyg.empty and S.YOUTH_GROUP_ID_COL in pyg.columns:
             yg_count = int(pyg[S.YOUTH_GROUP_ID_COL].dropna().astype(str).nunique())
         return jsonify({
             "total_members": int(len(persons)),
             "youth_groups": yg_count,
-            "higher_ed": int(len(S._sheet_for_registered("higher_education"))),
-            "employed": int(len(S._sheet_for_registered("jobs")),),
+            "higher_ed": int(len(higher_education)),
+            "employed": int(len(jobs)),
             "governorates": int(persons["governorate"].nunique()),
-            "nationalities": int(S._sheet_for_registered("nationality")["nationality"].nunique()),
+            "nationalities": int(nationality["nationality"].nunique()) if not nationality.empty and "nationality" in nationality.columns else 0,
         })
 
     @app.get("/api/chart/governorate")
     def chart_gov():
-        data = S._registered_persons_df()["governorate"].value_counts().reset_index()
+        data = _active_registered_persons_df()["governorate"].value_counts().reset_index()
         data.columns = ["label", "value"]
         return jsonify(S.df_to_json(data))
 
     @app.get("/api/chart/gender")
     def chart_gender():
-        data = S._registered_persons_df()["gender"].value_counts().reset_index()
+        data = _active_registered_persons_df()["gender"].value_counts().reset_index()
         data.columns = ["label", "value"]
         return jsonify(S.df_to_json(data))
 
     @app.get("/api/chart/youth_group")
     def chart_yg():
-        pyg = S._sheet_for_registered("person_youth_group")
+        pyg = _active_registered_membership_df()
         if pyg.empty or S.YOUTH_GROUP_ID_COL not in pyg.columns:
             return jsonify([])
-        data = pyg[S.YOUTH_GROUP_ID_COL].dropna().astype(str).value_counts().head(15).reset_index()
+        data = (
+            pyg[["person_id", S.YOUTH_GROUP_ID_COL]]
+            .dropna(subset=[S.YOUTH_GROUP_ID_COL])
+            .drop_duplicates()
+            .groupby(S.YOUTH_GROUP_ID_COL)["person_id"].count()
+            .sort_values(ascending=False)
+            .head(15)
+            .reset_index()
+        )
         data.columns = ["group_id", "value"]
         data["label"] = data["group_id"].apply(lambda gid: S.youth_group_name(gid) or gid)
         data = data[["label", "value", "group_id"]]
@@ -251,7 +324,7 @@ def register_registered_routes(app):
 
     @app.get("/api/chart/age_group")
     def chart_ag():
-        data = S._sheet_for_registered("person_youth_group")["age_group"].value_counts().reset_index()
+        data = _active_registered_membership_df()["age_group"].value_counts().reset_index()
         data.columns = ["label", "value"]
         return jsonify(S.df_to_json(data))
 
@@ -262,6 +335,15 @@ def register_registered_routes(app):
             return jsonify(cached_payload)
         payload = S.build_enriched()
         S.set_enriched_cache(payload, data_version)
+        return jsonify(payload)
+
+    @app.get("/api/persons/members-index")
+    def get_persons_members_index():
+        cached_payload, cached_version, data_version = S.members_index_cache_state()
+        if cached_payload is not None and cached_version == data_version:
+            return jsonify(cached_payload)
+        payload = S.build_members_index()
+        S.set_members_index_cache(payload, data_version)
         return jsonify(payload)
 
     @app.get("/api/filters")
@@ -314,20 +396,20 @@ def register_registered_routes(app):
         youth_group_counts.sort(key=lambda item: (-int(item.get("count") or 0), str(item.get("label") or item.get("value") or "")))
 
         return jsonify({
-            "first_name": S.value_counts_json(persons["first_name"]),
-            "second_name": S.value_counts_json(persons["second_name"]),
-            "third_name": S.value_counts_json(persons["third_name"]),
-            "last_name": S.value_counts_json(persons["last_name"]),
-            "english_first_name": S.value_counts_json(persons["english_first_name"]),
-            "english_second_name": S.value_counts_json(persons["english_second_name"]),
-            "english_third_name": S.value_counts_json(persons["english_third_name"]),
-            "english_last_name": S.value_counts_json(persons["english_last_name"]),
-            "mother_first_name": S.value_counts_json(persons["mother_first_name"]),
-            "mother_second_name": S.value_counts_json(persons["mother_second_name"]),
-            "mother_third_name": S.value_counts_json(persons["mother_third_name"]),
-            "mother_english_first_name": S.value_counts_json(persons["mother_english_first_name"]),
-            "mother_english_second_name": S.value_counts_json(persons["mother_english_second_name"]),
-            "mother_english_third_name": S.value_counts_json(persons["mother_english_third_name"]),
+            "ar_first_name": S.value_counts_json(persons["ar_first_name"]),
+            "ar_second_name": S.value_counts_json(persons["ar_second_name"]),
+            "ar_third_name": S.value_counts_json(persons["ar_third_name"]),
+            "ar_last_name": S.value_counts_json(persons["ar_last_name"]),
+            "en_first_name": S.value_counts_json(persons["en_first_name"]),
+            "en_second_name": S.value_counts_json(persons["en_second_name"]),
+            "en_third_name": S.value_counts_json(persons["en_third_name"]),
+            "en_last_name": S.value_counts_json(persons["en_last_name"]),
+            "mother_ar_first_name": S.value_counts_json(persons["mother_ar_first_name"]),
+            "mother_ar_second_name": S.value_counts_json(persons["mother_ar_second_name"]),
+            "mother_ar_last_name": S.value_counts_json(persons["mother_ar_last_name"]),
+            "mother_en_first_name": S.value_counts_json(persons["mother_en_first_name"]),
+            "mother_en_second_name": S.value_counts_json(persons["mother_en_second_name"]),
+            "mother_en_last_name": S.value_counts_json(persons["mother_en_last_name"]),
             "gender": S.value_counts_json(persons["gender"]),
             "school_system": S.value_counts_json(persons["school_system"]),
             "governorate": S.value_counts_json(persons["governorate"]),
@@ -336,15 +418,32 @@ def register_registered_routes(app):
             "youth_group": youth_group_counts,
             "age_group": S.pid_counts(pyg, "age_group"),
             "youth_join_year": S.pid_counts(pyg, "youth_join_year"),
-            "responsibility": S.pid_counts(resp, "responsibility"),
-            "school": S.pid_counts(sch, "school"),
-            "university": S.pid_counts(he, "university_college"),
+            "responsibility": S.pid_counts(resp, "responsibility_name"),
+            "school": S.pid_counts(sch, S.SCHOOL_NAME_COL),
+            "university": S.pid_counts(he, S.HIGHER_EDUCATION_INSTITUTION_COL),
             "major": S.pid_counts(he, "major"),
             "degree": S.pid_counts(he, "degree"),
             "job_title": S.pid_counts(jobs, "job_title"),
-            "company": S.pid_counts(jobs, "company"),
+            "company": S.pid_counts(jobs, S.EMPLOYER_NAME_COL),
             "hobby_skill": S.pid_counts(hob, "hobby_skill"),
         })
+
+    @app.get("/api/nationality-iso-codes")
+    def get_nationality_iso_codes():
+        err = _require_auth()
+        if err:
+            return err
+        lookup = S.nationality_iso_lookup()
+        entries = [
+            {
+                "nationality": nationality,
+                "iso_alpha2": payload.get("iso_alpha2"),
+            }
+            for nationality, payload in lookup.items()
+            if nationality
+        ]
+        entries.sort(key=lambda item: str(item.get("nationality") or ""))
+        return jsonify({"entries": entries})
 
     @app.get("/api/persons")
     def get_persons():
@@ -366,7 +465,7 @@ def register_registered_routes(app):
         )
 
         unregistered_rows = _build_people_location_rows(
-            S.unreg_store.get("persons", pd.DataFrame()),
+            S.unregistered_persons_view_df(),
             S.unreg_store.get("addresses", pd.DataFrame()),
             S.unreg_store.get("person_youth_group", pd.DataFrame()),
             "unregistered",
@@ -376,53 +475,26 @@ def register_registered_routes(app):
 
     @app.get("/api/person/<int:pid>")
     def get_person(pid):
-        pid_text = str(pid)
-
-        def sub(sheet):
-            df = S.store.get(sheet, pd.DataFrame())
-            if df.empty or "person_id" not in df.columns:
-                return []
-            rows = S.df_to_json(df[df["person_id"].astype(str) == pid_text])
-            if sheet == "person_youth_group":
-                return _normalize_membership_rows(rows)
-            if sheet == "nationality":
-                return S.enrich_nationality_rows(rows)
-            return rows
-
-        persons = S.store.get("persons", pd.DataFrame())
-        if persons.empty or "person_id" not in persons.columns:
+        err = require_profile_view_access("registered", pid)
+        if err:
+            return err
+        record = build_profile_record(
+            S._registered_persons_df(),
+            S.store,
+            pid,
+            compare_as_string=False,
+            photo_path_getter=S.get_photo_path,
+            photo_url_template="/api/person/{pid}/photo",
+        )
+        if not record:
             return jsonify({"error": "not found"}), 404
-
-        persons_row = persons[persons["person_id"].astype(str) == pid_text]
-        if not persons_row.empty and "registered" in persons_row.columns:
-            persons_row = persons_row[persons_row["registered"].apply(S._bool_registered)]
-        if persons_row.empty:
-            return jsonify({"error": "not found"}), 404
-
-        person_payload = S.df_to_json(
-            S._project_primary_addresses(persons_row, S.store.get("addresses", pd.DataFrame()))
-        )[0]
-        _, ext = S.get_photo_path(pid)
-        return jsonify({
-            "person": person_payload,
-            "avatar_initial": S.avatar_initial_from_person(person_payload),
-            "photo": f"/api/person/{pid}/photo" if ext else None,
-            "nationality": sub("nationality"),
-            "mobile_numbers": sub("mobile_numbers"),
-            "emails": sub("emails"),
-            "social_media": sub("social_media"),
-            "addresses": sub("addresses"),
-            "schools": sub("schools"),
-            "higher_education": sub("higher_education"),
-            "jobs": sub("jobs"),
-            "timestamps": sub("timestamps"),
-            "responsibilities": sub("responsibilities"),
-            "person_youth_group": sub("person_youth_group"),
-            "hobbies_skills": sub("hobbies_skills"),
-        })
+        return jsonify(record)
 
     @app.post("/api/person/<int:pid>/photo")
     def upload_photo(pid):
+        err = _require_admin()
+        if err:
+            return err
         if "photo" not in request.files:
             return jsonify({"error": "no file"}), 400
         file = request.files["photo"]
@@ -440,6 +512,9 @@ def register_registered_routes(app):
 
     @app.get("/api/person/<int:pid>/photo")
     def serve_photo(pid):
+        err = require_profile_view_access("registered", pid)
+        if err:
+            return err
         path, ext = S.get_photo_path(pid)
         if not path:
             return jsonify({"error": "not found"}), 404
@@ -447,12 +522,18 @@ def register_registered_routes(app):
 
     @app.get("/api/table/<sheet>")
     def get_table(sheet):
+        err = _require_admin()
+        if err:
+            return err
         if sheet not in S.store:
             return jsonify({"error": "not found"}), 404
         return jsonify(S.df_to_json(S.store[sheet]))
 
     @app.put("/api/table/<sheet>")
     def put_table(sheet):
+        err = _require_admin()
+        if err:
+            return err
         if sheet not in S.store:
             return jsonify({"error": "not found"}), 404
         body = request.json
@@ -463,6 +544,9 @@ def register_registered_routes(app):
 
     @app.post("/api/location/resolve-google-maps")
     def resolve_google_maps_location():
+        err = _require_auth()
+        if err:
+            return err
         body = request.json or {}
         raw_url = str(body.get("url") or "").strip()
         if not raw_url:
@@ -477,10 +561,39 @@ def register_registered_routes(app):
 
     @app.put("/api/person/<int:pid>")
     def update_person(pid):
-        body = request.json
+        scope = profile_edit_scope("registered", pid)
+        if not scope:
+            return jsonify({"error": "unauthorized"}), 403
+
+        body = request.json or {}
+        if scope == "location_only":
+            if set(body.keys()) - {"addresses"}:
+                return jsonify({"error": "forbidden"}), 403
+            try:
+                addresses_rows = build_location_only_address_rows(S.store, pid, body.get("addresses"), compare_as_string=False)
+            except ValueError:
+                return jsonify({"error": "invalid google maps location"}), 400
+
+            with S.lock:
+                df = S.store.get("addresses", pd.DataFrame())
+                if not df.empty and "person_id" in df.columns:
+                    df = df[df["person_id"] != pid]
+                if addresses_rows:
+                    new_df = pd.DataFrame(addresses_rows)
+                    if "person_id" not in new_df.columns:
+                        new_df.insert(0, "person_id", pid)
+                    df = pd.concat([df, new_df], ignore_index=True)
+                S.store["addresses"] = df
+                S.save()
+            return jsonify({"ok": True})
+
         with S.lock:
             raw_person = body.get("person", {})
             p = S.normalize_person_birth_fields(raw_person)
+            title_in_payload = "title" in raw_person
+            person_title = p.pop("title", None)
+            school_system_sector_in_payload = "school_system_sector" in raw_person
+            school_system_sector = p.pop("school_system_sector", None)
             addresses_rows = body.get("addresses") if "addresses" in body else None
             if addresses_rows is None:
                 legacy_addresses = S.address_rows_from_legacy_person_payload(raw_person)
@@ -493,78 +606,106 @@ def register_registered_routes(app):
             if not idx.empty:
                 for k, v in p.items():
                     S.store["persons"].at[idx[0], k] = v
+                if title_in_payload:
+                    S.replace_person_title(S.store, pid, person_title)
+                if school_system_sector_in_payload:
+                    S.replace_person_school_system_sector(S.store, pid, school_system_sector)
+
+            job_rows_payload = body.get("jobs", [])
+            prepared_job_rows, job_id_map = S.prepare_job_rows_for_person(S.store, pid, job_rows_payload)
+            mobile_rows_payload = S.remap_job_links_in_mobile_rows(body.get("mobile_numbers", []), job_id_map)
+            email_rows_payload = S.prepare_email_rows_for_person(S.store, pid, S.remap_job_links_in_email_rows(body.get("emails", []), job_id_map))
+            invalid_responsibility_groups = validate_responsibility_membership_groups(
+                S.store,
+                pid,
+                body.get("responsibilities", []),
+                compare_as_string=False,
+                membership_rows=body.get("person_youth_group", []),
+            )
+            if invalid_responsibility_groups:
+                return jsonify({
+                    "error": "responsibility youth_group_id must match one of the person's youth-group memberships",
+                    "invalid_youth_group_ids": invalid_responsibility_groups,
+                }), 400
 
             def replace_sub(sheet, rows):
-                df = S.store[sheet]
-                df = df[df["person_id"] != pid]
-                if rows:
-                    new_df = pd.DataFrame(rows)
-                    if sheet == "person_youth_group":
-                        if "archived" not in new_df.columns:
-                            new_df["archived"] = False
-                        new_df["archived"] = new_df["archived"].fillna(False).astype(bool)
-                    if "person_id" not in new_df.columns:
-                        new_df.insert(0, "person_id", pid)
-                    df = pd.concat([df, new_df], ignore_index=True)
-                S.store[sheet] = df
+                replace_profile_sub_rows(S.store, pid, sheet, rows, compare_as_string=False)
 
             replace_sub("nationality", body.get("nationality", []))
-            replace_sub("mobile_numbers", body.get("mobile_numbers", []))
-            replace_sub("emails", body.get("emails", []))
+            replace_sub("jobs", prepared_job_rows)
+            replace_sub("mobile_numbers", mobile_rows_payload)
+            replace_sub("emails", email_rows_payload)
             replace_sub("social_media", body.get("social_media", []))
             if addresses_rows is not None:
                 replace_sub("addresses", addresses_rows)
             replace_sub("schools", body.get("schools", []))
             replace_sub("higher_education", body.get("higher_education", []))
-            replace_sub("jobs", body.get("jobs", []))
             replace_sub("responsibilities", body.get("responsibilities", []))
             replace_sub("person_youth_group", body.get("person_youth_group", []))
             replace_sub("hobbies_skills", body.get("hobbies_skills", []))
+            replace_sub(S.PERSON_HEALTH_CONDITION_SHEET, body.get(S.PERSON_HEALTH_CONDITION_SHEET, []))
+            replace_sub(S.PERSON_SPECIAL_NOTE_SHEET, body.get(S.PERSON_SPECIAL_NOTE_SHEET, []))
             S.save()
         return jsonify({"ok": True})
 
     @app.post("/api/person")
     def add_person():
-        body = request.json
+        body = request.json or {}
         with S.lock:
             new_id = S._next_person_id()
             raw_person = body.get("person", {})
             p = S.normalize_person_birth_fields(raw_person)
+            person_title = p.pop("title", None)
+            school_system_sector = p.pop("school_system_sector", None)
             addresses_rows = body.get("addresses") if "addresses" in body else S.address_rows_from_legacy_person_payload(raw_person)
             for legacy_col in ("governorate", "city", "country", "address"):
                 p.pop(legacy_col, None)
             p["person_id"] = new_id
             p["registered"] = True
-            if "title" not in p:
-                p["title"] = None
             S.store["persons"] = pd.concat([S.store["persons"], pd.DataFrame([p])], ignore_index=True)
+            S.replace_person_title(S.store, new_id, person_title)
+            S.replace_person_school_system_sector(S.store, new_id, school_system_sector)
+
+            prepared_job_rows, job_id_map = S.prepare_job_rows_for_person(S.store, new_id, body.get("jobs", []))
+            mobile_rows_payload = S.remap_job_links_in_mobile_rows(body.get("mobile_numbers", []), job_id_map)
+            email_rows_payload = S.prepare_email_rows_for_person(S.store, new_id, S.remap_job_links_in_email_rows(body.get("emails", []), job_id_map))
+            invalid_responsibility_groups = validate_responsibility_membership_groups(
+                S.store,
+                new_id,
+                body.get("responsibilities", []),
+                compare_as_string=False,
+                membership_rows=body.get("person_youth_group", []),
+            )
+            if invalid_responsibility_groups:
+                return jsonify({
+                    "error": "responsibility youth_group_id must match one of the person's youth-group memberships",
+                    "invalid_youth_group_ids": invalid_responsibility_groups,
+                }), 400
 
             def add_sub(sheet, rows):
-                if rows:
-                    df = pd.DataFrame(rows)
-                    if sheet == "person_youth_group":
-                        if "archived" not in df.columns:
-                            df["archived"] = False
-                        df["archived"] = df["archived"].fillna(False).astype(bool)
-                    df["person_id"] = new_id
-                    S.store[sheet] = pd.concat([S.store[sheet], df], ignore_index=True)
+                replace_profile_sub_rows(S.store, new_id, sheet, rows, compare_as_string=False)
 
             add_sub("nationality", body.get("nationality", []))
-            add_sub("mobile_numbers", body.get("mobile_numbers", []))
-            add_sub("emails", body.get("emails", []))
+            add_sub("jobs", prepared_job_rows)
+            add_sub("mobile_numbers", mobile_rows_payload)
+            add_sub("emails", email_rows_payload)
             add_sub("social_media", body.get("social_media", []))
             add_sub("addresses", addresses_rows)
             add_sub("schools", body.get("schools", []))
             add_sub("higher_education", body.get("higher_education", []))
-            add_sub("jobs", body.get("jobs", []))
             add_sub("responsibilities", body.get("responsibilities", []))
             add_sub("person_youth_group", body.get("person_youth_group", []))
             add_sub("hobbies_skills", body.get("hobbies_skills", []))
+            add_sub(S.PERSON_HEALTH_CONDITION_SHEET, body.get(S.PERSON_HEALTH_CONDITION_SHEET, []))
+            add_sub(S.PERSON_SPECIAL_NOTE_SHEET, body.get(S.PERSON_SPECIAL_NOTE_SHEET, []))
             S.save()
         return jsonify({"ok": True, "person_id": new_id})
 
     @app.delete("/api/person/<int:pid>")
     def delete_person(pid):
+        err = _require_admin()
+        if err:
+            return err
         with S.lock:
             persons = S.store["persons"]
             reg_mask = (persons["person_id"] == pid) & (persons["registered"].apply(S._bool_registered))
@@ -584,6 +725,9 @@ def register_registered_routes(app):
 
     @app.patch("/api/person/<int:pid>/archive")
     def archive_person(pid):
+        err = _require_admin()
+        if err:
+            return err
         body = request.json or {}
         youth_group_id = str(body.get("youth_group_id") or "").strip()
         if not youth_group_id:
@@ -613,6 +757,9 @@ def register_registered_routes(app):
 
     @app.patch("/api/person/<int:pid>/unarchive")
     def unarchive_person(pid):
+        err = _require_admin()
+        if err:
+            return err
         body = request.json or {}
         youth_group_id = str(body.get("youth_group_id") or "").strip()
         if not youth_group_id:

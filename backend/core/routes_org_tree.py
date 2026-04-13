@@ -172,7 +172,7 @@ TREE_SNAPSHOT_KEYS = {
 def _compose_base_name(row: dict) -> str:
     return " ".join(
         str(row.get(k)).strip()
-        for k in ("first_name", "second_name", "third_name", "last_name")
+        for k in ("ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name")
         if row.get(k) is not None and str(row.get(k)).strip() not in ("", "nan", "None")
     ).strip()
 
@@ -198,7 +198,7 @@ def _ensure_person_lookup_cache():
 
     unreg_rows = {}
     unreg_ids = set()
-    unreg_df = S.unreg_store.get("persons", pd.DataFrame()).replace({np.nan: None})
+    unreg_df = S.unregistered_persons_view_df().replace({np.nan: None})
     if not unreg_df.empty and "person_id" in unreg_df.columns:
         for row in unreg_df.to_dict(orient="records"):
             pid = S._normalize_person_id(row.get("person_id"))

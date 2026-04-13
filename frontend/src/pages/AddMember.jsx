@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, UserPlus, ChevronRight, ChevronLeft, Check, AlertCircle, MapPin, Pencil } from 'lucide-react'
-import { api } from '../api.js'
+import { api, getApiErrorMessage } from '../api.js'
 import { buildGoogleMapsOpenUrl, parseGoogleMapsUrl, sanitizeStoredCoordinate } from '../location.js'
 
 // Strip non-Arabic characters — allows Arabic letters, diacritics, tatweel, spaces, and common Arabic punctuation
@@ -137,13 +137,6 @@ function isChildrenOfJordanianMothersNationality(value) {
   return normalizeNationalityLookupKey(value) === normalizeNationalityLookupKey(NATIONALITY_CHILDREN_OF_JORDANIAN_MOTHERS)
 }
 
-function sanitizeNationalityIdentifierValue(field, value) {
-  const text = String(value ?? '').trim()
-  if (!text) return ''
-  if (field === 'passport_number') return text.replace(/[^A-Za-z0-9]/g, '').toUpperCase()
-  return text.replace(/\D/g, '')
-}
-
 function normalizeNationalityRows(rows, { dropEmpty = false } = {}) {
   const source = Array.isArray(rows) ? rows : []
   const seen = new Set()
@@ -157,18 +150,7 @@ function normalizeNationalityRows(rows, { dropEmpty = false } = {}) {
     if (seen.has(lookupKey)) continue
     seen.add(lookupKey)
 
-    normalized.push({
-      nationality,
-      national_id: isJordanianNationality(nationality)
-        ? sanitizeNationalityIdentifierValue('national_id', row?.national_id)
-        : '',
-      passport_number: isChildrenOfJordanianMothersNationality(nationality)
-        ? ''
-        : sanitizeNationalityIdentifierValue('passport_number', row?.passport_number),
-      jordanian_mothers_children_serial: isChildrenOfJordanianMothersNationality(nationality)
-        ? sanitizeNationalityIdentifierValue('jordanian_mothers_children_serial', row?.jordanian_mothers_children_serial)
-        : '',
-    })
+    normalized.push({ nationality })
   }
 
   return dropEmpty ? normalized.filter((row) => row.nationality) : normalized
@@ -198,26 +180,7 @@ function getNationalitySelectionError(rows, candidate) {
 }
 
 function nationalityIdentifierFields(row) {
-  const fields = []
-
-  if (isJordanianNationality(row?.nationality)) {
-    fields.unshift({ key: 'national_id', label: 'الرقم الوطني', hint: 'أرقام فقط', dir: 'ltr', inputMode: 'numeric' })
-  }
-
-  if (isChildrenOfJordanianMothersNationality(row?.nationality)) {
-    fields.unshift({
-      key: 'jordanian_mothers_children_serial',
-      label: 'الرقم المتسلسل لهويّة أبناء الأردنيّات',
-      hint: 'أرقام فقط',
-      dir: 'ltr',
-      inputMode: 'numeric',
-    })
-    return fields
-  }
-
-  fields.unshift({ key: 'passport_number', label: 'رقم جواز السفر', hint: 'أحرف وأرقام فقط', dir: 'ltr', inputMode: 'text' })
-
-  return fields
+  return []
 }
 
 
@@ -228,7 +191,7 @@ const GENDER_OPTIONS = ['ذكر', 'أنثى']
 
 const NATIONALITIES = ['أردنيّة', 'أبناء الأردنيّات', 'عراقيّة', 'سوريّة', 'مصريّة']
 
-const AGE_GROUPS = ['البراعم', 'الإعدادي', 'الثانوي', 'الجامعيّة', 'العاملة']
+const AGE_GROUPS = ['العاملة', 'الجامعيّة', 'الثانوي', 'الإعدادي', 'البراعم']
 
 const SCHOOL_OPTIONS = [
   'مدرسة حكوميّة','البطريركيّة اللاتينيّة','راهبات الورديّة',
@@ -315,7 +278,8 @@ const HOBBIES_ADULT = [
   'الدبكة والرقصات الفولكلوريّة','تأدية حركات التراتيل',
 ]
 
-const RESP_OPTIONS = ['لا','حاليًّا','سابقًا']
+const RESP_OPTIONS = ['لا','نعم']
+const RESP_CURRENT_OPTIONS = ['حاليًّا', 'سابقًا']
 
 const YOUTH_SCHOOL_GROUPS = ['البراعم','الإعدادي','الثانوي']
 const ADULT_GROUPS        = ['الجامعيّة','العاملة']
@@ -617,13 +581,13 @@ function NationalitiesPicker({ values, onChange, knownOptions }) {
       return
     }
 
-    commit([...rows, { nationality, national_id: '', passport_number: '', jordanian_mothers_children_serial: '' }])
+    commit([...rows, { nationality }])
     setMessage('')
     setOpen(false); setQuery(''); setFreeVal(''); setCustom(false)
   }
   const remove = (idx) => { setMessage(''); commit(rows.filter((_, i) => i !== idx)) }
   const updateRow = (idx, key, value) => commit(rows.map((row, i) => (
-    i === idx ? { ...row, [key]: sanitizeNationalityIdentifierValue(key, value) } : row
+    i === idx ? { ...row, [key]: value } : row
   )))
 
   const available = Array.from(new Map(
@@ -834,7 +798,7 @@ function AddressEntriesField({ entries, onChange, governorateOptions = [], error
           <div className="am-address-card-header">
             <div>
               <div className="am-address-card-title">عنوان {index + 1}</div>
-              <div className="am-address-card-subtitle">أدخل المحافظة ثم المدينة ثم العنوان التفصيلي، ثم أضف موقع المنزل عند الحاجة</div>
+              <div className="am-address-card-subtitle">أدخل المحافظة ثم المدينة، ويمكنك إضافة العنوان التفصيلي وموقع المنزل عند الحاجة</div>
             </div>
             <div className="am-address-card-actions">
               {!row.is_primary && (
@@ -989,10 +953,10 @@ function StepBar({ steps, current }) {
 // ─────────────────────────────────────────────────────────────────
 const BLANK = {
   // step 0
-  first_name: '', second_name: '', third_name: '', last_name: '',
-  english_first_name: '', english_second_name: '', english_third_name: '', english_last_name: '',
-  mother_first_name: '', mother_second_name: '', mother_third_name: '',
-  mother_english_first_name: '', mother_english_second_name: '', mother_english_third_name: '',
+  ar_first_name: '', ar_second_name: '', ar_third_name: '', ar_last_name: '',
+  en_first_name: '', en_second_name: '', en_third_name: '', en_last_name: '',
+  mother_ar_first_name: '', mother_ar_second_name: '', mother_ar_last_name: '',
+  mother_en_first_name: '', mother_en_second_name: '', mother_en_last_name: '',
   gender: '', birth_year: '', birth_day: '', birth_month: '',
   nationalities: [], mobile: '', addresses: [{ ...DEFAULT_ADDRESS }],
   // step 1
@@ -1002,7 +966,7 @@ const BLANK = {
   // step 2 – adult
   university: '', university_other: '', major: '',
   job_title: '', company: '',
-  has_resp: '', resp_text: '',
+  has_resp: '', resp_text: '', resp_jec_year: '', resp_is_current: 'حاليًّا', resp_start_date: '', resp_end_date: '',
   hobbies_adult: [], hobbies_adult_other: '',
 }
 
@@ -1032,10 +996,10 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
     const pts = prefillName.trim().split(/\s+/)
     setForm(f => ({
       ...f,
-      first_name:  pts[0] || '',
-      second_name: pts[1] || '',
-      third_name:  pts.length >= 4 ? pts[2] : '',
-      last_name:   pts.length >= 4 ? pts.slice(3).join(' ')
+      ar_first_name:  pts[0] || '',
+      ar_second_name: pts[1] || '',
+      ar_third_name:  pts.length >= 4 ? pts[2] : '',
+      ar_last_name:   pts.length >= 4 ? pts.slice(3).join(' ')
                  : pts.length === 3 ? pts[2]
                  : pts.length === 2 ? pts[1] : '',
     }))
@@ -1082,14 +1046,14 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
     const e = {}
     if (s === 0) {
       const arabicOnly = /^[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF\s\-']+$/
-      if (!form.first_name.trim())                              e.first_name  = 'هذا الحقل مطلوب'
-      else if (!arabicOnly.test(form.first_name.trim()))        e.first_name  = 'يُسمح بالأحرف العربيّة فقط'
-      if (!form.second_name.trim())                             e.second_name = 'هذا الحقل مطلوب'
-      else if (!arabicOnly.test(form.second_name.trim()))       e.second_name = 'يُسمح بالأحرف العربيّة فقط'
-      if (!form.third_name.trim())                              e.third_name  = 'هذا الحقل مطلوب'
-      else if (!arabicOnly.test(form.third_name.trim()))        e.third_name  = 'يُسمح بالأحرف العربيّة فقط'
-      if (!form.last_name.trim())                               e.last_name   = 'هذا الحقل مطلوب'
-      else if (!arabicOnly.test(form.last_name.trim()))         e.last_name   = 'يُسمح بالأحرف العربيّة فقط'
+      if (!form.ar_first_name.trim())                              e.ar_first_name  = 'هذا الحقل مطلوب'
+      else if (!arabicOnly.test(form.ar_first_name.trim()))        e.ar_first_name  = 'يُسمح بالأحرف العربيّة فقط'
+      if (!form.ar_second_name.trim())                             e.ar_second_name = 'هذا الحقل مطلوب'
+      else if (!arabicOnly.test(form.ar_second_name.trim()))       e.ar_second_name = 'يُسمح بالأحرف العربيّة فقط'
+      if (!form.ar_third_name.trim())                              e.ar_third_name  = 'هذا الحقل مطلوب'
+      else if (!arabicOnly.test(form.ar_third_name.trim()))        e.ar_third_name  = 'يُسمح بالأحرف العربيّة فقط'
+      if (!form.ar_last_name.trim())                               e.ar_last_name   = 'هذا الحقل مطلوب'
+      else if (!arabicOnly.test(form.ar_last_name.trim()))         e.ar_last_name   = 'يُسمح بالأحرف العربيّة فقط'
       if (!form.gender)                                      e.gender      = 'هذا الحقل مطلوب'
       if (!form.birth_year)                                  e.birth_year  = 'هذا الحقل مطلوب'
       if (!form.birth_day || !form.birth_month)              e.birth_day   = 'هذا الحقل مطلوب'
@@ -1109,7 +1073,6 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
       } else {
         form.addresses.forEach((entry, index) => {
           if (!normalizeLoose(entry?.governorate)) e[`address_governorate_${index}`] = 'هذا الحقل مطلوب'
-          if (!normalizeLoose(entry?.address)) e[`address_text_${index}`] = 'هذا الحقل مطلوب'
         })
         const primaryCount = form.addresses.filter(entry => entry?.is_primary).length
         if (primaryCount !== 1) e.addresses = 'يجب تحديد عنوان رئيسي واحد فقط'
@@ -1141,6 +1104,11 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
       if (!form.job_title.trim())     e.job_title   = 'هذا الحقل مطلوب'
       if (!form.company.trim())       e.company     = 'هذا الحقل مطلوب'
       if (!form.has_resp)             e.has_resp    = 'هذا الحقل مطلوب'
+      if (form.has_resp === 'نعم' && !form.resp_text.trim()) e.resp_text = 'هذا الحقل مطلوب'
+      if (form.has_resp === 'نعم' && !/^\d{4}$/.test(String(form.resp_jec_year || '').trim())) e.resp_jec_year = 'أدخل سنة JEC صحيحة'
+      const respStartDate = sanitizeDateInput(form.resp_start_date)
+      const respEndDate = sanitizeDateInput(form.resp_end_date)
+      if (respStartDate && respEndDate && respEndDate < respStartDate) e.resp_end_date = 'تاريخ النهاية يجب أن يكون بعد تاريخ البداية'
       const h = [...form.hobbies_adult, ...(form.hobbies_adult_other.trim() ? [form.hobbies_adult_other] : [])]
       if (!h.length)                  e.hobbies     = 'يرجى اختيار هواية واحدة على الأقل'
     }
@@ -1154,6 +1122,18 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
     setStep(s => s + 1)
   }
   const goBack = () => { setErrors({}); setStep(s => s - 1) }
+
+  const handleCreateBlankProfile = async () => {
+    setSaving(true)
+    try {
+      const res = await api.addPerson({ person: {} })
+      toast('تم إنشاء ملف فارغ بنجاح ✓', 'success')
+      onAdded(res.person_id)
+    } catch (error) {
+      toast(getApiErrorMessage(error, 'حدث خطأ أثناء إنشاء الملف الفارغ'), 'error')
+    }
+    setSaving(false)
+  }
 
   // ── submit ──────────────────────────────────────────────────────
   const handleSubmit = async () => {
@@ -1172,8 +1152,15 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
         ? [...form.hobbies_school, ...(form.hobbies_school_other.trim() ? [form.hobbies_school_other.trim()] : [])]
         : [...form.hobbies_adult,  ...(form.hobbies_adult_other.trim()  ? [form.hobbies_adult_other.trim()]  : [])]
 
-      const responsibilities = (form.has_resp === 'حاليًّا' || form.has_resp === 'سابقًا')
-        ? form.youth_groups.map(g => ({ youth_group_id: g.youth_group, responsibility: form.resp_text, time: form.has_resp })).filter(r => r.youth_group_id)
+      const responsibilities = form.has_resp === 'نعم'
+        ? form.youth_groups.map(g => ({
+            youth_group_id: g.youth_group,
+            responsibility: form.resp_text,
+            jec_year: /^\d{4}$/.test(String(form.resp_jec_year || '').trim()) ? parseInt(form.resp_jec_year, 10) : null,
+            is_current: form.resp_is_current === 'حاليًّا',
+            start_date: sanitizeDateInput(form.resp_start_date) || null,
+            end_date: sanitizeDateInput(form.resp_end_date) || null,
+          })).filter(r => r.youth_group_id)
         : []
 
       const addresses = (Array.isArray(form.addresses) ? form.addresses : [])
@@ -1191,18 +1178,18 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
 
       const body = {
         person: {
-          first_name:  normalizeAr(form.first_name), second_name: normalizeAr(form.second_name) || null,
-          third_name:  normalizeAr(form.third_name) || null, last_name: normalizeAr(form.last_name) || null,
-          english_first_name: normalizeEn(form.english_first_name) || null,
-          english_second_name: normalizeEn(form.english_second_name) || null,
-          english_third_name: normalizeEn(form.english_third_name) || null,
-          english_last_name: normalizeEn(form.english_last_name) || null,
-          mother_first_name: normalizeAr(form.mother_first_name) || null,
-          mother_second_name: normalizeAr(form.mother_second_name) || null,
-          mother_third_name: normalizeAr(form.mother_third_name) || null,
-          mother_english_first_name: normalizeEn(form.mother_english_first_name) || null,
-          mother_english_second_name: normalizeEn(form.mother_english_second_name) || null,
-          mother_english_third_name: normalizeEn(form.mother_english_third_name) || null,
+          ar_first_name:  normalizeAr(form.ar_first_name), ar_second_name: normalizeAr(form.ar_second_name) || null,
+          ar_third_name:  normalizeAr(form.ar_third_name) || null, ar_last_name: normalizeAr(form.ar_last_name) || null,
+          en_first_name: normalizeEn(form.en_first_name) || null,
+          en_second_name: normalizeEn(form.en_second_name) || null,
+          en_third_name: normalizeEn(form.en_third_name) || null,
+          en_last_name: normalizeEn(form.en_last_name) || null,
+          mother_ar_first_name: normalizeAr(form.mother_ar_first_name) || null,
+          mother_ar_second_name: normalizeAr(form.mother_ar_second_name) || null,
+          mother_ar_last_name: normalizeAr(form.mother_ar_last_name) || null,
+          mother_en_first_name: normalizeEn(form.mother_en_first_name) || null,
+          mother_en_second_name: normalizeEn(form.mother_en_second_name) || null,
+          mother_en_last_name: normalizeEn(form.mother_en_last_name) || null,
           gender:      form.gender || null,
           birth_year:  form.birth_year ? parseInt(form.birth_year, 10) : null,
           birth_day:   form.birth_day ? parseInt(form.birth_day, 10) : null,
@@ -1212,9 +1199,6 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
         },
         nationality:        normalizeNationalityRows(form.nationalities, { dropEmpty: true }).map(row => ({
           nationality: row.nationality,
-          national_id: row.national_id || null,
-          passport_number: row.passport_number || null,
-          jordanian_mothers_children_serial: row.jordanian_mothers_children_serial || null,
         })),
         mobile_numbers:     form.mobile.trim() ? [{ mobile_number: form.mobile.trim(), type: 'personal', phone_calls_flag: true, whatsapp_flag: true }] : [],
         addresses,
@@ -1230,6 +1214,7 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
           youth_group_id:   g.youth_group,
           youth_join_year:  g.join_year || null,
           age_group:        g.age_group || null,
+          age_group_history: g.age_group ? [{ age_group: g.age_group, start_date: null, end_date: null }] : [],
         })),
         higher_education: (university && university !== 'لم أدرس في الجامعة أو الكليّة')
           ? [{ university_college: university, major: form.major.trim() || null, degree: null }]
@@ -1244,8 +1229,8 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
       const res = await api.addPerson(body)
       toast('تمت إضافة العضو بنجاح ✓', 'success')
       onAdded(res.person_id)
-    } catch {
-      toast('حدث خطأ أثناء الإضافة', 'error')
+    } catch (error) {
+      toast(getApiErrorMessage(error, 'حدث خطأ أثناء الإضافة'), 'error')
     }
     setSaving(false)
   }
@@ -1284,6 +1269,31 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
             </div>
           )}
 
+          {step === 0 && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                padding: '12px 14px',
+                marginBottom: 14,
+                borderRadius: 12,
+                border: '1px solid rgba(15,39,68,0.1)',
+                background: 'rgba(15,39,68,0.04)',
+              }}
+            >
+              <div style={{ display: 'grid', gap: 3 }}>
+                <div style={{ fontWeight: 700, color: 'var(--navy)', fontSize: '0.88rem' }}>بدء ملف فارغ</div>
+                <div style={{ color: 'var(--gray-500)', fontSize: '0.78rem' }}>أنشئ الملف الآن وابدأ تعبئة البيانات مباشرة من صفحة الملف الشخصي.</div>
+              </div>
+              <button type="button" className="btn btn-ghost" onClick={handleCreateBlankProfile} disabled={saving}>
+                <Pencil size={14} />
+                {saving ? 'جارٍ الإنشاء…' : 'إنشاء ملف فارغ'}
+              </button>
+            </div>
+          )}
+
           {/* ════════════ STEP 0: Personal info ════════════ */}
           {step === 0 && <>
             <div className="am-form-intro">
@@ -1293,24 +1303,24 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
             <div className="am-field-hint" style={{ marginBottom: 8, fontStyle: 'italic', color: 'var(--gray-500)', fontSize: '0.82rem' }}>
               مثال: جورج ميشيل نجيب حنّا
             </div>
-            <Field label="الاسم الأول" required error={errors.first_name}>
-              <input className="form-control" value={form.first_name} lang="ar"
-                onChange={e => set('first_name', stripToArabic(e.target.value))}
+            <Field label="الاسم الأول" required error={errors.ar_first_name}>
+              <input className="form-control" value={form.ar_first_name} lang="ar"
+                onChange={e => set('ar_first_name', stripToArabic(e.target.value))}
                 placeholder="مثال: جورج" />
             </Field>
-            <Field label="الاسم الثاني" required error={errors.second_name}>
-              <input className="form-control" value={form.second_name} lang="ar"
-                onChange={e => set('second_name', stripToArabic(e.target.value))}
+            <Field label="الاسم الثاني" required error={errors.ar_second_name}>
+              <input className="form-control" value={form.ar_second_name} lang="ar"
+                onChange={e => set('ar_second_name', stripToArabic(e.target.value))}
                 placeholder="مثال: ميشيل" />
             </Field>
-            <Field label="الاسم الثالث" required error={errors.third_name}>
-              <input className="form-control" value={form.third_name} lang="ar"
-                onChange={e => set('third_name', stripToArabic(e.target.value))}
+            <Field label="الاسم الثالث" required error={errors.ar_third_name}>
+              <input className="form-control" value={form.ar_third_name} lang="ar"
+                onChange={e => set('ar_third_name', stripToArabic(e.target.value))}
                 placeholder="مثال: نجيب" />
             </Field>
-            <Field label="اسم العائلة" required error={errors.last_name}>
-              <input className="form-control" value={form.last_name} lang="ar"
-                onChange={e => set('last_name', stripToArabic(e.target.value))}
+            <Field label="اسم العائلة" required error={errors.ar_last_name}>
+              <input className="form-control" value={form.ar_last_name} lang="ar"
+                onChange={e => set('ar_last_name', stripToArabic(e.target.value))}
                 placeholder="مثال: حنّا" />
             </Field>
 
@@ -1318,61 +1328,61 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
               English name is optional
             </div>
             <Field label="English First Name">
-              <input className="form-control" value={form.english_first_name} dir="ltr"
-                onChange={e => set('english_first_name', e.target.value)}
+              <input className="form-control" value={form.en_first_name} dir="ltr"
+                onChange={e => set('en_first_name', e.target.value)}
                 placeholder="Example: George" />
             </Field>
             <Field label="English Second Name">
-              <input className="form-control" value={form.english_second_name} dir="ltr"
-                onChange={e => set('english_second_name', e.target.value)}
+              <input className="form-control" value={form.en_second_name} dir="ltr"
+                onChange={e => set('en_second_name', e.target.value)}
                 placeholder="Example: Michel" />
             </Field>
             <Field label="English Third Name">
-              <input className="form-control" value={form.english_third_name} dir="ltr"
-                onChange={e => set('english_third_name', e.target.value)}
+              <input className="form-control" value={form.en_third_name} dir="ltr"
+                onChange={e => set('en_third_name', e.target.value)}
                 placeholder="Example: Najib" />
             </Field>
             <Field label="English Last Name">
-              <input className="form-control" value={form.english_last_name} dir="ltr"
-                onChange={e => set('english_last_name', e.target.value)}
+              <input className="form-control" value={form.en_last_name} dir="ltr"
+                onChange={e => set('en_last_name', e.target.value)}
                 placeholder="Example: Hanna" />
             </Field>
 
             <div className="am-field-hint" style={{ marginTop: 14, marginBottom: 8, fontStyle: 'italic', color: 'var(--gray-500)', fontSize: '0.82rem' }}>
-              اسم الأم الثلاثي اختياري
+              اسم الأم الأخير اختياري
             </div>
             <Field label="اسم الأم الأول">
-              <input className="form-control" value={form.mother_first_name} lang="ar"
-                onChange={e => set('mother_first_name', stripToArabic(e.target.value))}
+              <input className="form-control" value={form.mother_ar_first_name} lang="ar"
+                onChange={e => set('mother_ar_first_name', stripToArabic(e.target.value))}
                 placeholder="مثال: ماري" />
             </Field>
             <Field label="اسم الأم الثاني">
-              <input className="form-control" value={form.mother_second_name} lang="ar"
-                onChange={e => set('mother_second_name', stripToArabic(e.target.value))}
+              <input className="form-control" value={form.mother_ar_second_name} lang="ar"
+                onChange={e => set('mother_ar_second_name', stripToArabic(e.target.value))}
                 placeholder="مثال: مي" />
             </Field>
-            <Field label="اسم الأم الثالث">
-              <input className="form-control" value={form.mother_third_name} lang="ar"
-                onChange={e => set('mother_third_name', stripToArabic(e.target.value))}
+            <Field label="اسم عائلة الأم">
+              <input className="form-control" value={form.mother_ar_last_name} lang="ar"
+                onChange={e => set('mother_ar_last_name', stripToArabic(e.target.value))}
                 placeholder="مثال: سليم" />
             </Field>
 
             <div className="am-field-hint" style={{ marginBottom: 8, fontStyle: 'italic', color: 'var(--gray-500)', fontSize: '0.82rem', direction: 'ltr', textAlign: 'left' }}>
-              Mother's English three-part name is optional
+              Mother's English last name is optional
             </div>
             <Field label="Mother's English First Name">
-              <input className="form-control" value={form.mother_english_first_name} dir="ltr"
-                onChange={e => set('mother_english_first_name', e.target.value)}
+              <input className="form-control" value={form.mother_en_first_name} dir="ltr"
+                onChange={e => set('mother_en_first_name', e.target.value)}
                 placeholder="Example: Mary" />
             </Field>
             <Field label="Mother's English Second Name">
-              <input className="form-control" value={form.mother_english_second_name} dir="ltr"
-                onChange={e => set('mother_english_second_name', e.target.value)}
+              <input className="form-control" value={form.mother_en_second_name} dir="ltr"
+                onChange={e => set('mother_en_second_name', e.target.value)}
                 placeholder="Example: May" />
             </Field>
-            <Field label="Mother's English Third Name">
-              <input className="form-control" value={form.mother_english_third_name} dir="ltr"
-                onChange={e => set('mother_english_third_name', e.target.value)}
+            <Field label="Mother's English Last Name">
+              <input className="form-control" value={form.mother_en_last_name} dir="ltr"
+                onChange={e => set('mother_en_last_name', e.target.value)}
                 placeholder="Example: Salim" />
             </Field>
 
@@ -1609,16 +1619,49 @@ export default function AddMemberModal({ onClose, onAdded, toast, prefillName = 
                 placeholder="مثال: شركة X، جامعة Y، لا يوجد…" />
             </Field>
 
-            <Field label="هل لديك أي مسؤوليات في الشبيبة؟ حاليًّا أو سابقًا"
+            <Field label="هل لديك أي مسؤوليات في الشبيبة؟"
               required error={errors.has_resp}
-              hint="في حال كان الجواب حاليًّا أو سابقًا، الرجاء كتابة مسؤولياتك في المكان الفارغ">
+              hint="في حال كان الجواب نعم، يرجى تعبئة بيانات المسؤولية">
               <RadioList options={RESP_OPTIONS} value={form.has_resp}
                 onChange={v => set('has_resp', v)} />
-              {(form.has_resp === 'حاليًّا' || form.has_resp === 'سابقًا') && (
-                <input className="form-control am-other-free" autoFocus
-                  placeholder="اكتب مسؤولياتك…"
-                  value={form.resp_text}
-                  onChange={e => set('resp_text', e.target.value)} />
+              {form.has_resp === 'نعم' && (
+                <>
+                  <input className="form-control am-other-free" autoFocus
+                    placeholder="اكتب مسؤولياتك…"
+                    value={form.resp_text}
+                    onChange={e => set('resp_text', e.target.value)} />
+                  {errors.resp_text ? <div className="am-field-error">{errors.resp_text}</div> : null}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginTop: 10 }}>
+                    <label style={{ display: 'grid', gap: 6 }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--gray-500)', fontWeight: 700 }}>سنة JEC</span>
+                      <input className="form-control" inputMode="numeric" placeholder="2026"
+                        value={form.resp_jec_year}
+                        onChange={e => set('resp_jec_year', String(e.target.value || '').replace(/[^\d]/g, '').slice(0, 4))} />
+                    </label>
+                    <label style={{ display: 'grid', gap: 6 }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--gray-500)', fontWeight: 700 }}>الحالة</span>
+                      <select className="form-control" value={form.resp_is_current} onChange={e => set('resp_is_current', e.target.value)}>
+                        {RESP_CURRENT_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                  {errors.resp_jec_year ? <div className="am-field-error">{errors.resp_jec_year}</div> : null}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginTop: 10 }}>
+                    <label style={{ display: 'grid', gap: 6 }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--gray-500)', fontWeight: 700 }}>تاريخ البداية</span>
+                      <input className="form-control" type="date"
+                        value={form.resp_start_date}
+                        onChange={e => set('resp_start_date', sanitizeDateInput(e.target.value))} />
+                    </label>
+                    <label style={{ display: 'grid', gap: 6 }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--gray-500)', fontWeight: 700 }}>تاريخ النهاية</span>
+                      <input className="form-control" type="date"
+                        value={form.resp_end_date}
+                        onChange={e => set('resp_end_date', sanitizeDateInput(e.target.value))} />
+                    </label>
+                  </div>
+                  {errors.resp_end_date ? <div className="am-field-error">{errors.resp_end_date}</div> : null}
+                </>
               )}
             </Field>
 

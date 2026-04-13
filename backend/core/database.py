@@ -2,14 +2,81 @@ import json
 import os
 import re
 import secrets
+import shutil
+import tempfile
+import zipfile
 from typing import Any
 
 import pandas as pd
 
 
+WORKBOOK_COLUMN_RENAMES: dict[str, dict[str, str]] = {
+    "persons": {
+        "first_name": "ar_first_name",
+        "second_name": "ar_second_name",
+        "third_name": "ar_third_name",
+        "last_name": "ar_last_name",
+        "english_first_name": "en_first_name",
+        "english_second_name": "en_second_name",
+        "english_third_name": "en_third_name",
+        "english_last_name": "en_last_name",
+        "mother_first_name": "mother_ar_first_name",
+        "mother_second_name": "mother_ar_second_name",
+        "mother_third_name": "mother_ar_last_name",
+        "mother_english_first_name": "mother_en_first_name",
+        "mother_english_second_name": "mother_en_second_name",
+        "mother_english_third_name": "mother_en_last_name",
+        "mother_ar_third_name": "mother_ar_last_name",
+        "mother_en_third_name": "mother_en_last_name",
+    },
+    "mobile_numbers": {
+        "type": "mobile_number_type",
+    },
+    "schools": {
+        "school": "school_name",
+    },
+    "higher_education": {
+        "university_college": "institution_name",
+        "state": "education_state",
+    },
+    "jobs": {
+        "company": "employer_name",
+        "state": "employment_state",
+    },
+    "responsibilities": {
+        "responsibility": "responsibility_name",
+    },
+    "person_health_conditions": {
+        "type": "condition_type",
+    },
+    "addresses": {
+        "address": "street_address",
+    },
+    "emails": {
+        "type": "email_type",
+    },
+    "school_logos": {
+        "id": "school_logo_id",
+        "type": "institution_type",
+        "name": "institution_name",
+        "section": "institution_section",
+    },
+    "parishes": {
+        "id": "parish_id",
+    },
+    "churches": {
+        "id": "church_id",
+    },
+    "youth_group_special_logos": {
+        "id": "special_logo_id",
+        "file_name": "logo_file_name",
+    },
+}
+
+
 class Database:
     person_sheet_address_projection_columns = (
-        "country", "governorate", "city", "address", "location_url", "lat", "lng",
+        "country", "governorate", "city", "address", "street_address", "lat", "lng",
     )
 
     def __init__(self, backend_file: str):
@@ -28,6 +95,7 @@ class Database:
         self.auth_sheet = "auth_users"
         self.auth_columns = ["person_id", "username", "password_hash", "role"]
         self.legacy_auth_path = os.path.join(self.data_dir, "auth_users.json")
+        self.auth_backup_path = os.path.join(self.data_dir, "auth_users_backup.json")
         self.promotions_path = os.path.join(self.data_dir, "promotions.json")
         self.questionnaires_path = os.path.join(self.data_dir, "questionnaires.json")
         self.notifications_path = os.path.join(self.data_dir, "notifications.json")
@@ -39,6 +107,46 @@ class Database:
         os.makedirs(self.photos_root_dir, exist_ok=True)
         os.makedirs(self.profile_pictures_dir, exist_ok=True)
         os.makedirs(self.org_trees_dir, exist_ok=True)
+
+    def _open_excel_file(self) -> tuple[pd.ExcelFile, str]:
+        if not os.path.exists(self.excel_path):
+            raise zipfile.BadZipFile("Unable to open Excel workbook.")
+        try:
+            return pd.ExcelFile(self.excel_path), self.excel_path
+        except Exception as exc:
+            raise zipfile.BadZipFile(
+                f"Unable to open Excel workbook. {os.path.basename(self.excel_path)} -> {type(exc).__name__}: {exc}"
+            ) from exc
+
+    def _write_sheets_atomically(self, sheets: dict[str, pd.DataFrame]):
+        temp_handle = tempfile.NamedTemporaryFile(
+            suffix=".xlsx",
+            dir=self.data_dir,
+            delete=False,
+        )
+        temp_path = temp_handle.name
+        temp_handle.close()
+
+        try:
+            if os.path.exists(self.excel_path):
+                workbook, _ = self._open_excel_file()
+                workbook.close()
+                shutil.copy2(self.excel_path, temp_path)
+                with pd.ExcelWriter(temp_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
+                    for sheet_name, df in sheets.items():
+                        df.to_excel(writer, sheet_name=sheet_name, index=False)
+            else:
+                with pd.ExcelWriter(temp_path, engine="openpyxl") as writer:
+                    for sheet_name, df in sheets.items():
+                        df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+            os.replace(temp_path, self.excel_path)
+        finally:
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    pass
 
     def get_or_create_secret_key(self) -> str:
         if "JEC_SECRET_KEY" in os.environ:
@@ -104,51 +212,127 @@ class Database:
             normalized[column] = normalized[column].apply(self._normalize_boolean_value)
         return normalized
 
+    def _canonicalize_sheet_columns(self, sheet: str, df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty:
+            return df
+        mapping = WORKBOOK_COLUMN_RENAMES.get(sheet, {})
+        if not mapping:
+            return df
+
+        normalized = df.copy()
+        for legacy_name, canonical_name in mapping.items():
+            if legacy_name not in normalized.columns:
+                continue
+            if canonical_name in normalized.columns:
+                normalized[canonical_name] = normalized[canonical_name].where(
+                    normalized[canonical_name].notna(),
+                    normalized[legacy_name],
+                )
+                normalized = normalized.drop(columns=[legacy_name])
+                continue
+            normalized = normalized.rename(columns={legacy_name: canonical_name})
+        return normalized
+
+    def _add_runtime_alias_columns(self, sheet: str, df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty:
+            return df
+        mapping = WORKBOOK_COLUMN_RENAMES.get(sheet, {})
+        if not mapping:
+            return df
+
+        normalized = df.copy()
+        for legacy_name, canonical_name in mapping.items():
+            if canonical_name in normalized.columns and legacy_name not in normalized.columns:
+                normalized[legacy_name] = normalized[canonical_name]
+        return normalized
+
+    def _strip_legacy_sheet_columns(self, sheet: str, df: pd.DataFrame) -> pd.DataFrame:
+        if df is None or df.empty:
+            return df
+        legacy_columns = [column for column in WORKBOOK_COLUMN_RENAMES.get(sheet, {}) if column in df.columns]
+        runtime_only_columns: list[str] = []
+        if sheet == "person_youth_group":
+            runtime_only_columns = [column for column in ("age_group", "current_age_group", "age_group_history") if column in df.columns]
+        columns_to_drop = legacy_columns + runtime_only_columns
+        if not columns_to_drop:
+            return df
+        return df.drop(columns=columns_to_drop)
+
     def load_excel_sheets(self, sheets: list[str]) -> dict[str, pd.DataFrame]:
         store: dict[str, pd.DataFrame] = {}
-        xf = pd.ExcelFile(self.excel_path)
-        for sheet in sheets:
-            if sheet in xf.sheet_names:
-                if sheet == "mobile_numbers":
-                    df = xf.parse(sheet, dtype={"mobile_number": str, "type": str, "linked_job_ids": str})
-                elif sheet == "emails":
-                    df = xf.parse(sheet, dtype={"email": str, "type": str, "linked_job_ids": str})
-                elif sheet == "social_media":
-                    df = xf.parse(sheet, dtype={"platform": str, "url": str})
-                elif sheet == "jobs":
-                    df = xf.parse(sheet, dtype={"job_id": str, "job_title": str, "company": str, "start_date": str, "end_date": str, "state": str})
-                else:
-                    df = xf.parse(sheet)
-                if sheet == "persons":
-                    if "birth_date" in df.columns:
-                        df["birth_date"] = df["birth_date"].where(df["birth_date"].isna(), df["birth_date"].astype(str))
-                if sheet == "mobile_numbers" and "mobile_number" in df.columns:
-                    df["mobile_number"] = df["mobile_number"].apply(self._normalize_mobile_number)
-                df = self.normalize_boolean_columns(df)
-                store[sheet] = df
+        xf, _ = self._open_excel_file()
+        try:
+            for sheet in sheets:
+                if sheet in xf.sheet_names:
+                    if sheet == "mobile_numbers":
+                        df = xf.parse(sheet, dtype={"mobile_number_record_id": str, "mobile_number": str, "type": str, "mobile_number_type": str})
+                    elif sheet == "mobile_number_family_relations":
+                        df = xf.parse(sheet, dtype={"mobile_number_record_id": str, "family_relation": str})
+                    elif sheet == "personal_mobile_number_primary":
+                        df = xf.parse(sheet, dtype={"mobile_number_record_id": str})
+                    elif sheet == "mobile_number_linked_jobs":
+                        df = xf.parse(sheet, dtype={"mobile_number_record_id": str, "linked_job_ids": str})
+                    elif sheet == "nationality":
+                        df = xf.parse(sheet, dtype={"nationality": str})
+                    elif sheet == "person_youth_group":
+                        df = xf.parse(sheet, dtype={"person_youth_group_record_id": str, "youth_join_year": "Int64", "youth_group_id": str, "age_group": str})
+                    elif sheet == "person_youth_group_age_history":
+                        df = xf.parse(sheet, dtype={"person_youth_group_record_id": str, "age_group": str, "start_date": str, "end_date": str})
+                    elif sheet == "schools":
+                        df = xf.parse(sheet, dtype={"school_record_id": str})
+                    elif sheet == "school_sections":
+                        df = xf.parse(sheet, dtype={"school_record_id": str, "section": str})
+                    elif sheet == "school_grades":
+                        df = xf.parse(sheet, dtype={"school_record_id": str, "grade": str})
+                    elif sheet == "school_logos":
+                        df = xf.parse(sheet, dtype={"id": str, "school_logo_id": str, "type": str, "institution_type": str, "name": str, "institution_name": str, "section": str, "institution_section": str, "logo_file_name": str})
+                    elif sheet == "emails":
+                        df = xf.parse(sheet, dtype={"email_record_id": str, "email": str, "type": str, "email_type": str})
+                    elif sheet == "email_family_relations":
+                        df = xf.parse(sheet, dtype={"email_record_id": str, "family_relation": str})
+                    elif sheet == "personal_email_primary":
+                        df = xf.parse(sheet, dtype={"email_record_id": str})
+                    elif sheet == "email_linked_jobs":
+                        df = xf.parse(sheet, dtype={"email_record_id": str, "linked_job_ids": str})
+                    elif sheet == "social_media":
+                        df = xf.parse(sheet, dtype={"platform": str, "url": str})
+                    elif sheet == "parishes":
+                        df = xf.parse(sheet, dtype={"id": str, "parish_id": str, "patron_saint": str, "area": str, "lpj_url": str, "facebook_url": str, "instagram_url": str, "linkedin_url": str, "region": str, "governorate": str})
+                    elif sheet == "churches":
+                        df = xf.parse(sheet, dtype={"id": str, "church_id": str, "parish_id": str, "patron_saint": str, "area": str, "lat": float, "lng": float})
+                    elif sheet == "youth_group_special_logos":
+                        df = xf.parse(sheet, dtype={"youth_group_id": str, "id": str, "special_logo_id": str, "occasion": str, "start_date": str, "end_date": str, "file_name": str, "logo_file_name": str})
+                    elif sheet == "jobs":
+                        df = xf.parse(sheet, dtype={"job_id": str, "job_title": str, "company": str, "employer_name": str, "start_date": str, "end_date": str, "state": str, "employment_state": str})
+                    elif sheet == "responsibilities":
+                        df = xf.parse(sheet, dtype={"responsibility_period": str, "time": str, "jec_year": str, "is_current": object, "is_active": object, "responsibility_name": str, "responsibility": str, "start_date": str, "end_date": str, "youth_group_id": str})
+                    else:
+                        df = xf.parse(sheet)
+                    df = self._canonicalize_sheet_columns(sheet, df)
+                    df = self._add_runtime_alias_columns(sheet, df)
+                    if sheet == "persons":
+                        if "birth_date" in df.columns:
+                            df["birth_date"] = df["birth_date"].where(df["birth_date"].isna(), df["birth_date"].astype(str))
+                    if sheet == "mobile_numbers" and "mobile_number" in df.columns:
+                        df["mobile_number"] = df["mobile_number"].apply(self._normalize_mobile_number)
+                    df = self.normalize_boolean_columns(df)
+                    store[sheet] = df
+        finally:
+            xf.close()
         return store
 
     def save_excel_sheets(self, store: dict[str, pd.DataFrame]):
-        if os.path.exists(self.excel_path):
-            # Replace only target sheets and preserve any unrelated sheets (e.g., auth_users).
-            with pd.ExcelWriter(self.excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
-                for sheet, df in store.items():
-                    df = self.normalize_boolean_columns(df)
-                    if sheet == "persons":
-                        drop_cols = [col for col in self.person_sheet_address_projection_columns if col in df.columns]
-                        if drop_cols:
-                            df = df.drop(columns=drop_cols)
-                    df.to_excel(writer, sheet_name=sheet, index=False)
-            return
-
-        with pd.ExcelWriter(self.excel_path, engine="openpyxl") as writer:
-            for sheet, df in store.items():
-                df = self.normalize_boolean_columns(df)
-                if sheet == "persons":
-                    drop_cols = [col for col in self.person_sheet_address_projection_columns if col in df.columns]
-                    if drop_cols:
-                        df = df.drop(columns=drop_cols)
-                df.to_excel(writer, sheet_name=sheet, index=False)
+        prepared: dict[str, pd.DataFrame] = {}
+        for sheet, df in store.items():
+            df = self._canonicalize_sheet_columns(sheet, df)
+            df = self._strip_legacy_sheet_columns(sheet, df)
+            df = self.normalize_boolean_columns(df)
+            if sheet == "persons":
+                drop_cols = [col for col in self.person_sheet_address_projection_columns if col in df.columns]
+                if drop_cols:
+                    df = df.drop(columns=drop_cols)
+            prepared[sheet] = df
+        self._write_sheets_atomically(prepared)
 
     def load_json_file(self, path: str, default: Any):
         if os.path.exists(path):
@@ -198,36 +382,74 @@ class Database:
             })
         return users
 
+    def _load_auth_json_users(self, path: str) -> list[dict]:
+        payload = self.load_json_file(path, {"users": []})
+        users: list[dict] = []
+        for row in payload.get("users", []):
+            username = (str(row.get("username") or "")).strip().lower()
+            password_hash = str(row.get("password_hash") or "").strip()
+            role = str(row.get("role") or "member").strip() or "member"
+            person_id = self._normalize_auth_person_id(row.get("person_id"))
+            if not username or not password_hash:
+                continue
+            users.append({
+                "person_id": person_id,
+                "username": username,
+                "password_hash": password_hash,
+                "role": role,
+            })
+        return users
+
+    def _save_auth_backup(self, users: list[dict]):
+        self.save_json_file(self.auth_backup_path, {"users": users})
+
     def load_auth(self) -> dict:
         users: list[dict] = []
+        workbook_error: zipfile.BadZipFile | None = None
 
         if os.path.exists(self.excel_path):
-            xf = pd.ExcelFile(self.excel_path)
-            if self.auth_sheet in xf.sheet_names:
-                df = xf.parse(self.auth_sheet, dtype={"person_id": str, "username": str, "password_hash": str, "role": str})
-                users = self._auth_users_from_df(df)
+            try:
+                xf, _ = self._open_excel_file()
+                try:
+                    if self.auth_sheet in xf.sheet_names:
+                        df = xf.parse(self.auth_sheet, dtype={"person_id": str, "username": str, "password_hash": str, "role": str})
+                        users = self._auth_users_from_df(df)
+                finally:
+                    xf.close()
+            except zipfile.BadZipFile as exc:
+                workbook_error = exc
 
-        if not users and os.path.exists(self.legacy_auth_path):
-            legacy = self.load_json_file(self.legacy_auth_path, {"users": []})
-            for row in legacy.get("users", []):
-                username = (str(row.get("username") or "")).strip().lower()
-                password_hash = str(row.get("password_hash") or "").strip()
-                role = str(row.get("role") or "member").strip() or "member"
-                person_id = self._normalize_auth_person_id(row.get("person_id"))
-                if not username or not password_hash:
-                    continue
-                users.append({
-                    "person_id": person_id,
-                    "username": username,
-                    "password_hash": password_hash,
-                    "role": role,
-                })
-            if users:
+        if users:
+            self._save_auth_backup(users)
+            return {"users": users}
+
+        fallback_paths = [self.auth_backup_path, self.legacy_auth_path]
+        source_path = None
+        for path in fallback_paths:
+            if not os.path.exists(path):
+                continue
+            fallback_users = self._load_auth_json_users(path)
+            if not fallback_users:
+                continue
+            users = fallback_users
+            source_path = path
+            break
+
+        if users:
+            if source_path == self.auth_backup_path:
+                return {"users": users}
+
+            self._save_auth_backup(users)
+            if workbook_error is None:
                 self.save_auth({"users": users})
                 try:
                     os.remove(self.legacy_auth_path)
                 except OSError:
                     pass
+            return {"users": users}
+
+        if workbook_error is not None:
+            raise workbook_error
 
         return {"users": users}
 
@@ -248,12 +470,8 @@ class Database:
             })
 
         df = pd.DataFrame(users, columns=self.auth_columns)
-        if os.path.exists(self.excel_path):
-            with pd.ExcelWriter(self.excel_path, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
-                df.to_excel(writer, sheet_name=self.auth_sheet, index=False)
-        else:
-            with pd.ExcelWriter(self.excel_path, engine="openpyxl") as writer:
-                df.to_excel(writer, sheet_name=self.auth_sheet, index=False)
+        self._write_sheets_atomically({self.auth_sheet: df})
+        self._save_auth_backup(users)
 
     def load_promotions(self) -> dict:
         return self.load_json_file(self.promotions_path, {"promotions": []})

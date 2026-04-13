@@ -440,11 +440,11 @@ function PeriodBadge({ period, periods, onClick }) {
 }
 
 // ── Unified save modal — always shown on save, presents all three options ─────
-function UnifiedSaveModal({ currentPeriod, periods, onSaveToPeriod, onConfirmNewPeriod, onCancel }) {
+function UnifiedSaveModal({ currentPeriod, periods, defaultJecYear = '', onSaveToPeriod, onConfirmNewPeriod, onCancel }) {
   const todayStr = today()
   // 'same' | 'active' | 'new'
   const [mode, setMode]           = useState(null)
-  const [jecYear, setJecYear]     = useState(currentPeriod?.jec_year ? String(currentPeriod.jec_year) : new Date().getFullYear().toString())
+  const [jecYear, setJecYear]     = useState(currentPeriod?.jec_year ? String(currentPeriod.jec_year) : (String(defaultJecYear || '').trim() || new Date().getFullYear().toString()))
   const [fromDate, setFromDate]   = useState(todayStr)
   const [toDate, setToDate]       = useState('')
   const [toPresentDay, setToPresent] = useState(true)
@@ -1272,14 +1272,14 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
       ? allPersons.filter(p => (p._youth_group_ids || []).includes(selectedGroup))
       : allPersons
     const regResults = pool.filter(p => {
-      const parts = [p.first_name, p.second_name, p.third_name, p.last_name].filter(Boolean).map(normalizeArabic)
+      const parts = [p.ar_first_name, p.ar_second_name, p.ar_third_name, p.ar_last_name].filter(Boolean).map(normalizeArabic)
       return nameMatchesQuery(parts, qWordGroups)
     }).slice(0, 6).map(p => ({ ...p, _source: 'registered' }))
 
     // Unregistered persons — no youth_group filter: they may not have person_youth_group
     // rows yet (newly synced), and the list is always small
     const unregResults = (allUnregistered || []).filter(u => {
-      const parts = [u.first_name, u.second_name, u.third_name, u.last_name].filter(Boolean).map(normalizeArabic)
+      const parts = [u.ar_first_name, u.ar_second_name, u.ar_third_name, u.ar_last_name].filter(Boolean).map(normalizeArabic)
       return nameMatchesQuery(parts, qWordGroups)
     }).slice(0, 4).map(u => ({ ...u, _source: 'unregistered' }))
 
@@ -1287,7 +1287,7 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
   }
 
   const pickPerson = (p) => {
-    const base = [p.first_name, p.second_name, p.third_name, p.last_name].filter(Boolean).join(' ')
+    const base = [p.ar_first_name, p.ar_second_name, p.ar_third_name, p.ar_last_name].filter(Boolean).join(' ')
     const combined = (personType === 'مكرّس' && laqab.trim()) ? `${laqab.trim()} ${base}` : base
     setBaseName(base)
     onUpdate({ personId: p.person_id, name: combined, photo: p._photo || null, unregistered: false, personType, laqab, baseName: base })
@@ -1295,8 +1295,8 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
   }
 
   const pickUnregistered = (u) => {
-    // u is an enriched unregistered record: { person_id, first_name, last_name, title, _photo, ... }
-    const base = [u.first_name, u.second_name, u.third_name, u.last_name].filter(Boolean).join(' ')
+    // u is an enriched unregistered record: { person_id, ar_first_name, ar_last_name, title, _photo, ... }
+    const base = [u.ar_first_name, u.ar_second_name, u.ar_third_name, u.ar_last_name].filter(Boolean).join(' ')
     const uType = 'علماني'  // personType is not stored in person record; treat all as علماني in tree
     const uLaqab = u.title || ''
     setBaseName(base); setPersonType(uType); setLaqab(uLaqab)
@@ -1472,7 +1472,7 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
               {results.map((p, idx) => {
                 const isUnreg = p._source === 'unregistered'
                 // Both registered and unregistered now use same name fields
-                const name = [p.first_name, p.second_name, p.third_name, p.last_name].filter(Boolean).join(' ') || 'بدون اسم'
+                const name = [p.ar_first_name, p.ar_second_name, p.ar_third_name, p.ar_last_name].filter(Boolean).join(' ') || 'بدون اسم'
                 const photo = p._photo || null
                 return (
                   <div key={isUnreg ? `u-${p.person_id}` : p.person_id}
@@ -1483,7 +1483,7 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
                     <div style={{ width:28, height:28, borderRadius:'50%', background:'var(--navy)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, overflow:'hidden' }}>
                       {photo
                         ? <img src={photo} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
-                        : <span style={{ color:'white', fontSize:'0.65rem', fontWeight:700 }}>{firstNameInitial(p.first_name || name)}</span>}
+                        : <span style={{ color:'white', fontSize:'0.65rem', fontWeight:700 }}>{firstNameInitial(p.ar_first_name || name)}</span>}
                     </div>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight:600 }}>{name}</div>
@@ -1512,7 +1512,7 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
             // Check if an unregistered person with this name already exists
             const norm = normalizeArabic(newBase.trim())
             const existing = norm ? (allUnregistered || []).find(u => {
-              const uBase = [u.first_name, u.second_name, u.third_name, u.last_name].filter(Boolean).join(' ')
+              const uBase = [u.ar_first_name, u.ar_second_name, u.ar_third_name, u.ar_last_name].filter(Boolean).join(' ')
               return normalizeArabic(uBase.trim()) === norm
             }) : null
             if (existing) {
@@ -2119,6 +2119,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
   const dragRef = useRef(null)
 
   const [allUnregistered, setAllUnregistered] = useState([])
+  const [defaultJecYear, setDefaultJecYear] = useState('')
   const groupLabelById = useMemo(() => {
     const out = {}
     for (const g of (groups || [])) {
@@ -2138,6 +2139,9 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
     })
     api.personsEnriched().then(p => setAllPersons(p))
     api.getUnregistered().then(u => setAllUnregistered(u))
+    api.getConfig()
+      .then((cfg) => setDefaultJecYear(String(cfg?.config?.active_jec_year || '').trim()))
+      .catch(() => setDefaultJecYear(''))
   }, [])
 
   // ── Load tree for selected group (always load active/latest period) ──────────
@@ -2268,7 +2272,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
       const norm = normalizeArabic(rawName)
       if (!norm) return
       const match = latestUnreg.find(u => {
-        const uBase = [u.first_name, u.second_name, u.third_name, u.last_name].filter(Boolean).join(' ')
+        const uBase = [u.ar_first_name, u.ar_second_name, u.ar_third_name, u.ar_last_name].filter(Boolean).join(' ')
         return normalizeArabic(uBase.trim()) === norm
       })
       if (match) {
@@ -2888,6 +2892,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
         <UnifiedSaveModal
           currentPeriod={currentPeriod}
           periods={periods}
+          defaultJecYear={defaultJecYear}
           onSaveToPeriod={handleSaveToPeriod}
           onConfirmNewPeriod={handleSaveWithPeriod}
           onCancel={() => setShowSaveModal(false)}

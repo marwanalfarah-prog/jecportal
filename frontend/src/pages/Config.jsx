@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Trash2, Save, RotateCcw, ImagePlus, Pencil, X, Search, ChevronDown, Award, Users, Building2, Languages, CalendarRange, Target, BookOpen } from 'lucide-react'
+import { Plus, Trash2, Save, RotateCcw, ImagePlus, Pencil, X, Search, ChevronDown, Award, Users, Building2, Languages, CalendarRange, Target, BookOpen, GraduationCap } from 'lucide-react'
 import { api } from '../api.js'
 
 function cleanText(value) {
@@ -352,11 +352,22 @@ function EmptyStatePanel({ title, description }) {
 export default function Config({ toast }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [activeTab, setActiveTab] = useState('mottos')
+  const [activeTab, setActiveTab] = useState('general')
+  const [activeJecYear, setActiveJecYear] = useState('')
   const [rows, setRows] = useState([])
   const [personTitles, setPersonTitles] = useState([])
   const [schoolBranches, setSchoolBranches] = useState({})
   const [schoolOptions, setSchoolOptions] = useState([])
+
+  // ── School / University Logos ─────────────────────────────────────────────
+  const [schoolLogos, setSchoolLogos] = useState([])
+  const [schoolLogosLoading, setSchoolLogosLoading] = useState(true)
+  const [universityOptions, setUniversityOptions] = useState([])
+  const [logoEntryType, setLogoEntryType] = useState('school')
+  const [logoEntryName, setLogoEntryName] = useState('')
+  const [logoEntrySection, setLogoEntrySection] = useState('')
+  const [logoEntryUploading, setLogoEntryUploading] = useState(false)
+  const [schoolLogoBustById, setSchoolLogoBustById] = useState({})
 
   const [mottosLoading, setMottosLoading] = useState(true)
   const [mottosSaving, setMottosSaving] = useState(false)
@@ -452,6 +463,14 @@ export default function Config({ toast }) {
   )
   const configTabs = [
     {
+      id: 'general',
+      label: 'الإعدادات العامة',
+      summary: activeJecYear ? `سنة JEC الحالية: ${activeJecYear}` : 'سنة JEC الحالية غير محددة',
+      description: 'إعدادات عامة على مستوى النظام، ومنها سنة JEC المعتمدة حالياً كقيمة افتراضية.',
+      icon: CalendarRange,
+      tips: ['أدخل سنة JEC الحالية بصيغة 4 أرقام', 'احفظ الإعدادات لاعتمادها في النوافذ المرتبطة', 'يمكن تعديلها لاحقاً عند بدء سنة جديدة'],
+    },
+    {
       id: 'mottos',
       label: 'شعار سنة الشبيبة',
       summary: `${mottos.length} شعار محفوظ`,
@@ -483,6 +502,14 @@ export default function Config({ toast }) {
       icon: Languages,
       tips: ['أدخل الاسم الأساسي', 'أضف الاختلافات الشائعة', 'احفظ أو أعد الضبط عند الحاجة'],
     },
+    {
+      id: 'schoolLogos',
+      label: 'شعارات المدارس والجامعات',
+      summary: `${schoolLogos.length} شعار`,
+      description: 'رفع شعارات المدارس (على مستوى المدرسة أو الفرع) والجامعات.',
+      icon: GraduationCap,
+      tips: ['اختر النوع (مدرسة / جامعة)', 'حدد الاسم والفرع إن وجد', 'ارفع الصورة ثم احفظ'],
+    },
   ]
   const schoolOptionsMerged = useMemo(() => {
     const values = new Set()
@@ -507,6 +534,7 @@ export default function Config({ toast }) {
     try {
       const [response, filtersResponse] = await Promise.all([api.getConfig(), api.filters()])
       const nameVariations = normalizeMap(response?.config?.name_variations || {})
+      setActiveJecYear(cleanText(response?.config?.active_jec_year || ''))
       const parsedRows = Object.entries(nameVariations).map(([base, variations]) => ({
         base,
         variationsText: variations.join('، '),
@@ -515,6 +543,7 @@ export default function Config({ toast }) {
       setPersonTitles(normalizePersonTitles(response?.config?.person_titles || []))
       setSchoolBranches(normalizeSchoolBranches(response?.config?.school_branches || {}))
       setSchoolOptions((filtersResponse?.school || []).map((item) => cleanText(item?.value)).filter(Boolean))
+      setUniversityOptions((filtersResponse?.university || []).map((item) => cleanText(item?.value)).filter(Boolean))
       setTitleArabic('')
       setTitleEnglish('')
       setSelectedSchoolName('')
@@ -526,8 +555,21 @@ export default function Config({ toast }) {
     }
   }
 
+  const loadSchoolLogos = async () => {
+    setSchoolLogosLoading(true)
+    try {
+      const res = await api.listSchoolLogos()
+      setSchoolLogos(Array.isArray(res?.entries) ? res.entries : [])
+    } catch {
+      toast?.('تعذر تحميل شعارات المدارس', 'error')
+      setSchoolLogos([])
+    } finally {
+      setSchoolLogosLoading(false)
+    }
+  }
+
   useEffect(() => {
-    Promise.all([loadConfig(), loadMottosData()])
+    Promise.all([loadConfig(), loadMottosData(), loadSchoolLogos()])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -774,9 +816,16 @@ export default function Config({ toast }) {
   }
 
   const handleSave = async () => {
+    const normalizedActiveJecYear = cleanText(activeJecYear)
+    if (normalizedActiveJecYear && !/^\d{4}$/.test(normalizedActiveJecYear)) {
+      toast?.('يرجى إدخال سنة JEC الحالية بصيغة 4 أرقام', 'error')
+      return
+    }
+
     setSaving(true)
     try {
       const payload = {
+        active_jec_year: normalizedActiveJecYear,
         name_variations: buildPayloadMap(),
         person_titles: buildPersonTitlesPayload(),
         school_branches: buildSchoolBranchesPayload(),
@@ -796,6 +845,7 @@ export default function Config({ toast }) {
     setSaving(true)
     try {
       await api.putConfig({
+        active_jec_year: cleanText(activeJecYear),
         name_variations: {},
         person_titles: buildPersonTitlesPayload(),
         school_branches: buildSchoolBranchesPayload(),
@@ -953,7 +1003,7 @@ export default function Config({ toast }) {
     }
   }
 
-  if (loading || mottosLoading) return <div className="loading-center"><div className="spinner" /></div>
+  if (loading || mottosLoading || schoolLogosLoading) return <div className="loading-center"><div className="spinner" /></div>
 
   const activeTabMeta = configTabs.find((tab) => tab.id === activeTab) || configTabs[0]
   const ActiveTabIcon = activeTabMeta.icon
@@ -1001,6 +1051,7 @@ export default function Config({ toast }) {
             <OverviewStatCard label="الألقاب" value={personTitleCount} note="ألقاب يمكن استخدامها في الإدخال" />
             <OverviewStatCard label="المدارس والفروع" value={`${Object.keys(schoolBranches).length}/${schoolBranchCount}`} note="مدارس مقابل عدد الفروع" />
             <OverviewStatCard label="اختلافات البحث" value={variationCount} note="بدائل أسماء لتحسين نتائج البحث" />
+            <OverviewStatCard label="شعارات المدارس والجامعات" value={schoolLogos.length} note="شعارات مرفوعة لمدارس وجامعات" />
           </div>
 
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -1302,6 +1353,48 @@ export default function Config({ toast }) {
               </table>
             </div>
           ) : <EmptyStatePanel title="لا توجد شعارات محفوظة بعد" description="ابدأ بإضافة أول شعار ثم احفظه ليظهر هنا مع فترة التطبيق والنطاق." />}
+        </div>
+      </div>
+      ) : null}
+
+      {activeTab === 'general' ? (
+      <div className="card">
+        <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span className="card-title">الإعدادات العامة</span>
+          <span style={{ fontSize: '0.78rem', color: '#9ba5bc' }}>
+            {activeJecYear ? `سنة JEC الحالية: ${activeJecYear}` : 'غير محددة'}
+          </span>
+        </div>
+
+        <div className="card-body" style={{ display: 'grid', gap: 14 }}>
+          <SectionPanel icon={CalendarRange} title="سنة JEC الحالية" hint="تُستخدم هذه القيمة كسنة افتراضية في النوافذ التي تنشئ فترات أو سجلات مرتبطة بسنة JEC.">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10 }}>
+              <OverviewStatCard label="السنة المعتمدة" value={activeJecYear || '—'} note="القيمة الحالية في إعدادات النظام" />
+              <OverviewStatCard label="الحالة" value={activeJecYear ? 'مضبوطة' : 'غير مضبوطة'} note="يمكن تركها فارغة إذا لم ترد فرض قيمة افتراضية" />
+            </div>
+          </SectionPanel>
+
+          <SectionPanel icon={CalendarRange} title="تحديث السنة الافتراضية" hint="أدخل سنة مكونة من 4 أرقام مثل 2026. إذا تُرك الحقل فارغاً، ستبقى بعض الشاشات تستخدم سنة الجهاز الحالية كبديل.">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8, alignItems: 'end' }}>
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4a5568', marginBottom: 5, display: 'block' }}>
+                  سنة JEC الحالية
+                </label>
+                <input
+                  value={activeJecYear}
+                  onChange={(e) => setActiveJecYear(String(e.target.value || '').replace(/[^0-9]/g, '').slice(0, 4))}
+                  placeholder="مثال: 2026"
+                  style={{ ...inputStyle, direction: 'ltr', textAlign: 'left' }}
+                />
+              </div>
+            </div>
+          </SectionPanel>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn btn-gold btn-sm" onClick={handleSave} disabled={saving} style={{ gap: 6 }}>
+              <Save size={14} /> {saving ? 'جار الحفظ...' : 'حفظ الإعدادات'}
+            </button>
+          </div>
         </div>
       </div>
       ) : null}
@@ -1619,6 +1712,295 @@ export default function Config({ toast }) {
         </div>
       </div>
       ) : null}
+
+      {activeTab === 'schoolLogos' ? (
+      <SchoolLogosTab
+        schoolBranches={schoolBranches}
+        schoolOptions={schoolOptionsMerged}
+        universityOptions={universityOptions}
+        schoolLogos={schoolLogos}
+        logoEntryType={logoEntryType}
+        setLogoEntryType={setLogoEntryType}
+        logoEntryName={logoEntryName}
+        setLogoEntryName={setLogoEntryName}
+        logoEntrySection={logoEntrySection}
+        setLogoEntrySection={setLogoEntrySection}
+        logoEntryUploading={logoEntryUploading}
+        setLogoEntryUploading={setLogoEntryUploading}
+        schoolLogoBustById={schoolLogoBustById}
+        setSchoolLogoBustById={setSchoolLogoBustById}
+        onReload={loadSchoolLogos}
+        toast={toast}
+      />
+      ) : null}
+    </div>
+  )
+}
+
+function SchoolLogosTab({
+  schoolBranches,
+  schoolOptions,
+  universityOptions,
+  schoolLogos,
+  logoEntryType,
+  setLogoEntryType,
+  logoEntryName,
+  setLogoEntryName,
+  logoEntrySection,
+  setLogoEntrySection,
+  logoEntryUploading,
+  setLogoEntryUploading,
+  schoolLogoBustById,
+  setSchoolLogoBustById,
+  onReload,
+  toast,
+}) {
+  const [creating, setCreating] = useState(false)
+  const [deletingId, setDeletingId] = useState('')
+  const [fileByEntryId, setFileByEntryId] = useState({})
+
+  const branches = logoEntryType === 'school' && logoEntryName
+    ? (schoolBranches[logoEntryName] || [])
+    : []
+
+  const handleCreate = async () => {
+    const name = cleanText(logoEntryName)
+    if (!name) {
+      toast?.('يرجى إدخال الاسم', 'error')
+      return
+    }
+    setCreating(true)
+    try {
+      await api.createSchoolLogoEntry({
+        type: logoEntryType,
+        name,
+        section: cleanText(logoEntrySection),
+      })
+      toast?.('تم إضافة المدخل. ارفع الصورة الآن.', 'success')
+      setLogoEntryName('')
+      setLogoEntrySection('')
+      await onReload()
+    } catch (err) {
+      const msg = err?.message || ''
+      if (msg.includes('409') || msg.includes('already')) {
+        toast?.('هذا المدخل موجود مسبقاً', 'error')
+      } else {
+        toast?.('تعذر إضافة المدخل', 'error')
+      }
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const handleDelete = async (id) => {
+    if (!id) return
+    if (!confirm('سيتم حذف هذا المدخل والشعار المرفق معه. هل تريد المتابعة؟')) return
+    setDeletingId(String(id))
+    try {
+      await api.deleteSchoolLogoEntry(id)
+      toast?.('تم الحذف', 'success')
+      await onReload()
+    } catch {
+      toast?.('تعذر الحذف', 'error')
+    } finally {
+      setDeletingId('')
+    }
+  }
+
+  const handleUpload = async (entryId, file) => {
+    if (!file) return
+    setLogoEntryUploading(true)
+    try {
+      await api.uploadSchoolLogo(entryId, file)
+      setSchoolLogoBustById((prev) => ({ ...prev, [entryId]: Date.now() }))
+      setFileByEntryId((prev) => { const next = { ...prev }; delete next[entryId]; return next })
+      toast?.('تم رفع الشعار', 'success')
+      await onReload()
+    } catch {
+      toast?.('تعذر رفع الشعار', 'error')
+    } finally {
+      setLogoEntryUploading(false)
+    }
+  }
+
+  const schoolLogosCount = schoolLogos.filter((e) => e.type === 'school').length
+  const universityLogosCount = schoolLogos.filter((e) => e.type === 'university').length
+
+  return (
+    <div className="card">
+      <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span className="card-title">شعارات المدارس والجامعات</span>
+        <span style={{ fontSize: '0.78rem', color: '#9ba5bc' }}>{schoolLogos.length} شعار</span>
+      </div>
+
+      <div className="card-body" style={{ display: 'grid', gap: 14 }}>
+        <SectionPanel
+          icon={GraduationCap}
+          title="إدارة شعارات المدارس والجامعات"
+          hint="يمكنك رفع شعار لكل مدرسة ككل أو لكل فرع على حدة، وكذلك شعار لكل جامعة. الشعار المرفوع على مستوى المدرسة يُطبّق تلقائياً على كل فروعها ما لم يوجد شعار خاص بالفرع."
+        >
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
+            <OverviewStatCard label="شعارات المدارس" value={schoolLogosCount} note="شعارات مدارس (كل المدرسة أو فرع)" />
+            <OverviewStatCard label="شعارات الجامعات" value={universityLogosCount} note="شعارات جامعات وكليات" />
+          </div>
+        </SectionPanel>
+
+        <SectionPanel
+          icon={ImagePlus}
+          title="إضافة مدخل جديد"
+          hint="اختر النوع، ثم اسم المدرسة أو الجامعة. إذا أردت شعاراً خاصاً بفرع معين اختر الفرع، وإلا اتركه فارغاً ليُطبَّق على المدرسة بأكملها."
+        >
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 8, alignItems: 'end' }}>
+            <div>
+              <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4a5568', marginBottom: 5, display: 'block' }}>النوع</label>
+              <select
+                value={logoEntryType}
+                onChange={(e) => { setLogoEntryType(e.target.value); setLogoEntryName(''); setLogoEntrySection('') }}
+                style={inputStyle}
+              >
+                <option value="school">مدرسة</option>
+                <option value="university">جامعة / كلية</option>
+              </select>
+            </div>
+
+            {logoEntryType === 'school' ? (
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4a5568', marginBottom: 5, display: 'block' }}>المدرسة</label>
+                <select
+                  value={logoEntryName}
+                  onChange={(e) => { setLogoEntryName(e.target.value); setLogoEntrySection('') }}
+                  style={inputStyle}
+                >
+                  <option value="">اختر مدرسة</option>
+                  {schoolOptions.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4a5568', marginBottom: 5, display: 'block' }}>الجامعة / الكلية</label>
+                <select
+                  value={logoEntryName}
+                  onChange={(e) => setLogoEntryName(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="">اختر جامعة</option>
+                  {universityOptions.map((u) => (
+                    <option key={u} value={u}>{u}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {logoEntryType === 'school' && branches.length > 0 ? (
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4a5568', marginBottom: 5, display: 'block' }}>الفرع (اختياري)</label>
+                <select
+                  value={logoEntrySection}
+                  onChange={(e) => setLogoEntrySection(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="">كل الفروع (شعار عام للمدرسة)</option>
+                  {branches.map((b) => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+
+            <button
+              className="btn btn-gold btn-sm"
+              onClick={handleCreate}
+              disabled={creating || !cleanText(logoEntryName)}
+              style={{ gap: 6, whiteSpace: 'nowrap' }}
+            >
+              <Plus size={14} /> {creating ? 'جار الإضافة...' : 'إضافة'}
+            </button>
+          </div>
+        </SectionPanel>
+
+        {schoolLogos.length > 0 ? (
+          <div style={{ border: '1px solid #e2e6ef', borderRadius: 10, overflow: 'hidden' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
+              <thead>
+                <tr style={{ background: '#f8f9fb', borderBottom: '1px solid #e2e6ef' }}>
+                  <th style={{ padding: '10px 12px', textAlign: 'right', color: '#4a5568', fontWeight: 700 }}>النوع</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'right', color: '#4a5568', fontWeight: 700 }}>الاسم</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'right', color: '#4a5568', fontWeight: 700 }}>الفرع</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'center', color: '#4a5568', fontWeight: 700 }}>الشعار</th>
+                  <th style={{ padding: '10px 12px', textAlign: 'right', color: '#4a5568', fontWeight: 700 }}>رفع شعار</th>
+                  <th style={{ width: 60 }} />
+                </tr>
+              </thead>
+              <tbody>
+                {schoolLogos.map((entry, index) => {
+                  const entryId = entry.id
+                  const bust = schoolLogoBustById[entryId] || 0
+                  const selectedFile = fileByEntryId[entryId] || null
+                  return (
+                    <tr key={entryId || `sl-${index}`} style={{ borderBottom: index < schoolLogos.length - 1 ? '1px solid #f1f4f9' : 'none' }}>
+                      <td style={{ padding: 10, color: '#2d3748' }}>
+                        {entry.type === 'university' ? 'جامعة' : 'مدرسة'}
+                      </td>
+                      <td style={{ padding: 10, fontWeight: 700, color: '#1a2a3a' }}>{entry.name || '—'}</td>
+                      <td style={{ padding: 10, color: '#718096' }}>
+                        {entry.section ? entry.section : <span style={{ color: '#b0b8cc', fontStyle: 'italic' }}>كل الفروع</span>}
+                      </td>
+                      <td style={{ padding: 10, textAlign: 'center' }}>
+                        {entry.logo_url ? (
+                          <img
+                            src={api.schoolLogoUrl(entryId, bust)}
+                            alt={entry.name}
+                            style={{ width: 38, height: 38, objectFit: 'contain', borderRadius: 6, border: '1px solid #e2e6ef', background: '#fff' }}
+                          />
+                        ) : (
+                          <span style={{ color: '#9ba5bc', fontSize: '0.78rem' }}>لا يوجد</span>
+                        )}
+                      </td>
+                      <td style={{ padding: 10 }}>
+                        <label style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5 }} className="btn btn-ghost btn-sm">
+                          <ImagePlus size={13} />
+                          {selectedFile ? selectedFile.name.slice(0, 18) + (selectedFile.name.length > 18 ? '…' : '') : 'اختيار'}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            style={{ display: 'none' }}
+                            onChange={(e) => {
+                              const file = e.target.files?.[0] || null
+                              if (file) {
+                                setFileByEntryId((prev) => ({ ...prev, [entryId]: file }))
+                                handleUpload(entryId, file)
+                              }
+                            }}
+                          />
+                        </label>
+                        {logoEntryUploading ? <span style={{ fontSize: '0.74rem', color: '#718096', marginRight: 4 }}>جار الرفع...</span> : null}
+                      </td>
+                      <td style={{ padding: 10 }}>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ color: 'var(--red)' }}
+                          onClick={() => handleDelete(entryId)}
+                          disabled={deletingId === String(entryId)}
+                          title="حذف"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyStatePanel
+            title="لا توجد شعارات مضافة بعد"
+            description="أضف مدخلاً جديداً من النموذج أعلاه ثم ارفع الصورة المناسبة."
+          />
+        )}
+      </div>
     </div>
   )
 }

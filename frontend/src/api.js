@@ -1,5 +1,61 @@
 const BASE = '/api'
 
+class ApiError extends Error {
+  constructor(message, { status = 0, data = null } = {}) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.data = data
+  }
+}
+
+async function readResponsePayload(res) {
+  const contentType = String(res.headers.get('content-type') || '').toLowerCase()
+
+  if (contentType.includes('application/json')) {
+    try {
+      return await res.json()
+    } catch {
+      return null
+    }
+  }
+
+  try {
+    const text = await res.text()
+    return text || null
+  } catch {
+    return null
+  }
+}
+
+function extractErrorMessage(payload, status) {
+  if (payload && typeof payload === 'object') {
+    const message = payload.error || payload.message || payload.detail
+    if (message) return String(message)
+  }
+
+  if (typeof payload === 'string' && payload.trim()) {
+    return payload.trim()
+  }
+
+  return `API error ${status}`
+}
+
+async function throwResponseError(res) {
+  const payload = await readResponsePayload(res)
+  throw new ApiError(extractErrorMessage(payload, res.status), {
+    status: res.status,
+    data: payload,
+  })
+}
+
+export function getApiErrorMessage(error, fallback = 'حدث خطأ غير متوقع') {
+  if (!error) return fallback
+  if (typeof error === 'string' && error.trim()) return error.trim()
+  if (error instanceof Error && error.message && error.message.trim()) return error.message.trim()
+  return fallback
+}
+
 function formatYouthGroupLabel(raw) {
   const text = (raw ?? '').toString().trim()
   if (!text) return ''
@@ -15,8 +71,8 @@ async function req(path, opts = {}) {
     ...opts,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   })
-  if (!res.ok) throw new Error(`API error ${res.status}`)
-  return res.json()
+  if (!res.ok) await throwResponseError(res)
+  return readResponsePayload(res)
 }
 
 export const api = {
@@ -43,12 +99,14 @@ export const api = {
   deletePromotion:  (id)       => req(`/promotions/${id}`, { method: 'DELETE' }),
   stats:           ()           => req('/stats'),
   filters:         ()           => req('/filters'),
+  listNationalityIsoCodes: ()   => req('/nationality-iso-codes'),
   chartGov:        ()           => req('/chart/governorate'),
   chartGender:     ()           => req('/chart/gender'),
   chartYG:         ()           => req('/chart/youth_group'),
   chartAge:        ()           => req('/chart/age_group'),
 
   personsEnriched: ()           => req('/persons/enriched'),
+  membersIndex:    ()           => req('/persons/members-index'),
   listPeopleLocations: ()       => req('/people-locations'),
   persons:         (params)     => req('/persons?' + new URLSearchParams(params)),
   getPerson:       (id)         => req(`/person/${id}`),
@@ -144,8 +202,8 @@ export const api = {
       body: form,
       credentials: 'include',
     })
-    if (!res.ok) throw new Error(`API error ${res.status}`)
-    return res.json()
+    if (!res.ok) await throwResponseError(res)
+    return readResponsePayload(res)
   },
   mottoLogoUrl: (id, bust) => `${BASE}/config/mottos/${encodeURIComponent(id)}/logo${bust ? `?t=${bust}` : ''}`,
 
@@ -154,6 +212,23 @@ export const api = {
   createYouthGroup:   (body)       => req('/config/youth-groups', { method: 'POST', body }),
   updateYouthGroup:   (gid, body)  => req(`/config/youth-groups/${encodeURIComponent(gid)}`, { method: 'PUT', body }),
   deleteYouthGroup:   (gid)        => req(`/config/youth-groups/${encodeURIComponent(gid)}`, { method: 'DELETE' }),
+
+  // ── School / University Logos ────────────────────────────────────────────────
+  listSchoolLogos:         ()           => req('/config/school-logos'),
+  createSchoolLogoEntry:   (body)       => req('/config/school-logos', { method: 'POST', body }),
+  deleteSchoolLogoEntry:   (id)         => req(`/config/school-logos/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  uploadSchoolLogo: async (id, file) => {
+    const form = new FormData()
+    form.append('logo', file)
+    const res = await fetch(`${BASE}/config/school-logos/${encodeURIComponent(id)}/logo`, {
+      method: 'POST',
+      body: form,
+      credentials: 'include',
+    })
+    if (!res.ok) await throwResponseError(res)
+    return readResponsePayload(res)
+  },
+  schoolLogoUrl: (id, bust) => `${BASE}/config/school-logos/${encodeURIComponent(id)}/logo${bust ? `?t=${bust}` : ''}`,
 
   // ── Churches ─────────────────────────────────────────────────────────────────
   listChurches:       ()           => req('/churches'),
@@ -170,8 +245,8 @@ export const api = {
     const form = new FormData()
     form.append('logo', file)
     const res = await fetch(`${BASE}/parishes/${encodeURIComponent(id)}/logo`, { method: 'POST', body: form, credentials: 'include' })
-    if (!res.ok) throw new Error(`API error ${res.status}`)
-    return res.json()
+    if (!res.ok) await throwResponseError(res)
+    return readResponsePayload(res)
   },
   parishLogoUrl: (id, bust) => `${BASE}/parishes/${encodeURIComponent(id)}/logo${bust ? `?t=${bust}` : ''}`,
 
@@ -180,13 +255,19 @@ export const api = {
   clearPromotions:    ()           => req('/config/maintenance/promotions', { method: 'DELETE' }),
   reloadData:         ()           => req('/config/maintenance/reload', { method: 'POST' }),
 
+  // ── Admin Data Tables ──────────────────────────────────────────────────────
+  listDataTables:     ()           => req('/admin/data-tables'),
+  searchDataTables:   (query, limit = 100) => req(`/admin/data-tables/search?q=${encodeURIComponent(query)}&limit=${encodeURIComponent(limit)}`),
+  getDataTable:       (sheet)      => req(`/admin/data-tables/${encodeURIComponent(sheet)}`),
+  updateDataTable:    (sheet, rows)=> req(`/admin/data-tables/${encodeURIComponent(sheet)}`, { method: 'PUT', body: rows }),
+
   // Unregistered photo
   uploadUnregisteredPhoto: async (id, file) => {
     const form = new FormData()
     form.append('photo', file)
     const res = await fetch(`${BASE}/unregistered/${id}/photo`, { method: 'POST', body: form, credentials: 'include' })
-    if (!res.ok) throw new Error(`API error ${res.status}`)
-    return res.json()
+    if (!res.ok) await throwResponseError(res)
+    return readResponsePayload(res)
   },
   unregisteredPhotoUrl: (id, bust) => `${BASE}/unregistered/${id}/photo${bust ? `?t=${bust}` : ''}`,
 
@@ -195,8 +276,8 @@ export const api = {
     const form = new FormData()
     form.append('photo', file)
     const res = await fetch(`${BASE}/person/${id}/photo`, { method: 'POST', body: form, credentials: 'include' })
-    if (!res.ok) throw new Error(`API error ${res.status}`)
-    return res.json()
+    if (!res.ok) await throwResponseError(res)
+    return readResponsePayload(res)
   },
   photoUrl: (id, bust) => `${BASE}/person/${id}/photo${bust ? `?t=${bust}` : ''}`,
 
@@ -214,8 +295,8 @@ export const api = {
       body: form,
       credentials: 'include',
     })
-    if (!res.ok) throw new Error(`API error ${res.status}`)
-    return res.json()
+    if (!res.ok) await throwResponseError(res)
+    return readResponsePayload(res)
   },
   youthGroupLogoUrl: (groupRef, bust) => `${BASE}/youth-groups/${encodeURIComponent(groupRef)}/logo${bust ? `?t=${bust}` : ''}`,
   updateYouthGroupSpecialLogoSettings: (groupRef, body) => req(`/youth-groups/${encodeURIComponent(groupRef)}/special-logo-settings`, { method: 'PUT', body }),
@@ -231,8 +312,8 @@ export const api = {
       body: form,
       credentials: 'include',
     })
-    if (!res.ok) throw new Error(`API error ${res.status}`)
-    return res.json()
+    if (!res.ok) await throwResponseError(res)
+    return readResponsePayload(res)
   },
   youthGroupSpecialLogoUrl: (groupRef, bust) => `${BASE}/youth-groups/${encodeURIComponent(groupRef)}/special-logo${bust ? `?t=${bust}` : ''}`,
   youthGroupSpecialLogoByIdUrl: (groupRef, logoId, bust) => `${BASE}/youth-groups/${encodeURIComponent(groupRef)}/special-logo/${encodeURIComponent(logoId)}${bust ? `?t=${bust}` : ''}`,

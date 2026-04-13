@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, useMemo, useDeferredValue } from 'react'
-import { Search, ChevronRight, ChevronLeft, UserPlus, ArrowUpAZ, ArrowDownAZ, ChevronDown, X, Trash2, Archive, ArchiveRestore } from 'lucide-react'
+import { Search, ChevronRight, ChevronLeft, UserPlus, ArrowUpAZ, ArrowDownAZ, ChevronDown, X, Trash2, Archive, ArchiveRestore, Download } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import { api } from '../api.js'
 
 // ── Arabic normalization ──────────────────────────────────────────────────────
@@ -89,12 +90,21 @@ function expandQueryWords(words, aliasLookup) {
   })
 }
 function getNameParts(p) {
-  return [p.first_name, p.second_name, p.third_name, p.last_name]
+  return [
+    p.ar_first_name,
+    p.ar_second_name,
+    p.ar_third_name,
+    p.ar_last_name,
+    p.en_first_name,
+    p.en_second_name,
+    p.en_third_name,
+    p.en_last_name,
+  ]
     .filter(Boolean).map(normalizeArabic)
 }
 
 function getDisplayName(p) {
-  return [p.title, p.first_name, p.second_name, p.third_name, p.last_name]
+  return [p.title, p.ar_first_name, p.ar_second_name, p.ar_third_name, p.ar_last_name]
     .filter(Boolean)
     .join(' ')
     .trim()
@@ -147,12 +157,16 @@ function calcAgeFromBirthDate(person) {
 }
 
 function buildMemberMeta(person) {
-  const youthGroups = Array.isArray(person?._youth_groups)
-    ? person._youth_groups.map(value => toYouthGroupShortLabel(value))
+  const archived = Boolean(person?.archived)
+  const youthGroupSource = archived ? person?._archived_youth_groups : person?._youth_groups
+  const ageGroupSource = archived ? person?._archived_age_groups : person?._age_groups
+
+  const youthGroups = Array.isArray(youthGroupSource)
+    ? youthGroupSource.map(value => toYouthGroupShortLabel(value) || String(value ?? '').trim())
     : []
 
-  const ageGroups = Array.isArray(person?._age_groups)
-    ? person._age_groups.map(value => String(value ?? '').trim())
+  const ageGroups = Array.isArray(ageGroupSource)
+    ? ageGroupSource.map(value => String(value ?? '').trim())
     : []
 
   const pairsCount = Math.max(youthGroups.length, ageGroups.length)
@@ -168,6 +182,537 @@ function buildMemberMeta(person) {
   const ageLabel = age == null ? '—' : `${age} سنة`
 
   return [youthWithAge, ageLabel].join(' · ')
+}
+
+const EXPORT_EXCLUDED_ROOT_KEYS = new Set([
+  'org_tree',
+  'orgTree',
+  'general_secretariat_tree',
+  'generalSecretariatTree',
+  'gen_sec_tree',
+  'genSecTree',
+])
+
+const EXPORT_HIDDEN_PERSON_KEYS = new Set([
+  'person_id',
+  'title',
+  'ar_first_name',
+  'ar_second_name',
+  'ar_third_name',
+  'ar_last_name',
+  'en_first_name',
+  'en_second_name',
+  'en_third_name',
+  'en_last_name',
+  'mother_ar_first_name',
+  'mother_ar_second_name',
+  'mother_ar_last_name',
+  'mother_en_first_name',
+  'mother_en_second_name',
+  'mother_en_last_name',
+  'gender',
+  'birth_year',
+  'birth_month',
+  'birth_day',
+  'registered',
+  'archived',
+  'address',
+  'country',
+  'governorate',
+  'city',
+  'lat',
+  'lng',
+  'school_graduated',
+  'school_system',
+  'school_system_sector',
+  'school_final_gpa',
+  'street_address',
+])
+
+const EXPORT_FIELD_LABELS = {
+  person_id: 'معرّف الشخص',
+  title: 'اللقب',
+  gender: 'الجنس',
+  church: 'الكنيسة',
+  parish: 'الرعية',
+  diocese: 'الأبرشية',
+  marital_status: 'الحالة الاجتماعية',
+  birth_place: 'مكان الولادة',
+  country_of_birth: 'بلد الولادة',
+  governorate: 'المحافظة',
+  city: 'المدينة',
+  country: 'البلد',
+  school_system: 'النظام الدراسي',
+  school_system_sector: 'الحقل / الفرع',
+  school_final_gpa: 'معدل المدرسة',
+  baptism_name: 'اسم المعمودية',
+  confirmation_name: 'اسم التثبيت',
+  created_at: 'تاريخ الإنشاء',
+  updated_at: 'آخر تحديث',
+  notes: 'ملاحظات',
+  nationality: 'الجنسية',
+  iso_alpha2: 'رمز الدولة',
+  national_id: 'الرقم الوطني',
+  passport_number: 'رقم جواز السفر',
+  jordanian_mothers_children_serial: 'الرقم التسلسلي لأبناء الأردنيات',
+  mobile_number: 'رقم الهاتف',
+  family_relation: 'صلة القرابة',
+  email: 'البريد الإلكتروني',
+  platform: 'المنصة',
+  url: 'الرابط',
+  school: 'المدرسة',
+  section: 'القسم',
+  grades_attended: 'الصفوف',
+  university_college: 'الجامعة / الكلية',
+  institution_name: 'الجامعة / الكلية',
+  major: 'التخصص',
+  degree: 'الدرجة العلمية',
+  education_state: 'الحالة',
+  final_gpa: 'المعدل',
+  job_title: 'المسمّى الوظيفي',
+  company: 'الشركة / المؤسسة',
+  responsibility: 'المسؤولية',
+  jec_year: 'سنة JEC',
+  is_current: 'الحالة',
+  youth_group_id: 'فرقة الشبيبة',
+  age_group: 'الفئة العمرية',
+  youth_join_year: 'سنة الانتساب',
+  hobby_skill: 'الهواية / المهارة',
+  type: 'النوع',
+  details: 'التفاصيل',
+  note_title: 'عنوان الملاحظة',
+  note: 'الملاحظة',
+}
+
+function formatExportPrimitive(value) {
+  if (value === null || value === undefined) return ''
+  if (typeof value === 'boolean') return value ? 'نعم' : 'لا'
+  return String(value).replace(/\s+/g, ' ').trim()
+}
+
+function joinExportParts(values, separator = '، ') {
+  return values.map(formatExportPrimitive).filter(Boolean).join(separator)
+}
+
+function joinExportLines(values) {
+  return values.map(formatExportPrimitive).filter(Boolean).join('\n')
+}
+
+function hasMeaningfulExportValue(value) {
+  return formatExportPrimitive(value) !== ''
+}
+
+function humanizeExportKey(key) {
+  if (!key) return ''
+  if (EXPORT_FIELD_LABELS[key]) return EXPORT_FIELD_LABELS[key]
+  return String(key)
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function formatBirthDate(person) {
+  const year = formatExportPrimitive(person?.birth_year)
+  const month = formatExportPrimitive(person?.birth_month)
+  const day = formatExportPrimitive(person?.birth_day)
+  if (year && month && day) return `${day}/${month}/${year}`
+  return joinExportParts([day, month, year], ' / ')
+}
+
+function formatRange(start, end, isCurrent, state) {
+  const startText = formatExportPrimitive(start)
+  const endText = formatExportPrimitive(end)
+  const normalizedState = formatExportPrimitive(state).toLowerCase()
+  const current = isCurrent || normalizedState === 'current'
+  if (startText && endText) return `${startText} → ${endText}`
+  if (startText && current) return `${startText} → حتى الآن`
+  if (startText) return startText
+  if (endText) return endText
+  if (current) return 'حتى الآن'
+  return ''
+}
+
+function normalizeHigherEducationExportState(value, { isCurrent = false } = {}) {
+  const text = formatExportPrimitive(value)
+  if (!text) return isCurrent ? 'current' : ''
+  const lookup = text.toLowerCase()
+  if (lookup === 'current' || text === 'حاليًّا' || text === 'حاليا' || text === 'حالي') return 'current'
+  if (lookup === 'switched' || lookup === 'switched major|university' || lookup === 'switched major/university' || text === 'حوّل التخصّص أو الجامعة / الكليّة' || text === 'حوّل التخصص أو الجامعة / الكلية') return 'switched'
+  if (lookup === 'exited' || text === 'منسحب' || text === 'انسحب') return 'exited'
+  if (lookup === 'graduated' || text === 'متخرّج' || text === 'متخرج') return 'graduated'
+  return text
+}
+
+function higherEducationExportStateLabel(value, { isCurrent = false } = {}) {
+  const normalized = normalizeHigherEducationExportState(value, { isCurrent })
+  if (normalized === 'current') return 'حاليًّا'
+  if (normalized === 'switched') return 'حوّل التخصّص أو الجامعة / الكليّة'
+  if (normalized === 'exited') return 'منسحب'
+  if (normalized === 'graduated') return 'متخرّج'
+  return normalized
+}
+
+function normalizeJobExportState(value, { isCurrent = false } = {}) {
+  const text = formatExportPrimitive(value)
+  if (!text) return isCurrent ? 'current' : 'previous'
+  const lookup = text.toLowerCase()
+  if (lookup === 'current' || text === 'حاليًّا' || text === 'حاليا' || text === 'حالي') return 'current'
+  if (lookup === 'previous' || text === 'سابق') return 'previous'
+  return text
+}
+
+function jobExportStateLabel(value, { isCurrent = false } = {}) {
+  const normalized = normalizeJobExportState(value, { isCurrent })
+  if (normalized === 'current') return 'حاليًّا'
+  if (normalized === 'previous') return 'سابق'
+  return normalized
+}
+
+function summarizeExtraFields(row, excludeKeys = []) {
+  const exclude = new Set(excludeKeys)
+  return Object.entries(row || {})
+    .filter(([key, value]) => !exclude.has(key) && value !== null && value !== undefined && value !== '' && (!Array.isArray(value) || value.length > 0))
+    .map(([key, value]) => {
+      const rendered = Array.isArray(value)
+        ? joinExportParts(value)
+        : formatExportPrimitive(value)
+      return rendered ? `${humanizeExportKey(key)}: ${rendered}` : ''
+    })
+    .filter(Boolean)
+    .join('\n')
+}
+
+function buildYouthGroupNameLookup(groups) {
+  const lookup = new Map()
+  ;(Array.isArray(groups) ? groups : []).forEach((entry) => {
+    const id = formatExportPrimitive(entry?.group_id ?? entry?.value ?? entry?.id ?? entry?.youth_group_id)
+    const label = formatExportPrimitive(entry?.group_name ?? entry?.label ?? entry?.name ?? entry?.youth_group_name ?? entry?.title)
+    if (!id || !label) return
+    lookup.set(id, label)
+  })
+  return lookup
+}
+
+function extendYouthGroupLookupFromMembers(lookup, rows) {
+  ;(Array.isArray(rows) ? rows : []).forEach((row) => {
+    const memberIds = Array.isArray(row?._youth_group_ids) ? row._youth_group_ids : []
+    const memberNames = Array.isArray(row?._youth_groups) ? row._youth_groups : []
+    memberIds.forEach((id, index) => {
+      const key = formatExportPrimitive(id)
+      const label = formatExportPrimitive(memberNames[index])
+      if (key && label && !lookup.has(key)) lookup.set(key, label)
+    })
+
+    const archivedIds = Array.isArray(row?._archived_youth_group_ids) ? row._archived_youth_group_ids : []
+    archivedIds.forEach((id) => {
+      const key = formatExportPrimitive(id)
+      if (key && !lookup.has(key)) lookup.set(key, getYouthGroupDisplayName(key, lookup))
+    })
+
+    const responsibilityIds = Array.isArray(row?._responsibility_youth_group_ids) ? row._responsibility_youth_group_ids : []
+    const responsibilityNames = Array.isArray(row?._responsibility_youth_groups) ? row._responsibility_youth_groups : []
+    responsibilityIds.forEach((id, index) => {
+      const key = formatExportPrimitive(id)
+      const label = formatExportPrimitive(responsibilityNames[index])
+      if (key && label && !lookup.has(key)) lookup.set(key, label)
+    })
+  })
+  return lookup
+}
+
+function getYouthGroupDisplayName(value, youthGroupLookup) {
+  const id = formatExportPrimitive(value)
+  if (!id) return ''
+  const explicit = youthGroupLookup?.get(id)
+  if (explicit) return explicit
+  const short = toYouthGroupShortLabel(id)
+  if (short) return short
+  return api.formatYouthGroupLabel(id) || id
+}
+
+function buildJobLabelLookup(rows) {
+  const lookup = new Map()
+  ;(Array.isArray(rows) ? rows : []).forEach((row) => {
+    const id = formatExportPrimitive(row?.job_id)
+    if (!id) return
+    const label = joinExportParts([row?.job_title, row?.company], ' - ')
+    lookup.set(id, label || id)
+  })
+  return lookup
+}
+
+function formatNationalityRows(rows) {
+  return joinExportLines((Array.isArray(rows) ? rows : []).map((row) => {
+    const docs = [
+      row?.national_id ? `الرقم الوطني: ${formatExportPrimitive(row.national_id)}` : '',
+      row?.passport_number ? `جواز السفر: ${formatExportPrimitive(row.passport_number)}` : '',
+      row?.jordanian_mothers_children_serial ? `الرقم التسلسلي: ${formatExportPrimitive(row.jordanian_mothers_children_serial)}` : '',
+    ].filter(Boolean)
+    const base = formatExportPrimitive(row?.nationality)
+    return joinExportParts([base, docs.join('، ')], '، ')
+  }))
+}
+
+function formatAddressRows(rows) {
+  return joinExportLines((Array.isArray(rows) ? rows : []).map((row) => {
+    const main = joinExportParts([row?.country, row?.governorate, row?.city, row?.address])
+    const type = row?.is_primary ? '[رئيسي]' : '[إضافي]'
+    const coords = row?.lat != null && row?.lng != null
+      ? `الإحداثيات: ${formatExportPrimitive(row.lat)}, ${formatExportPrimitive(row.lng)}`
+      : ''
+    return joinExportLines([
+      joinExportParts([type, main], ' '),
+      coords,
+    ])
+  }))
+}
+
+function formatMobileRows(rows, jobLookup) {
+  const typeLabels = {
+    personal: 'شخصي',
+    work: 'عمل',
+    home: 'منزل',
+    family: 'عائلي',
+  }
+
+  return joinExportLines((Array.isArray(rows) ? rows : []).map((row) => {
+    const tags = []
+    const type = formatExportPrimitive(row?.type)
+    if (type === 'family') tags.push(joinExportParts([typeLabels[type], row?.family_relation], ' - '))
+    else if (type) tags.push(typeLabels[type] || type)
+    if (row?.phone_calls_flag) tags.push('مكالمات')
+    if (row?.whatsapp_flag) tags.push('واتساب')
+    const linkedJobs = (Array.isArray(row?.linked_job_ids) ? row.linked_job_ids : [])
+      .map((jobId) => jobLookup.get(formatExportPrimitive(jobId)) || formatExportPrimitive(jobId))
+      .filter(Boolean)
+    if (linkedJobs.length) tags.push(`مرتبط بـ ${linkedJobs.join('، ')}`)
+    return joinExportParts([row?.mobile_number, tags.join('، ')], '، ')
+  }))
+}
+
+function formatEmailRows(rows, jobLookup) {
+  const typeLabels = { personal: 'شخصي', work: 'عمل' }
+  return joinExportLines((Array.isArray(rows) ? rows : []).map((row) => {
+    const tags = []
+    const type = formatExportPrimitive(row?.type)
+    if (type) tags.push(typeLabels[type] || type)
+    if (row?.is_primary) tags.push('رئيسي')
+    const linkedJobs = (Array.isArray(row?.linked_job_ids) ? row.linked_job_ids : [])
+      .map((jobId) => jobLookup.get(formatExportPrimitive(jobId)) || formatExportPrimitive(jobId))
+      .filter(Boolean)
+    if (linkedJobs.length) tags.push(`مرتبط بـ ${linkedJobs.join('، ')}`)
+    return joinExportParts([row?.email, tags.join('، ')], '، ')
+  }))
+}
+
+function formatSocialMediaRows(rows) {
+  const platformLabels = { facebook: 'Facebook', instagram: 'Instagram', linkedin: 'LinkedIn' }
+  return joinExportLines((Array.isArray(rows) ? rows : []).map((row) => {
+    const platform = platformLabels[formatExportPrimitive(row?.platform)] || formatExportPrimitive(row?.platform)
+    const suffix = row?.is_primary ? '[رئيسي]' : ''
+    return joinExportParts([platform ? `${platform}:` : '', row?.url, suffix], '، ')
+  }))
+}
+
+function formatSchoolRows(rows, person) {
+  const graduatedFromSchools = person?.school_graduated === true || formatExportPrimitive(person?.school_graduated).toLowerCase() === 'true'
+  const system = joinExportParts([
+    graduatedFromSchools ? 'الحالة: متخرّج من المدارس' : 'الحالة: على مقاعد الدراسة',
+    person?.school_system,
+    person?.school_system_sector,
+    person?.school_final_gpa ? `المعدل: ${formatExportPrimitive(person.school_final_gpa)}` : '',
+  ], '، ')
+
+  const entries = (Array.isArray(rows) ? rows : []).map((row) => {
+    const grades = Array.isArray(row?.grades_attended) ? row.grades_attended : []
+    const extras = []
+    const hasCurrentFlag = row?.is_current === true || row?.is_current === false
+    if (hasCurrentFlag) extras.push(row.is_current ? 'حاليًا' : 'سابقًا')
+    if (row?.section) extras.push(`القسم: ${formatExportPrimitive(row.section)}`)
+    if (grades.length) extras.push(`الصفوف: ${grades.map(formatExportPrimitive).filter(Boolean).join('، ')}`)
+    const range = formatRange(row?.start_date, row?.end_date, row?.is_current, row?.state)
+    if (range) extras.push(range)
+    const other = summarizeExtraFields(row, ['person_id', 'school_record_id', 'school', 'school_name', 'section', 'grades_attended', 'is_current', 'start_date', 'end_date', 'state'])
+    if (other) extras.push(other)
+    return joinExportLines([row?.school ?? row?.school_name, extras.join('، ')])
+  })
+
+  return joinExportLines([system, ...entries])
+}
+
+function formatHigherEducationRows(rows) {
+  return joinExportLines((Array.isArray(rows) ? rows : []).map((row) => {
+    const institutionName = row?.university_college ?? row?.institution_name
+    const state = row?.state ?? row?.education_state
+    const extras = []
+    const head = joinExportParts([institutionName, row?.major, row?.degree], '، ')
+    const range = formatRange(row?.start_date, row?.end_date, row?.is_current, state)
+    if (range) extras.push(range)
+    const stateLabel = higherEducationExportStateLabel(state, { isCurrent: Boolean(row?.is_current) })
+    if (stateLabel) extras.push(`الحالة: ${stateLabel}`)
+    if (row?.final_gpa) extras.push(`المعدل: ${formatExportPrimitive(row.final_gpa)}`)
+    const other = summarizeExtraFields(row, ['person_id', 'university_college', 'institution_name', 'major', 'degree', 'start_date', 'end_date', 'is_current', 'state', 'education_state', 'final_gpa'])
+    if (other) extras.push(other)
+    return joinExportLines([head, extras.join('، ')])
+  }))
+}
+
+function formatJobRows(rows) {
+  return joinExportLines((Array.isArray(rows) ? rows : []).map((row) => {
+    const head = joinExportParts([row?.job_title, row?.company], '، ')
+    const extras = []
+    const range = formatRange(row?.start_date, row?.end_date, row?.is_current, row?.state)
+    if (range) extras.push(range)
+    const stateLabel = jobExportStateLabel(row?.state, { isCurrent: Boolean(row?.is_current) })
+    if (stateLabel) extras.push(`الحالة: ${stateLabel}`)
+    const other = summarizeExtraFields(row, ['person_id', 'job_id', 'job_title', 'company', 'employer_name', 'start_date', 'end_date', 'is_current', 'state', 'employment_state'])
+    if (other) extras.push(other)
+    return joinExportLines([head, extras.join('، ')])
+  }))
+}
+
+function formatResponsibilitiesRows(rows, youthGroupLookup) {
+  return joinExportLines((Array.isArray(rows) ? rows : []).map((row) => {
+    const group = getYouthGroupDisplayName(row?.youth_group_id, youthGroupLookup)
+    const details = [
+      row?.responsibility ?? row?.responsibility_name,
+      row?.jec_year ? `سنة JEC: ${row.jec_year}` : '',
+      row?.is_current === true || row?.is_current === 'true' ? 'الحالة: حاليًّا' : 'الحالة: سابقًا',
+      row?.start_date ? `البداية: ${row.start_date}` : '',
+      row?.end_date ? `النهاية: ${row.end_date}` : '',
+    ].map(formatExportPrimitive).filter(Boolean)
+    const other = summarizeExtraFields(row, ['person_id', 'youth_group_id', 'responsibility', 'responsibility_name', 'jec_year', 'is_current', 'start_date', 'end_date'])
+    if (other) details.push(other)
+    return joinExportLines([group, details.join('، ')])
+  }))
+}
+
+function formatYouthMembershipRows(rows, youthGroupLookup) {
+  return joinExportLines((Array.isArray(rows) ? rows : []).map((row) => {
+    const group = getYouthGroupDisplayName(row?.youth_group_id, youthGroupLookup)
+    const details = []
+    if (row?.age_group) details.push(`الفئة: ${formatExportPrimitive(row.age_group)}`)
+    if (row?.youth_join_year) details.push(`منذ: ${formatExportPrimitive(row.youth_join_year)}`)
+    if (row?.archived) details.push('مؤرشف')
+    const other = summarizeExtraFields(row, ['person_id', 'youth_group_id', 'age_group', 'youth_join_year', 'archived'])
+    if (other) details.push(other)
+    return joinExportLines([group, details.join('، ')])
+  }))
+}
+
+function formatHobbyRows(rows) {
+  return joinExportLines((Array.isArray(rows) ? rows : []).map((row) => joinExportLines([row?.hobby_skill, summarizeExtraFields(row, ['person_id', 'hobby_skill'])])))
+}
+
+function formatHealthRows(rows) {
+  const typeLabels = { illness: 'الحالات الصحية', allergy: 'حساسية', surgery: 'العمليات الجراجية' }
+  return joinExportLines((Array.isArray(rows) ? rows : []).map((row) => {
+    const label = typeLabels[formatExportPrimitive(row?.type)] || formatExportPrimitive(row?.type)
+    return joinExportParts([label ? `${label}:` : '', row?.details], ' ')
+  }))
+}
+
+function formatSpecialNotesRows(rows) {
+  return joinExportLines((Array.isArray(rows) ? rows : []).map((row) => joinExportParts([row?.note_title ? `${formatExportPrimitive(row.note_title)}:` : '', row?.note], ' ')))
+}
+
+function formatTimestampRows(rows, youthGroupLookup) {
+  return joinExportLines((Array.isArray(rows) ? rows : []).map((row) => {
+    const lines = []
+    Object.entries(row || {}).forEach(([key, value]) => {
+      if (key === 'person_id') return
+      if (key === 'youth_group_id') {
+        const group = getYouthGroupDisplayName(value, youthGroupLookup)
+        if (group) lines.push(`فرقة الشبيبة: ${group}`)
+        return
+      }
+      const rendered = Array.isArray(value) ? joinExportParts(value) : formatExportPrimitive(value)
+      if (rendered) lines.push(`${humanizeExportKey(key)}: ${rendered}`)
+    })
+    return joinExportLines(lines)
+  }))
+}
+
+function buildExportPhotoUrl(photoPath) {
+  const text = formatExportPrimitive(photoPath)
+  if (!text) return ''
+  try {
+    return new URL(text, globalThis.location?.origin || 'http://localhost').toString()
+  } catch {
+    return text
+  }
+}
+
+function buildExportViewRow(record, youthGroupLookup) {
+  const payload = record || {}
+  const person = payload.person || {}
+  const addresses = Array.isArray(payload.addresses) ? payload.addresses : []
+  const jobs = Array.isArray(payload.jobs) ? payload.jobs : []
+  const jobLookup = buildJobLabelLookup(jobs)
+
+  const row = {
+    'الاسم الكامل': getDisplayName(person),
+    'الاسم بالإنجليزية': joinExportParts([person.en_first_name, person.en_second_name, person.en_third_name, person.en_last_name], ' '),
+    'اسم الأم': joinExportParts([person.mother_ar_first_name, person.mother_ar_second_name, person.mother_ar_last_name], ' '),
+    'اسم الأم بالإنجليزية': joinExportParts([person.mother_en_first_name, person.mother_en_second_name, person.mother_en_last_name], ' '),
+    'اللقب': formatExportPrimitive(person.title),
+    'الجنس': formatExportPrimitive(person.gender),
+    'تاريخ الميلاد': formatBirthDate(person),
+    'الجنسية والوثائق': formatNationalityRows(payload.nationality),
+    'العنوان': formatAddressRows(addresses),
+    'أرقام الهواتف': formatMobileRows(payload.mobile_numbers, jobLookup),
+    'البريد الإلكتروني': formatEmailRows(payload.emails, jobLookup),
+    'وسائل التواصل الاجتماعي': formatSocialMediaRows(payload.social_media),
+    'عضويات الشبيبة': formatYouthMembershipRows(payload.person_youth_group, youthGroupLookup),
+    'المسؤوليات': formatResponsibilitiesRows(payload.responsibilities, youthGroupLookup),
+    'التعليم المدرسي': formatSchoolRows(payload.schools, person),
+    'التعليم العالي': formatHigherEducationRows(payload.higher_education),
+    'الخبرة العملية': formatJobRows(jobs),
+    'الهوايات والمهارات': formatHobbyRows(payload.hobbies_skills),
+    'الحالات الصحية': formatHealthRows(payload.person_health_conditions),
+    'الملاحظات الخاصة': formatSpecialNotesRows(payload.person_special_notes),
+    'الصورة': buildExportPhotoUrl(payload.photo),
+    'الطوابع الزمنية': formatTimestampRows(payload.timestamps, youthGroupLookup),
+  }
+
+  Object.entries(person).forEach(([key, value]) => {
+    if (EXPORT_HIDDEN_PERSON_KEYS.has(key)) return
+    const text = formatExportPrimitive(value)
+    if (!text) return
+    row[humanizeExportKey(key)] = text
+  })
+
+  return row
+}
+
+function buildWorksheetHeaders(rows) {
+  const headers = []
+  const seen = new Set()
+  rows.forEach((row) => {
+    Object.keys(row || {}).forEach((key) => {
+      if (seen.has(key)) return
+      const hasAnyValue = rows.some((candidate) => hasMeaningfulExportValue(candidate?.[key]))
+      if (!hasAnyValue) return
+      seen.add(key)
+      headers.push(key)
+    })
+  })
+  return headers
+}
+
+async function mapWithConcurrency(items, limit, worker) {
+  const results = []
+  for (let index = 0; index < items.length; index += limit) {
+    const chunk = items.slice(index, index + limit)
+    const chunkResults = await Promise.all(chunk.map(worker))
+    results.push(...chunkResults)
+  }
+  return results
+}
+
+function buildExportFileName(prefix) {
+  const stamp = new Date().toISOString().slice(0, 10)
+  return `${prefix}-${stamp}.xlsx`
 }
 
 const PERSON_SEARCH_CACHE = new WeakMap()
@@ -198,10 +743,10 @@ function nameMatches(parts, queryWordGroups) {
 
 // ── Column definitions ────────────────────────────────────────────────────────
 const COL_DEFS = [
-  { key: 'first_name',      label: 'الاسم الأول',         filterKey: 'first_name',      dataKey: 'first_name' },
-  { key: 'second_name',     label: 'الاسم الثاني',         filterKey: 'second_name',     dataKey: 'second_name' },
-  { key: 'third_name',      label: 'الاسم الثالث',         filterKey: 'third_name',      dataKey: 'third_name' },
-  { key: 'last_name',       label: 'اسم العائلة',           filterKey: 'last_name',       dataKey: 'last_name' },
+  { key: 'ar_first_name',      label: 'الاسم الأول',         filterKey: 'ar_first_name',      dataKey: 'ar_first_name' },
+  { key: 'ar_second_name',     label: 'الاسم الثاني',         filterKey: 'ar_second_name',     dataKey: 'ar_second_name' },
+  { key: 'ar_third_name',      label: 'الاسم الثالث',         filterKey: 'ar_third_name',      dataKey: 'ar_third_name' },
+  { key: 'ar_last_name',       label: 'اسم العائلة',           filterKey: 'ar_last_name',       dataKey: 'ar_last_name' },
   { key: 'gender',          label: 'الجنس',                 filterKey: 'gender',          dataKey: 'gender' },
   { key: 'governorate',     label: 'المحافظة',               filterKey: 'governorate',     dataKey: 'governorate' },
   { key: 'birth_year',      label: 'سنة الميلاد',           filterKey: 'birth_year',      dataKey: 'birth_year' },
@@ -210,7 +755,8 @@ const COL_DEFS = [
   { key: 'age_group',       label: 'الفئة العمرية',          filterKey: 'age_group',       dataKey: p => p._age_groups },
   { key: 'youth_join_year', label: 'سنة الانتساب',           filterKey: 'youth_join_year', dataKey: p => p._youth_join_years },
   { key: 'responsibility_youth_group', label: 'مسؤولية في',     filterKey: 'responsibility_youth_group', dataKey: p => p._responsibility_youth_groups },
-  { key: 'responsibility_time',        label: 'الفترة',       filterKey: 'responsibility_time',        dataKey: p => p._responsibility_times },
+  { key: 'responsibility_jec_year',    label: 'سنة JEC',      filterKey: 'responsibility_jec_year',    dataKey: p => p._responsibility_jec_years },
+  { key: 'responsibility_is_current',  label: 'الحالة',       filterKey: 'responsibility_is_current',  dataKey: p => p._responsibility_current_states },
   { key: 'responsibility',             label: 'المسؤولية',    filterKey: 'responsibility',             dataKey: p => p._responsibilities },
   { key: 'school',          label: 'المدرسة',                filterKey: 'school',          dataKey: p => p._schools },
   { key: 'university',      label: 'الجامعة / الكلية',      filterKey: 'university',      dataKey: p => p._universities },
@@ -581,6 +1127,7 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
   const deferredArchiveQ                   = useDeferredValue(archiveQ)
   const [archiveGroup, setArchiveGroup]   = useState('all')
   const [nameVariations, setNameVariations] = useState({})
+  const [exportingTarget, setExportingTarget] = useState('')
   const PER_PAGE = 50
 
   const nameAliasLookup = useMemo(() => buildNameAliasLookup(nameVariations), [nameVariations])
@@ -590,7 +1137,7 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
 
     ;(async () => {
       try {
-        const enriched = await api.personsEnriched()
+        const enriched = await api.membersIndex()
         if (!canceled) setAllPersons(enriched)
       } finally {
         if (!canceled) setLoading(false)
@@ -794,7 +1341,7 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
     }
     try {
       await api.unarchivePerson(p.person_id, youthGroupId)
-      const refreshed = await api.personsEnriched()
+      const refreshed = await api.membersIndex()
       setAllPersons(refreshed)
       toast?.('تم استعادة العضو', 'success')
     } catch { toast?.('خطأ في الاستعادة', 'error') }
@@ -822,7 +1369,7 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
     try {
       if (type === 'archive-reg') {
         await api.archivePerson(id, youthGroupId)
-        const refreshed = await api.personsEnriched()
+        const refreshed = await api.membersIndex()
         setAllPersons(refreshed)
       } else if (type === 'archive-unreg') {
         await api.archiveUnregistered(id, youthGroupId)
@@ -865,7 +1412,7 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
         toast?.('تم الحذف', 'success')
       } else if (type === 'archive-reg') {
         await api.archivePerson(id, youthGroupId)
-        const refreshed = await api.personsEnriched()
+        const refreshed = await api.membersIndex()
         setAllPersons(refreshed)
         toast?.('تمت الأرشفة', 'success')
       } else if (type === 'archive-unreg') {
@@ -876,6 +1423,40 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
       }
     } catch { toast?.('حدث خطأ', 'error') }
     setConfirm(null)
+  }
+
+  const exportProfilesToWorkbook = async ({ rows, mode }) => {
+    if (!rows.length) {
+      toast?.('لا توجد نتائج لتصديرها', 'error')
+      return
+    }
+
+    const target = mode === 'unregistered' ? 'unregistered' : 'registered'
+    setExportingTarget(target)
+    try {
+      const youthGroupLookup = extendYouthGroupLookupFromMembers(
+        buildYouthGroupNameLookup([]),
+        [...allPersons, ...unregistered]
+      )
+
+      const detailedRecords = await mapWithConcurrency(rows, 10, async (row) => {
+        const payload = mode === 'unregistered'
+          ? await api.getUnregisteredPerson(row.person_id)
+          : await api.getPerson(row.person_id)
+        return buildExportViewRow(payload, youthGroupLookup)
+      })
+
+      const headers = buildWorksheetHeaders(detailedRecords)
+      const sheet = XLSX.utils.json_to_sheet(detailedRecords, { header: headers })
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, sheet, 'Members')
+      XLSX.writeFile(workbook, buildExportFileName(mode === 'unregistered' ? 'unregistered-members-export' : 'members-export'))
+      toast?.(`تم تنزيل ${rows.length.toLocaleString('ar-EG')} سجل`, 'success')
+    } catch {
+      toast?.('تعذر إنشاء ملف Excel', 'error')
+    } finally {
+      setExportingTarget('')
+    }
   }
 
   if (loading) return <div className="loading-center"><div className="spinner" /></div>
@@ -952,6 +1533,14 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
               <input placeholder="ابحث بأي بيانات…" value={q} onChange={e => { setQ(e.target.value); setPage(1) }} />
               {q && <X size={15} style={{ color: 'var(--gray-400)', cursor: 'pointer', flexShrink: 0 }} onClick={() => { setQ(''); setPage(1) }} />}
             </div>
+            <button
+              className="btn btn-ghost"
+              onClick={() => exportProfilesToWorkbook({ rows: visible, mode: 'registered' })}
+              disabled={exportingTarget === 'registered' || visible.length === 0}
+            >
+              <Download size={15} />
+              {exportingTarget === 'registered' ? 'جارٍ التصدير…' : 'تنزيل Excel'}
+            </button>
             <button className={`btn ${showFilters ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setShowFilters(s => !s)}>
               <ChevronDown size={15} style={{ transform: showFilters ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
               فلترة
@@ -1031,6 +1620,14 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
               <input placeholder="ابحث بأي بيانات…" value={uq} onChange={e => { setUq(e.target.value); setUPage(1) }} />
               {uq && <X size={15} style={{ color: 'var(--gray-400)', cursor: 'pointer', flexShrink: 0 }} onClick={() => { setUq(''); setUPage(1) }} />}
             </div>
+            <button
+              className="btn btn-ghost"
+              onClick={() => exportProfilesToWorkbook({ rows: visibleUnreg, mode: 'unregistered' })}
+              disabled={exportingTarget === 'unregistered' || visibleUnreg.length === 0}
+            >
+              <Download size={15} />
+              {exportingTarget === 'unregistered' ? 'جارٍ التصدير…' : 'تنزيل Excel'}
+            </button>
             <button className={`btn ${showUFilters ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setShowUFilters(s => !s)}>
               <ChevronDown size={15} style={{ transform: showUFilters ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
               فلترة

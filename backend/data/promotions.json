@@ -5893,6 +5893,20 @@
       "approved_by": null,
       "created_at": "2026-02-27T21:12:23Z",
       "updated_at": "2026-02-27T21:12:23Z"
+    },
+    {
+      "id": "6d9753ea-bb8",
+      "person_type": "registered",
+      "person_id": 2657,
+      "display_name": "جوي الخواجا",
+      "birth_year": 2015,
+      "youth_group": "YG022",
+      "from_age_group": "الإعدادي",
+      "to_age_group": "الثانوي",
+      "status": "pending",
+      "approved_by": null,
+      "created_at": "2026-04-13T10:05:32Z",
+      "updated_at": "2026-04-13T10:05:32Z"
     }
   ],
   "group_age_rules": {

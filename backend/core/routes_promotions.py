@@ -347,8 +347,8 @@ def register_promotions_routes(app):
                             if key in existing:
                                 continue
 
-                            fn = str(row.get("first_name") or "")
-                            ln = str(row.get("last_name") or "")
+                            fn = str(row.get("ar_first_name") or "")
+                            ln = str(row.get("ar_last_name") or "")
                             new_promo = {
                                 "id": _promo_id(),
                                 "person_type": person_type,
@@ -368,7 +368,7 @@ def register_promotions_routes(app):
                             created.append(new_promo)
 
             _scan_persons("registered", S._registered_persons_df().copy(), pyg)
-            unreg_persons = S.unreg_store.get("persons", pd.DataFrame()).copy()
+            unreg_persons = S.unregistered_persons_view_df().copy()
             unreg_pyg = S.unreg_store.get("person_youth_group", pd.DataFrame()).copy()
             if not unreg_persons.empty:
                 _scan_persons("unregistered", unreg_persons, unreg_pyg)
@@ -424,6 +424,19 @@ def register_promotions_routes(app):
                         if not mask.any():
                             _save_promotions(data)
                             return jsonify({"error": "record not found in person_youth_group"}), 404
+                        record_id = S._normalize_person_youth_group_record_id(pyg.loc[mask, S.PERSON_YOUTH_GROUP_RECORD_ID_COL].iloc[0])
+                        history_df = S.store.get(S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame())
+                        history_rows = history_df.replace({pd.NA: None, float('nan'): None}).to_dict(orient="records") if not history_df.empty else []
+                        history_rows.append({
+                            S.PERSON_YOUTH_GROUP_RECORD_ID_COL: record_id,
+                            "age_group": to_ag,
+                            "start_date": None,
+                            "end_date": None,
+                        })
+                        S.store[S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET] = pd.DataFrame(
+                            S.normalize_person_youth_group_age_history_entries(history_rows),
+                            columns=S.PERSON_YOUTH_GROUP_AGE_HISTORY_COLUMNS,
+                        )
                         S.store["person_youth_group"].loc[mask, "age_group"] = to_ag
                         if extra and from_ag == 'الثانوي' and to_ag == 'الجامعيّة':
                             int_pid = int(pid)
@@ -453,6 +466,19 @@ def register_promotions_routes(app):
                         if not mask.any():
                             _save_promotions(data)
                             return jsonify({"error": "record not found"}), 404
+                        record_id = S._normalize_person_youth_group_record_id(upyg.loc[mask, S.PERSON_YOUTH_GROUP_RECORD_ID_COL].iloc[0])
+                        history_df = S.unreg_store.get(S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame())
+                        history_rows = history_df.replace({pd.NA: None, float('nan'): None}).to_dict(orient="records") if not history_df.empty else []
+                        history_rows.append({
+                            S.PERSON_YOUTH_GROUP_RECORD_ID_COL: record_id,
+                            "age_group": to_ag,
+                            "start_date": None,
+                            "end_date": None,
+                        })
+                        S.unreg_store[S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET] = pd.DataFrame(
+                            S.normalize_person_youth_group_age_history_entries(history_rows),
+                            columns=S.PERSON_YOUTH_GROUP_AGE_HISTORY_COLUMNS,
+                        )
                         S.unreg_store["person_youth_group"].loc[mask, "age_group"] = to_ag
                         if extra and from_ag == 'الثانوي' and to_ag == 'الجامعيّة':
                             str_pid = str(pid)

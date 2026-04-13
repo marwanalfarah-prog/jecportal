@@ -7,8 +7,6 @@ from core import state as S
 from core.routes_auth import exports as auth_exports
 
 
-CHURCHES_FILE = "churches.json"
-LEGACY_PARISHES_FILE = "parishes.json"
 PARISH_LOGOS_DIR = os.path.join(S.PHOTOS_ROOT_DIR, "logos", "parishes")
 VALID_REGIONS = {"الشمال", "الوسط", "الجنوب"}
 VALID_GOVERNORATES = {
@@ -18,13 +16,13 @@ VALID_GOVERNORATES = {
 
 SPECIAL_PARISHES = {
     "CH001": {
-        "id": "PA001",
+        S.PARISH_ID_COL: "PA001",
         "name": "رعية قلب مريم الطاهر - الفحيص",
         "area": "الفحيص",
         "member_church_ids": {"CH001", "CH015"},
     },
     "CH029": {
-        "id": "PA029",
+        S.PARISH_ID_COL: "PA029",
         "name": "رعية قطع رأس يوحنا المعمدان - مادبا",
         "area": "مادبا",
         "member_church_ids": {"CH029", "CH030"},
@@ -32,14 +30,6 @@ SPECIAL_PARISHES = {
 }
 
 os.makedirs(PARISH_LOGOS_DIR, exist_ok=True)
-
-
-def _churches_path() -> str:
-    return os.path.join(S.db.data_dir, CHURCHES_FILE)
-
-
-def _legacy_parishes_path() -> str:
-    return os.path.join(S.db.data_dir, LEGACY_PARISHES_FILE)
 
 
 def _parish_logo_filename(parish_id: str):
@@ -57,10 +47,20 @@ def _parish_logo_filename(parish_id: str):
 def _parishes_with_logos(parishes: list[dict]) -> list[dict]:
     out = []
     for parish in parishes:
-        pid = _clean_text(parish.get("id"))
+        pid = _clean_text(parish.get(S.PARISH_ID_COL) or parish.get("id"))
         logo_url = f"/api/parishes/{pid}/logo" if _parish_logo_filename(pid) else None
-        out.append({**parish, "logo_url": logo_url})
+        out.append({**parish, S.PARISH_ID_COL: pid, "id": pid, "logo_url": logo_url})
     return out
+
+
+def _parish_id_value(parish: dict | None) -> str:
+    row = parish if isinstance(parish, dict) else {}
+    return _clean_text(row.get(S.PARISH_ID_COL) or row.get("id"))
+
+
+def _church_id_value(church: dict | None) -> str:
+    row = church if isinstance(church, dict) else {}
+    return _clean_text(row.get(S.CHURCH_ID_COL) or row.get("id"))
 
 
 def _youth_groups_by_parish() -> dict[str, list[dict]]:
@@ -129,7 +129,7 @@ def _clean_governorate(value) -> str:
 
 
 def _church_id_key(church: dict) -> int:
-    cid = _clean_text(church.get("id"))
+    cid = _church_id_value(church)
     digits = "".join(ch for ch in cid if ch.isdigit())
     if not digits:
         return 0
@@ -147,7 +147,7 @@ def _next_church_id(churches: list[dict]) -> str:
 
 
 def _parish_id_key(parish: dict) -> int:
-    pid = _clean_text(parish.get("id"))
+    pid = _parish_id_value(parish)
     digits = "".join(ch for ch in pid if ch.isdigit())
     if not digits:
         return 0
@@ -169,7 +169,7 @@ def _parish_name_from_fields(patron_saint: str, area: str) -> str:
 
 
 def _church_special_parish(church_row: dict):
-    cid = _clean_text(church_row.get("id"))
+    cid = _church_id_value(church_row)
     if cid in {"CH001", "CH015"}:
         return SPECIAL_PARISHES["CH001"]
     if cid in {"CH029", "CH030"}:
@@ -194,15 +194,15 @@ def _normalize_church_rows(rows, valid_parish_ids: set[str]) -> list[dict]:
         if not patron or not area or lat is None or lng is None or parish_id not in valid_parish_ids:
             continue
 
-        cid = _clean_text(row.get("id"))
-        num = _church_id_key({"id": cid})
+        cid = _church_id_value(row)
+        num = _church_id_key({S.CHURCH_ID_COL: cid})
         if num <= 0:
             num = idx
         cid = f"CH{num:03d}"
 
         cleaned.append({
-            "id": cid,
-            "parish_id": parish_id,
+            S.CHURCH_ID_COL: cid,
+            S.PARISH_ID_COL: parish_id,
             "patron_saint": patron,
             "area": area,
             "lat": lat,
@@ -216,13 +216,13 @@ def _normalize_church_rows(rows, valid_parish_ids: set[str]) -> list[dict]:
     next_num = 1
     normalized = []
     for row in cleaned:
-        cid = row["id"]
+        cid = row[S.CHURCH_ID_COL]
         if cid in seen:
             while f"CH{next_num:03d}" in seen:
                 next_num += 1
             cid = f"CH{next_num:03d}"
         seen.add(cid)
-        normalized.append({**row, "id": cid})
+        normalized.append({**row, S.CHURCH_ID_COL: cid, "id": cid})
 
     normalized.sort(key=_church_id_key)
     return normalized
@@ -244,25 +244,27 @@ def _normalize_parish_rows(rows) -> list[dict]:
         lpj_url = _clean_url(row.get("lpj_url"))
         facebook_url = _clean_url(row.get("facebook_url"))
         instagram_url = _clean_url(row.get("instagram_url"))
+        linkedin_url = _clean_url(row.get("linkedin_url"))
         region = _clean_region(row.get("region"))
         governorate = _clean_governorate(row.get("governorate"))
         if not patron or not area or not name:
             continue
 
-        pid = _clean_text(row.get("id"))
-        num = _parish_id_key({"id": pid})
+        pid = _parish_id_value(row)
+        num = _parish_id_key({S.PARISH_ID_COL: pid})
         if num <= 0:
             num = idx
         pid = f"PA{num:03d}"
 
         cleaned.append({
-            "id": pid,
+            S.PARISH_ID_COL: pid,
             "name": name,
             "patron_saint": patron,
             "area": area,
             "lpj_url": lpj_url,
             "facebook_url": facebook_url,
             "instagram_url": instagram_url,
+            "linkedin_url": linkedin_url,
             "region": region,
             "governorate": governorate,
         })
@@ -273,13 +275,13 @@ def _normalize_parish_rows(rows) -> list[dict]:
     next_num = 1
     normalized = []
     for row in cleaned:
-        pid = row["id"]
+        pid = row[S.PARISH_ID_COL]
         if pid in seen:
             while f"PA{next_num:03d}" in seen:
                 next_num += 1
             pid = f"PA{next_num:03d}"
         seen.add(pid)
-        normalized.append({**row, "id": pid})
+        normalized.append({**row, S.PARISH_ID_COL: pid, "id": pid})
 
     normalized.sort(key=_parish_id_key)
     return normalized
@@ -294,7 +296,7 @@ def _build_parishes_from_legacy_church_rows(rows: list[dict]) -> tuple[list[dict
         if not isinstance(row, dict):
             continue
 
-        cid = _clean_text(row.get("id"))
+        cid = _church_id_value(row)
         patron = _clean_text(row.get("patron_saint"))
         area = _clean_text(row.get("area"))
         lat = _to_float(row.get("lat"))
@@ -307,10 +309,10 @@ def _build_parishes_from_legacy_church_rows(rows: list[dict]) -> tuple[list[dict
         if not patron or not area or lat is None or lng is None:
             continue
 
-        special = _church_special_parish({"id": cid})
+        special = _church_special_parish({S.CHURCH_ID_COL: cid})
         if special:
-            pkey = special["id"]
-            pid = special["id"]
+            pkey = special[S.PARISH_ID_COL]
+            pid = special[S.PARISH_ID_COL]
             pname = special["name"]
             parea = special["area"]
         else:
@@ -321,7 +323,7 @@ def _build_parishes_from_legacy_church_rows(rows: list[dict]) -> tuple[list[dict
 
         if pkey not in parish_by_key:
             parish_by_key[pkey] = {
-                "id": pid,
+                S.PARISH_ID_COL: pid,
                 "name": pname,
                 "patron_saint": patron,
                 "area": parea,
@@ -336,8 +338,8 @@ def _build_parishes_from_legacy_church_rows(rows: list[dict]) -> tuple[list[dict
             parish_by_key[pkey]["lpj_url"] = lpj_url
 
         churches.append({
-            "id": cid,
-            "parish_id": pkey,
+            S.CHURCH_ID_COL: cid,
+            S.PARISH_ID_COL: pkey,
             "patron_saint": patron,
             "area": area,
             "lat": lat,
@@ -349,19 +351,20 @@ def _build_parishes_from_legacy_church_rows(rows: list[dict]) -> tuple[list[dict
     # Assign generated IDs back to churches by temporary pkey.
     pkey_to_pid = {}
     for p in normalized_parishes:
-        if p.get("id") in {"PA001", "PA029"}:
-            pkey_to_pid[p["id"]] = p["id"]
+        parish_id = _parish_id_value(p)
+        if parish_id in {"PA001", "PA029"}:
+            pkey_to_pid[parish_id] = parish_id
         else:
             pkey = f"{p.get('patron_saint', '')}::{p.get('area', '')}"
-            pkey_to_pid[pkey] = p["id"]
+            pkey_to_pid[pkey] = parish_id
 
     mapped_churches = []
     for c in churches:
-        key = c.get("parish_id")
+        key = c.get(S.PARISH_ID_COL)
         pid = pkey_to_pid.get(key, key if key in pkey_to_pid else "")
-        mapped_churches.append({**c, "parish_id": pid})
+        mapped_churches.append({**c, S.PARISH_ID_COL: pid, "parish_id": pid})
 
-    valid_parish_ids = {p["id"] for p in normalized_parishes}
+    valid_parish_ids = {_parish_id_value(p) for p in normalized_parishes}
     normalized_churches = _normalize_church_rows(mapped_churches, valid_parish_ids)
     return normalized_parishes, normalized_churches
 
@@ -373,7 +376,7 @@ def _normalize_payload(payload) -> dict:
     # New shape takes precedence.
     if isinstance(payload.get("parishes"), list) and isinstance(payload.get("churches"), list):
         parishes = _normalize_parish_rows(payload.get("parishes", []))
-        valid_parish_ids = {p["id"] for p in parishes}
+        valid_parish_ids = {_parish_id_value(p) for p in parishes}
         churches = _normalize_church_rows(payload.get("churches", []), valid_parish_ids)
         return {"parishes": parishes, "churches": churches}
 
@@ -382,72 +385,91 @@ def _normalize_payload(payload) -> dict:
     return dict(zip(["parishes", "churches"], _build_parishes_from_legacy_church_rows(legacy_rows)))
 
 
+def _parish_rows_df(rows: list[dict]) -> pd.DataFrame:
+    normalized = _normalize_parish_rows(rows)
+    pared = []
+    for row in normalized:
+        pared.append({col: row.get(col, "") for col in S.PARISH_COLUMNS})
+    return pd.DataFrame(pared, columns=S.PARISH_COLUMNS)
+
+
+def _church_rows_df(rows: list[dict], valid_parish_ids: set[str]) -> pd.DataFrame:
+    normalized = _normalize_church_rows(rows, valid_parish_ids)
+    pared = []
+    for row in normalized:
+        pared.append({col: row.get(col) for col in S.CHURCH_COLUMNS})
+    return pd.DataFrame(pared, columns=S.CHURCH_COLUMNS)
+
+
+def _ensure_church_sheets() -> None:
+    parishes_df = S.store.get(S.PARISH_SHEET, pd.DataFrame()).copy()
+    churches_df = S.store.get(S.CHURCH_SHEET, pd.DataFrame()).copy()
+
+    if parishes_df.empty:
+        parishes_df = pd.DataFrame(columns=S.PARISH_COLUMNS)
+    if churches_df.empty:
+        churches_df = pd.DataFrame(columns=S.CHURCH_COLUMNS)
+
+    for col in S.PARISH_COLUMNS:
+        if col not in parishes_df.columns:
+            parishes_df[col] = None
+    for col in S.CHURCH_COLUMNS:
+        if col not in churches_df.columns:
+            churches_df[col] = None
+
+    parish_rows = parishes_df[S.PARISH_COLUMNS].where(pd.notna(parishes_df[S.PARISH_COLUMNS]), None).to_dict(orient="records")
+    normalized_parishes = _normalize_parish_rows(parish_rows)
+    valid_parish_ids = {_parish_id_value(row) for row in normalized_parishes}
+    church_rows = churches_df[S.CHURCH_COLUMNS].where(pd.notna(churches_df[S.CHURCH_COLUMNS]), None).to_dict(orient="records")
+    normalized_churches = _normalize_church_rows(church_rows, valid_parish_ids)
+
+    S.store[S.PARISH_SHEET] = _parish_rows_df(normalized_parishes)
+    S.store[S.CHURCH_SHEET] = _church_rows_df(normalized_churches, valid_parish_ids)
+
+
 def _load_payload() -> dict:
-    payload = S.db.load_json_file(_churches_path(), {"churches": []})
-    rows = payload.get("churches", []) if isinstance(payload, dict) else []
+    _ensure_church_sheets()
+    parishes_df = S.store.get(S.PARISH_SHEET, pd.DataFrame()).copy()
+    churches_df = S.store.get(S.CHURCH_SHEET, pd.DataFrame()).copy()
 
-    # Fallback to legacy parishes file for migration if churches file is empty.
-    if not rows:
-        legacy = S.db.load_json_file(_legacy_parishes_path(), {"parishes": []})
-        legacy_rows = legacy.get("parishes", []) if isinstance(legacy, dict) else []
-        if legacy_rows:
-            return _normalize_payload({"churches": legacy_rows})
-
-    return _normalize_payload(payload)
+    parishes = _normalize_parish_rows(
+        parishes_df[S.PARISH_COLUMNS].where(pd.notna(parishes_df[S.PARISH_COLUMNS]), None).to_dict(orient="records")
+        if not parishes_df.empty else []
+    )
+    valid_parish_ids = {_parish_id_value(row) for row in parishes}
+    churches = _normalize_church_rows(
+        churches_df[S.CHURCH_COLUMNS].where(pd.notna(churches_df[S.CHURCH_COLUMNS]), None).to_dict(orient="records")
+        if not churches_df.empty else [],
+        valid_parish_ids,
+    )
+    return {"parishes": parishes, "churches": churches}
 
 
 def _save_payload(payload: dict):
     normalized = _normalize_payload(payload)
-    # Persist only source-of-truth fields; parish name is always derived.
-    parishes = []
-    for parish in normalized["parishes"]:
-        parishes.append({
-            "id": parish["id"],
-            "patron_saint": parish["patron_saint"],
-            "area": parish["area"],
-            "lpj_url": parish["lpj_url"],
-            "facebook_url": parish.get("facebook_url", ""),
-            "instagram_url": parish.get("instagram_url", ""),
-            "region": parish["region"],
-            "governorate": parish["governorate"],
-        })
-    S.db.save_json_file(_churches_path(), {"parishes": parishes, "churches": normalized["churches"]})
-
-
-def _migrate_and_persist_churches_if_needed():
-    churches_path = _churches_path()
-    legacy_path = _legacy_parishes_path()
-
-    if not os.path.exists(churches_path) or os.path.exists(legacy_path):
-        payload = _load_payload()
-        _save_payload(payload)
-
-        # Keep a legacy backup after migration.
-        if os.path.exists(legacy_path):
-            backup = legacy_path + ".migrated"
-            try:
-                os.replace(legacy_path, backup)
-            except OSError:
-                pass
+    valid_parish_ids = {_parish_id_value(row) for row in normalized["parishes"]}
+    S.store[S.PARISH_SHEET] = _parish_rows_df(normalized["parishes"])
+    S.store[S.CHURCH_SHEET] = _church_rows_df(normalized["churches"], valid_parish_ids)
+    S.db.save_excel_sheets(S.store)
 
 
 def register_churches_routes(app):
-    _migrate_and_persist_churches_if_needed()
-
     @app.get("/api/churches")
     def list_churches():
         err = auth_exports["_require_admin"]()
         if err:
             return err
         payload = _load_payload()
-        parish_by_id = {p["id"]: p for p in payload["parishes"]}
+        parish_by_id = {_parish_id_value(p): p for p in payload["parishes"]}
         youth_groups_by_parish = _youth_groups_by_parish()
         churches = []
         for church in payload["churches"]:
             parish = parish_by_id.get(church.get("parish_id"), {})
-            parish_id = _clean_text(parish.get("id"))
+            parish_id = _parish_id_value(parish)
             churches.append({
                 **church,
+                S.CHURCH_ID_COL: _church_id_value(church),
+                "id": _church_id_value(church),
                 "parish_name": _clean_text(parish.get("name")),
                 "parish_lpj_url": _clean_url(parish.get("lpj_url")),
                 "parish_facebook_url": _clean_url(parish.get("facebook_url")),
@@ -479,6 +501,7 @@ def register_churches_routes(app):
         lpj_url = _clean_url(body.get("lpj_url"))
         facebook_url = _clean_url(body.get("facebook_url"))
         instagram_url = _clean_url(body.get("instagram_url"))
+        linkedin_url = _clean_url(body.get("linkedin_url"))
         region = _clean_region(body.get("region"))
         governorate = _clean_governorate(body.get("governorate"))
 
@@ -493,21 +516,23 @@ def register_churches_routes(app):
             payload = _load_payload()
             parishes = payload["parishes"]
             parish = {
-                "id": _next_parish_id(parishes),
+                S.PARISH_ID_COL: _next_parish_id(parishes),
                 "name": _parish_name_from_fields(patron, area),
                 "patron_saint": patron,
                 "area": area,
                 "lpj_url": lpj_url,
                 "facebook_url": facebook_url,
                 "instagram_url": instagram_url,
+                "linkedin_url": linkedin_url,
                 "region": region,
                 "governorate": governorate,
             }
             parishes.append(parish)
             _save_payload({"parishes": parishes, "churches": payload["churches"]})
 
-        logo_url = f"/api/parishes/{parish['id']}/logo" if _parish_logo_filename(parish["id"]) else None
-        return jsonify({"ok": True, "parish": {**parish, "logo_url": logo_url}})
+        parish_id_value = _parish_id_value(parish)
+        logo_url = f"/api/parishes/{parish_id_value}/logo" if _parish_logo_filename(parish_id_value) else None
+        return jsonify({"ok": True, "parish": {**parish, S.PARISH_ID_COL: parish_id_value, "id": parish_id_value, "logo_url": logo_url}})
 
     @app.delete("/api/parishes/<parish_id>")
     def delete_parish(parish_id):
@@ -527,7 +552,7 @@ def register_churches_routes(app):
             if any(_clean_text(c.get("parish_id")) == target for c in churches):
                 return jsonify({"error": "cannot delete parish with linked churches"}), 400
 
-            next_rows = [p for p in parishes if _clean_text(p.get("id")) != target]
+            next_rows = [p for p in parishes if _parish_id_value(p) != target]
             if len(next_rows) == len(parishes):
                 return jsonify({"error": "not found"}), 404
             _save_payload({"parishes": next_rows, "churches": churches})
@@ -550,6 +575,7 @@ def register_churches_routes(app):
         lpj_url = _clean_url(body.get("lpj_url"))
         facebook_url = _clean_url(body.get("facebook_url"))
         instagram_url = _clean_url(body.get("instagram_url"))
+        linkedin_url = _clean_url(body.get("linkedin_url"))
         region = _clean_region(body.get("region"))
         governorate = _clean_governorate(body.get("governorate"))
 
@@ -563,26 +589,28 @@ def register_churches_routes(app):
         with S.lock:
             payload = _load_payload()
             parishes = payload["parishes"]
-            idx = next((i for i, p in enumerate(parishes) if _clean_text(p.get("id")) == target), None)
+            idx = next((i for i, p in enumerate(parishes) if _parish_id_value(p) == target), None)
             if idx is None:
                 return jsonify({"error": "not found"}), 404
 
             updated = {
-                "id": target,
+                S.PARISH_ID_COL: target,
                 "name": _parish_name_from_fields(patron, area),
                 "patron_saint": patron,
                 "area": area,
                 "lpj_url": lpj_url,
                 "facebook_url": facebook_url,
                 "instagram_url": instagram_url,
+                "linkedin_url": linkedin_url,
                 "region": region,
                 "governorate": governorate,
             }
             parishes[idx] = updated
             _save_payload({"parishes": parishes, "churches": payload["churches"]})
 
-        logo_url = f"/api/parishes/{updated['id']}/logo" if _parish_logo_filename(updated["id"]) else None
-        return jsonify({"ok": True, "parish": {**updated, "logo_url": logo_url}})
+        updated_parish_id = _parish_id_value(updated)
+        logo_url = f"/api/parishes/{updated_parish_id}/logo" if _parish_logo_filename(updated_parish_id) else None
+        return jsonify({"ok": True, "parish": {**updated, S.PARISH_ID_COL: updated_parish_id, "id": updated_parish_id, "logo_url": logo_url}})
 
     @app.post("/api/churches")
     def create_church():
@@ -610,14 +638,14 @@ def register_churches_routes(app):
             payload = _load_payload()
             churches = payload["churches"]
             parishes = payload["parishes"]
-            parish_by_id = {p["id"]: p for p in parishes}
+            parish_by_id = {_parish_id_value(p): p for p in parishes}
             parish = parish_by_id.get(parish_id)
             if parish is None:
                 return jsonify({"error": "invalid parish_id"}), 400
 
             church = {
-                "id": _next_church_id(churches),
-                "parish_id": parish_id,
+                S.CHURCH_ID_COL: _next_church_id(churches),
+                S.PARISH_ID_COL: parish_id,
                 "patron_saint": patron,
                 "area": area,
                 "lat": lat,
@@ -628,6 +656,8 @@ def register_churches_routes(app):
 
         response_church = {
             **church,
+            S.CHURCH_ID_COL: _church_id_value(church),
+            "id": _church_id_value(church),
             "parish_name": _clean_text(parish.get("name")),
             "parish_lpj_url": _clean_url(parish.get("lpj_url")),
             "parish_facebook_url": _clean_url(parish.get("facebook_url")),
@@ -652,7 +682,7 @@ def register_churches_routes(app):
         with S.lock:
             payload = _load_payload()
             churches = payload["churches"]
-            next_rows = [c for c in churches if _clean_text(c.get("id")) != target]
+            next_rows = [c for c in churches if _church_id_value(c) != target]
             if len(next_rows) == len(churches):
                 return jsonify({"error": "not found"}), 404
             _save_payload({"parishes": payload["parishes"], "churches": next_rows})
@@ -689,18 +719,18 @@ def register_churches_routes(app):
             payload = _load_payload()
             churches = payload["churches"]
             parishes = payload["parishes"]
-            parish_by_id = {p["id"]: p for p in parishes}
+            parish_by_id = {_parish_id_value(p): p for p in parishes}
             parish = parish_by_id.get(parish_id)
             if parish is None:
                 return jsonify({"error": "invalid parish_id"}), 400
 
-            idx = next((i for i, c in enumerate(churches) if _clean_text(c.get("id")) == target), None)
+            idx = next((i for i, c in enumerate(churches) if _church_id_value(c) == target), None)
             if idx is None:
                 return jsonify({"error": "not found"}), 404
 
             church = {
-                "id": target,
-                "parish_id": parish_id,
+                S.CHURCH_ID_COL: target,
+                S.PARISH_ID_COL: parish_id,
                 "patron_saint": patron,
                 "area": area,
                 "lat": lat,
@@ -711,6 +741,8 @@ def register_churches_routes(app):
 
         response_church = {
             **church,
+            S.CHURCH_ID_COL: _church_id_value(church),
+            "id": _church_id_value(church),
             "parish_name": _clean_text(parish.get("name")),
             "parish_lpj_url": _clean_url(parish.get("lpj_url")),
             "parish_facebook_url": _clean_url(parish.get("facebook_url")),
@@ -733,7 +765,7 @@ def register_churches_routes(app):
             return jsonify({"error": "invalid parish id"}), 400
 
         payload = _load_payload()
-        if not any(_clean_text(p.get("id")) == target for p in payload["parishes"]):
+        if not any(_parish_id_value(p) == target for p in payload["parishes"]):
             return jsonify({"error": "not found"}), 404
 
         if "logo" not in request.files:

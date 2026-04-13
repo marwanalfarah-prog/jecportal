@@ -2,6 +2,7 @@ import hashlib
 import os
 import re
 import threading
+import zipfile
 from copy import deepcopy
 
 import numpy as np
@@ -48,7 +49,7 @@ def _hash_pw(pw: str) -> str:
 def _compose_person_full_name(row) -> str:
     """Build a full person name from all available name components."""
     parts = []
-    for key in ("first_name", "second_name", "third_name", "last_name"):
+    for key in ("ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name"):
         value = row.get(key, "") if hasattr(row, "get") else ""
         if pd.notna(value):
             text = str(value).strip()
@@ -83,7 +84,20 @@ def _load_auth() -> dict:
         if _auth_cache_data is not None and _auth_cache_token == current_token:
             return deepcopy(_auth_cache_data)
 
-    raw = S.db.load_auth()
+    try:
+        raw = S.db.load_auth()
+    except zipfile.BadZipFile:
+        cached_payload = None
+        with _auth_cache_lock:
+            if _auth_cache_data is not None:
+                cached_payload = deepcopy(_auth_cache_data)
+        if cached_payload is not None:
+            try:
+                S.db.save_json_file(S.db.auth_backup_path, cached_payload)
+            except Exception:
+                pass
+            return cached_payload
+        raise
     reg_person_ids: set[str] = set()
     unreg_person_ids: set[str] = set()
     reg_name_by_pid: dict[str, str] = {}
@@ -201,7 +215,7 @@ def _get_person_name(person_type: str, pid) -> str:
                 full_name = _compose_person_full_name(r)
                 return full_name or str(pid)
         elif person_type == "unregistered":
-            df = S.unreg_store.get("persons", pd.DataFrame())
+            df = S.unregistered_persons_view_df()
             row = df[df["person_id"].astype(str) == str(pid)]
             if not row.empty:
                 r = row.iloc[0]
@@ -688,8 +702,8 @@ def register_auth_routes(app):
                     continue
                 if str(pid) in existing_pids_reg:
                     continue
-                fn = str(row.get("first_name") or "")
-                ln = str(row.get("last_name") or "")
+                fn = str(row.get("ar_first_name") or "")
+                ln = str(row.get("ar_last_name") or "")
                 uname = _make_username(fn, ln, existing_usernames)
                 pw = _make_password(fn, ln, pid)
                 existing_usernames.add(uname)
@@ -714,7 +728,7 @@ def register_auth_routes(app):
                     "age_groups": age_groups,
                 })
 
-            unreg_df = S.unreg_store.get("persons", pd.DataFrame()).replace({np.nan: None})
+            unreg_df = S.unregistered_persons_view_df().replace({np.nan: None})
             existing_pids_unreg = {
                 str(u["person_id"]) for u in data["users"] if u.get("person_type") == "unregistered" and u.get("person_id") is not None
             }
@@ -726,8 +740,8 @@ def register_auth_routes(app):
                         continue
                     if str(pid) in existing_pids_unreg:
                         continue
-                    fn = str(row.get("first_name") or "")
-                    ln = str(row.get("last_name") or "")
+                    fn = str(row.get("ar_first_name") or "")
+                    ln = str(row.get("ar_last_name") or "")
                     uname = _make_username(fn, ln, existing_usernames)
                     pw = _make_password(fn, ln, pid)
                     existing_usernames.add(uname)

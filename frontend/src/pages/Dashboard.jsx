@@ -2,42 +2,9 @@ import { useEffect, useState } from 'react'
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { Users, Building2, GraduationCap, Briefcase, Globe, MapPin } from 'lucide-react'
 import { api } from '../api.js'
+import { buildMottoBibleReaderTarget, formatMottoTextWithSource } from '../mottoBibleReference.js'
 
 const COLORS = ['#0f2744','#1a3a5c','#2d5986','#c9963c','#e8b55a','#4a7fb5','#3d6a99','#9ba5bc','#6b778f','#4a5568']
-
-function formatMottoSource(ref) {
-  if (!ref || typeof ref !== 'object') return ''
-  const abbr = String(ref?.book?.book_abbr || ref?.book?.abbr || ref?.book?.book_name || '').trim()
-  const verseObj = ref?.verse && typeof ref.verse === 'object' ? ref.verse : {}
-  let verseRaw = String(verseObj?.raw || '').trim()
-  if (!verseRaw) {
-    const segments = Array.isArray(verseObj?.segments) ? verseObj.segments : []
-    const rendered = segments.map((seg) => {
-      const start = seg?.start || {}
-      const end = seg?.end || {}
-      const sc = Number(start?.chapter)
-      const sv = Number(start?.verse)
-      const ec = Number(end?.chapter)
-      const ev = Number(end?.verse)
-      if (!sc || !sv || !ec || !ev) return ''
-      if (sc === ec && sv === ev) return `${sc}: ${sv}`
-      if (sc === ec) return `${sc}: ${sv}-${ev}`
-      return `${sc}: ${sv}-${ec}: ${ev}`
-    }).filter(Boolean)
-    verseRaw = rendered.join(', ')
-  }
-  verseRaw = verseRaw.replace(/:\s*/g, ': ')
-  if (!abbr || !verseRaw) return ''
-  return `(${abbr} ${verseRaw})`
-}
-
-function formatMottoTextWithSource(motto) {
-  const title = String(motto?.title || '').trim()
-  if (!title) return '—'
-  const references = Array.isArray(motto?.bible_references) ? motto.bible_references : []
-  const source = formatMottoSource(references[0])
-  return source ? `${title} ${source}` : title
-}
 
 function buildScopeLabel(targets, yearLabel) {
   const groups = Array.isArray(targets?.youth_groups) ? targets.youth_groups : []
@@ -92,7 +59,7 @@ function HtmlBarChart({ data, colors, barHeight = 24, gap = 8, fontSize = 13, la
   )
 }
 
-export default function Dashboard() {
+export default function Dashboard({ onOpenBibleReference }) {
   const [stats, setStats]       = useState(null)
   const [govData, setGovData]   = useState([])
   const [genderData, setGender] = useState([])
@@ -117,6 +84,168 @@ export default function Dashboard() {
 
   return (
     <div>
+      {mottoData.length > 0 && (
+        <div className="card" style={{ marginBottom: 16, overflow: 'hidden' }}>
+          <div
+            className="card-body"
+            style={{
+              display: 'grid',
+              gap: 10,
+              background: 'linear-gradient(180deg, #fffdf8 0%, #ffffff 100%)',
+            }}
+          >
+            {mottoData.map((motto) => {
+              const targets = motto?.targets && typeof motto.targets === 'object' ? motto.targets : {}
+              const isJecJordanMotto = Boolean(targets?.jec_jordan)
+              const scopeLabel = buildScopeLabel(targets, motto?.year_label)
+              const bibleTarget = buildMottoBibleReaderTarget(motto)
+              const verseText = formatMottoTextWithSource(motto)
+              const leftLogoUrl = String(motto?.logo_url || '').trim()
+              const rightLogoUrl = isJecJordanMotto ? '/api/logo' : ''
+
+              return (
+                <div
+                  key={motto.id || `${motto.title}-${motto.year_label}`}
+                  style={{
+                    border: '1px solid rgba(201, 150, 60, 0.22)',
+                    borderRadius: 16,
+                    padding: '14px 16px',
+                    background: 'radial-gradient(circle at top right, rgba(201, 150, 60, 0.12), transparent 34%), #fff',
+                    boxShadow: '0 10px 28px rgba(15, 39, 68, 0.06)',
+                  }}
+                >
+                  <div
+                    style={{
+                      position: 'relative',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minHeight: leftLogoUrl || rightLogoUrl ? 120 : undefined,
+                      paddingLeft: leftLogoUrl ? 'clamp(104px, 18vw, 168px)' : 0,
+                      paddingRight: rightLogoUrl ? 'clamp(104px, 18vw, 168px)' : 0,
+                    }}
+                  >
+                    <div
+                      style={{
+                        minWidth: 0,
+                        display: 'grid',
+                        justifyItems: 'center',
+                        gap: 10,
+                        textAlign: 'center',
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          padding: '4px 10px',
+                          borderRadius: 999,
+                          background: 'rgba(201, 150, 60, 0.12)',
+                          color: '#9c6a17',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                        }}
+                      >
+                        {scopeLabel}
+                      </div>
+
+                      {bibleTarget ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenBibleReference?.(bibleTarget)}
+                          style={{
+                            fontFamily: 'inherit',
+                            fontWeight: 800,
+                            fontSize: '1.3rem',
+                            color: '#0f2744',
+                            lineHeight: 1.75,
+                            border: 'none',
+                            background: 'none',
+                            padding: 0,
+                            cursor: 'pointer',
+                            textAlign: 'center',
+                            textDecoration: 'none',
+                          }}
+                          title="افتح المرجع في قارئ الكتاب المقدس"
+                        >
+                          {verseText}
+                        </button>
+                      ) : (
+                        <div
+                          style={{
+                            fontWeight: 800,
+                            fontSize: '1.3rem',
+                            color: '#0f2744',
+                            lineHeight: 1.75,
+                            textAlign: 'center',
+                          }}
+                        >
+                          {verseText}
+                        </div>
+                      )}
+                    </div>
+
+                    {leftLogoUrl ? (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: 0,
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          width: 'clamp(88px, 14vw, 140px)',
+                        }}
+                      >
+                        <img
+                          src={leftLogoUrl}
+                          alt={`${scopeLabel} logo`}
+                          style={{
+                            width: '100%',
+                            maxWidth: 140,
+                            maxHeight: 140,
+                            objectFit: 'contain',
+                            display: 'block',
+                          }}
+                        />
+                      </div>
+                    ) : null}
+
+                    {rightLogoUrl ? (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          right: 0,
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          display: 'flex',
+                          justifyContent: 'center',
+                          alignItems: 'center',
+                          width: 'clamp(80px, 12vw, 124px)',
+                        }}
+                      >
+                        <img
+                          src={rightLogoUrl}
+                          alt={scopeLabel}
+                          style={{
+                            width: '100%',
+                            maxWidth: 124,
+                            maxHeight: 124,
+                            objectFit: 'contain',
+                            display: 'block',
+                          }}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="stat-grid">
         <StatCard label="إجمالي الأعضاء"      value={stats.total_members} icon={Users} />
         <StatCard label="فرق الشبيبة"          value={stats.youth_groups}  icon={Building2} />
@@ -125,55 +254,6 @@ export default function Dashboard() {
         <StatCard label="المحافظات"             value={stats.governorates}  icon={MapPin} />
         <StatCard label="الجنسيات"              value={stats.nationalities} icon={Globe} />
       </div>
-
-      {mottoData.length > 0 && (
-        <div className="card" style={{ marginBottom: 20 }}>
-          <div className="card-header">
-            <span className="card-title">الشعار النشط</span>
-          </div>
-          <div className="card-body" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {mottoData.map((motto) => {
-              const targets = motto?.targets && typeof motto.targets === 'object' ? motto.targets : {}
-              const scopeLabel = buildScopeLabel(targets, motto?.year_label)
-
-              return (
-                <div
-                  key={motto.id || `${motto.title}-${motto.year_label}`}
-                  style={{
-                    minWidth: 220,
-                    maxWidth: 320,
-                    border: '1px solid #e2e6ef',
-                    borderRadius: 12,
-                    padding: '10px 12px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    background: '#fff',
-                  }}
-                >
-                  {motto.logo_url ? (
-                    <img
-                      src={motto.logo_url}
-                      alt={motto.title || 'Motto Logo'}
-                      style={{ width: 44, height: 44, borderRadius: 8, objectFit: 'contain', border: '1px solid #e2e6ef', background: '#f8f9fb', flexShrink: 0 }}
-                    />
-                  ) : (
-                    <div style={{ width: 44, height: 44, borderRadius: 8, border: '1px dashed #c8cfe0', background: '#f8f9fb', flexShrink: 0 }} />
-                  )}
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 800, fontSize: '0.86rem', color: '#0f2744', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {formatMottoTextWithSource(motto)}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#9ba5bc', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {scopeLabel}
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
         <div className="card">

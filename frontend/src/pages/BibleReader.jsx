@@ -199,7 +199,7 @@ function parseReferenceExpression(book, expression) {
   return refs
 }
 
-export default function BibleReader({ toast }) {
+export default function BibleReader({ toast, externalTarget }) {
   const [booksMeta, setBooksMeta] = useState([])
   const [booksTree, setBooksTree] = useState([])
   const [activeBookId, setActiveBookId] = useState('')
@@ -409,6 +409,75 @@ export default function BibleReader({ toast }) {
     setMultiChapterView(null)
   }
 
+  const applyReferenceTarget = async (bookId, refs, expression = '') => {
+    if (!bookId) return false
+
+    if (!booksMetaById[bookId]?.has_content) {
+      toast?.('هذا السفر ظاهر في الفهرس لكنه غير متوفر بعد', 'error')
+      return false
+    }
+
+    let book = null
+    try {
+      book = await ensureBookLoaded(bookId)
+    } catch {
+      toast?.('تعذر تحميل السفر المطلوب', 'error')
+      return false
+    }
+
+    if (!book) {
+      toast?.('تعذر تحميل السفر المطلوب', 'error')
+      return false
+    }
+
+    const resolvedRefs = Array.isArray(refs) && refs.length
+      ? refs
+      : parseReferenceExpression(book, expression)
+
+    if (!Array.isArray(resolvedRefs) || !resolvedRefs.length) {
+      toast?.('لا توجد آيات مطابقة', 'error')
+      return false
+    }
+
+    for (const ref of resolvedRefs) {
+      if (!chapterVerseExists(book, ref?.chapter, ref?.verse)) {
+        toast?.(`آية غير موجودة: ${toArabicDigits(ref?.chapter)}:${toArabicDigits(ref?.verse)}`, 'error')
+        return false
+      }
+    }
+
+    const byChapter = {}
+    for (const ref of resolvedRefs) {
+      const chapter = Number(ref?.chapter)
+      const verse = Number(ref?.verse)
+      if (!chapter || !verse) continue
+      if (!byChapter[chapter]) byChapter[chapter] = []
+      byChapter[chapter].push(verse)
+    }
+
+    const chapterNumbers = Object.keys(byChapter).map(Number).sort((a, b) => a - b)
+    if (!chapterNumbers.length) {
+      toast?.('لا توجد آيات مطابقة', 'error')
+      return false
+    }
+
+    if (chapterNumbers.length === 1) {
+      const onlyChapter = chapterNumbers[0]
+      const chapterIndex = book.chapters.findIndex((ch) => Number(ch?.n) === onlyChapter)
+      await goToChapter(bookId, chapterIndex, byChapter[onlyChapter])
+    } else {
+      setActiveBookId(bookId)
+      setViewMode('chapter')
+      setHighlightVerses([])
+      setMultiChapterView({ bookId, byChapter, chapterNumbers })
+    }
+
+    setReferenceText('')
+    setSearchText('')
+    setSearchResult(null)
+    return true
+  }
+
   const handleReferenceSubmit = async (event) => {
     event.preventDefault()
     const raw = String(referenceText || '').trim()
@@ -446,45 +515,24 @@ export default function BibleReader({ toast }) {
       toast?.('تعذر تحميل السفر المطلوب', 'error')
       return
     }
+
     const refs = parseReferenceExpression(book, expression)
     if (!refs) {
       toast?.('صيغة المرجع غير صحيحة', 'error')
       return
     }
-    if (!refs.length) {
-      toast?.('لا توجد آيات مطابقة', 'error')
-      return
-    }
-
-    for (const ref of refs) {
-      if (!chapterVerseExists(book, ref.chapter, ref.verse)) {
-        toast?.(`آية غير موجودة: ${toArabicDigits(ref.chapter)}:${toArabicDigits(ref.verse)}`, 'error')
-        return
-      }
-    }
-
-    const byChapter = {}
-    for (const ref of refs) {
-      if (!byChapter[ref.chapter]) byChapter[ref.chapter] = []
-      byChapter[ref.chapter].push(ref.verse)
-    }
-
-    const chapterNumbers = Object.keys(byChapter).map(Number).sort((a, b) => a - b)
-    if (chapterNumbers.length === 1) {
-      const onlyChapter = chapterNumbers[0]
-      const chapterIndex = book.chapters.findIndex((ch) => Number(ch?.n) === onlyChapter)
-      await goToChapter(bookId, chapterIndex, byChapter[onlyChapter])
-    } else {
-      setActiveBookId(bookId)
-      setViewMode('chapter')
-      setHighlightVerses([])
-      setMultiChapterView({ bookId, byChapter, chapterNumbers })
-    }
-
-    setReferenceText('')
-    setSearchText('')
-    setSearchResult(null)
+    await applyReferenceTarget(bookId, refs)
   }
+
+  useEffect(() => {
+    const requestId = externalTarget?.requestId
+    const bookId = String(externalTarget?.bookId || '').trim()
+    const refs = Array.isArray(externalTarget?.refs) ? externalTarget.refs : []
+    const expression = String(externalTarget?.expression || '').trim()
+    if (!requestId || !bookId || loadingBooks) return
+    if (!refs.length && !expression) return
+    applyReferenceTarget(bookId, refs, expression)
+  }, [externalTarget?.requestId, loadingBooks])
 
   if (loadingBooks) {
     return (

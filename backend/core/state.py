@@ -20,59 +20,122 @@ PROFILE_PHOTOS_DIR = db.profile_pictures_dir
 os.makedirs(PROFILE_PHOTOS_DIR, exist_ok=True)
 
 SHEETS = [
-    "persons", "nationality", "mobile_numbers", "emails", "social_media", "schools",
+    "persons", "nationality", "mobile_numbers", "mobile_number_family_relations", "personal_mobile_number_primary", "mobile_number_linked_jobs", "emails", "email_family_relations", "personal_email_primary", "email_linked_jobs", "social_media", "schools", "school_sections", "school_grades",
     "higher_education", "jobs", "timestamps", "responsibilities",
-    "person_youth_group", "hobbies_skills", "addresses", "youth_groups",
-    "nationality_iso_codes",
+    "person_youth_group", "person_youth_group_age_history", "hobbies_skills", "person_health_conditions", "person_special_notes", "addresses", "person_titles", "person_school_system_sectors", "parishes", "churches", "youth_groups", "youth_group_special_logos",
+    "nationality_iso_codes", "school_logos",
 ]
 
 UNREG_SHEETS = [
-    "persons", "nationality", "mobile_numbers", "emails", "social_media", "schools",
-    "higher_education", "jobs", "responsibilities",
-    "person_youth_group", "hobbies_skills", "addresses",
+    "persons", "nationality", "mobile_numbers", "mobile_number_family_relations", "personal_mobile_number_primary", "mobile_number_linked_jobs", "emails", "email_family_relations", "personal_email_primary", "email_linked_jobs", "social_media", "schools", "school_sections", "school_grades",
+    "higher_education", "jobs", "timestamps", "responsibilities",
+    "person_youth_group", "person_youth_group_age_history", "hobbies_skills", "person_health_conditions", "person_special_notes", "addresses", "person_titles", "person_school_system_sectors",
 ]
 
 ADDRESS_SHEET = "addresses"
-ADDRESS_COLUMNS = ["person_id", "country", "governorate", "city", "address", "location_url", "lat", "lng", "is_primary"]
-PERSON_ADDRESS_PROJECTION_COLS = ["country", "governorate", "city", "address", "location_url", "lat", "lng"]
+STREET_ADDRESS_COL = "street_address"
+ADDRESS_COLUMNS = ["person_id", "country", "governorate", "city", STREET_ADDRESS_COL, "lat", "lng", "is_primary"]
+PERSON_ADDRESS_PROJECTION_COLS = ["country", "governorate", "city", STREET_ADDRESS_COL, "address", "lat", "lng"]
 DEFAULT_COUNTRY = "الأردن"
+PERSON_TITLE_SHEET = "person_titles"
+PERSON_TITLE_COLUMNS = ["person_id", "title"]
+PERSON_SCHOOL_SYSTEM_SECTOR_SHEET = "person_school_system_sectors"
+PERSON_SCHOOL_SYSTEM_SECTOR_COLUMNS = ["person_id", "school_system_sector"]
+PERSON_HEALTH_CONDITION_SHEET = "person_health_conditions"
+CONDITION_TYPE_COL = "condition_type"
+PERSON_HEALTH_CONDITION_COLUMNS = ["person_id", CONDITION_TYPE_COL, "details"]
+PERSON_SPECIAL_NOTE_SHEET = "person_special_notes"
+PERSON_SPECIAL_NOTE_COLUMNS = ["person_id", "note_title", "note"]
+NATIONALITY_SHEET = "nationality"
+NATIONALITY_COLUMNS = ["person_id", "nationality"]
+SCHOOL_SHEET = "schools"
+SCHOOL_RECORD_ID_COL = "school_record_id"
+SCHOOL_NAME_COL = "school_name"
+SCHOOL_COLUMNS = ["person_id", SCHOOL_RECORD_ID_COL, SCHOOL_NAME_COL, "start_date", "end_date", "is_current"]
+SCHOOL_SECTION_SHEET = "school_sections"
+SCHOOL_SECTION_COLUMNS = [SCHOOL_RECORD_ID_COL, "section"]
+SCHOOL_GRADE_SHEET = "school_grades"
+SCHOOL_GRADE_COLUMNS = [SCHOOL_RECORD_ID_COL, "grade"]
+SCHOOL_LOGO_SHEET = "school_logos"
+SCHOOL_LOGO_ID_COL = "school_logo_id"
+INSTITUTION_TYPE_COL = "institution_type"
+INSTITUTION_NAME_COL = "institution_name"
+INSTITUTION_SECTION_COL = "institution_section"
+SCHOOL_LOGO_COLUMNS = [SCHOOL_LOGO_ID_COL, INSTITUTION_TYPE_COL, INSTITUTION_NAME_COL, INSTITUTION_SECTION_COL, "logo_file_name"]
 MOBILE_NUMBER_SHEET = "mobile_numbers"
-MOBILE_NUMBER_COLUMNS = ["person_id", "mobile_number", "type", "phone_calls_flag", "whatsapp_flag", "linked_job_ids"]
+MOBILE_NUMBER_RECORD_ID_COL = "mobile_number_record_id"
+MOBILE_NUMBER_FAMILY_RELATION_SHEET = "mobile_number_family_relations"
+MOBILE_NUMBER_FAMILY_RELATION_COLUMNS = [MOBILE_NUMBER_RECORD_ID_COL, "family_relation"]
+PERSONAL_MOBILE_NUMBER_PRIMARY_SHEET = "personal_mobile_number_primary"
+PERSONAL_MOBILE_NUMBER_PRIMARY_COLUMNS = [MOBILE_NUMBER_RECORD_ID_COL, "is_primary"]
+MOBILE_NUMBER_LINKED_JOB_SHEET = "mobile_number_linked_jobs"
+MOBILE_NUMBER_LINKED_JOB_COLUMNS = [MOBILE_NUMBER_RECORD_ID_COL, "linked_job_ids"]
+MOBILE_NUMBER_TYPE_COL = "mobile_number_type"
+MOBILE_NUMBER_COLUMNS = ["person_id", MOBILE_NUMBER_RECORD_ID_COL, "mobile_number", MOBILE_NUMBER_TYPE_COL, "phone_calls_flag", "whatsapp_flag"]
 DEFAULT_MOBILE_NUMBER_TYPE = "personal"
+HIGHER_EDUCATION_SHEET = "higher_education"
+HIGHER_EDUCATION_INSTITUTION_COL = "institution_name"
+EDUCATION_STATE_COL = "education_state"
+HIGHER_EDUCATION_COLUMNS = ["person_id", HIGHER_EDUCATION_INSTITUTION_COL, "major", "degree", "start_date", "end_date", EDUCATION_STATE_COL, "final_gpa"]
 EMAIL_SHEET = "emails"
-EMAIL_COLUMNS = ["person_id", "email", "type", "is_primary", "linked_job_ids"]
+EMAIL_RECORD_ID_COL = "email_record_id"
+EMAIL_FAMILY_RELATION_SHEET = "email_family_relations"
+EMAIL_FAMILY_RELATION_COLUMNS = [EMAIL_RECORD_ID_COL, "family_relation"]
+PERSONAL_EMAIL_PRIMARY_SHEET = "personal_email_primary"
+PERSONAL_EMAIL_PRIMARY_COLUMNS = [EMAIL_RECORD_ID_COL, "is_primary"]
+EMAIL_LINKED_JOB_SHEET = "email_linked_jobs"
+EMAIL_LINKED_JOB_COLUMNS = [EMAIL_RECORD_ID_COL, "linked_job_ids"]
+EMAIL_TYPE_COL = "email_type"
+EMAIL_COLUMNS = ["person_id", EMAIL_RECORD_ID_COL, "email", EMAIL_TYPE_COL]
 DEFAULT_EMAIL_TYPE = "personal"
+PERSON_YOUTH_GROUP_SHEET = "person_youth_group"
+PERSON_YOUTH_GROUP_RECORD_ID_COL = "person_youth_group_record_id"
+PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET = "person_youth_group_age_history"
+PERSON_YOUTH_GROUP_AGE_HISTORY_COLUMNS = [PERSON_YOUTH_GROUP_RECORD_ID_COL, "age_group", "start_date", "end_date"]
+PERSON_YOUTH_GROUP_COLUMNS = ["person_id", PERSON_YOUTH_GROUP_RECORD_ID_COL, "youth_join_year", "age_group", "youth_group_id", "archived"]
+AGE_GROUP_ORDER_DESC = ["العاملة", "الجامعيّة", "الثانوي", "الإعدادي", "البراعم"]
+AGE_GROUP_ORDER_INDEX = {value: index for index, value in enumerate(AGE_GROUP_ORDER_DESC)}
 SOCIAL_MEDIA_SHEET = "social_media"
 SOCIAL_MEDIA_COLUMNS = ["person_id", "platform", "url", "is_primary"]
 SOCIAL_MEDIA_PLATFORMS = {"facebook", "instagram", "linkedin"}
+PARISH_SHEET = "parishes"
+PARISH_ID_COL = "parish_id"
+PARISH_COLUMNS = [PARISH_ID_COL, "patron_saint", "area", "lpj_url", "facebook_url", "instagram_url", "linkedin_url", "region", "governorate"]
+CHURCH_SHEET = "churches"
+CHURCH_ID_COL = "church_id"
+CHURCH_COLUMNS = [CHURCH_ID_COL, PARISH_ID_COL, "patron_saint", "area", "lat", "lng"]
 JOB_SHEET = "jobs"
 JOB_ID_COL = "job_id"
-JOB_BASE_COLUMNS = ["person_id", JOB_ID_COL, "job_title", "company", "start_date", "end_date", "is_current", "state"]
+EMPLOYER_NAME_COL = "employer_name"
+EMPLOYMENT_STATE_COL = "employment_state"
+JOB_BASE_COLUMNS = ["person_id", JOB_ID_COL, "job_title", EMPLOYER_NAME_COL, "start_date", "end_date", EMPLOYMENT_STATE_COL]
+RESPONSIBILITY_SHEET = "responsibilities"
+RESPONSIBILITY_COLUMNS = ["person_id", "jec_year", "is_current", "responsibility_name", "start_date", "end_date", "youth_group_id"]
 
 UNREG_PERSONS_COLS = [
-    "person_id", "title",
-    "first_name", "second_name", "third_name", "last_name",
-    "english_first_name", "english_second_name", "english_third_name", "english_last_name",
-    "mother_first_name", "mother_second_name", "mother_third_name",
-    "mother_english_first_name", "mother_english_second_name", "mother_english_third_name",
+    "person_id",
+    "ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name",
+    "en_first_name", "en_second_name", "en_third_name", "en_last_name",
+    "mother_ar_first_name", "mother_ar_second_name", "mother_ar_last_name",
+    "mother_en_first_name", "mother_en_second_name", "mother_en_last_name",
     "gender", "birth_year", "birth_day", "birth_month",
     "registered",
 ]
 
 PERSON_NAME_COLS = [
-    "first_name", "second_name", "third_name", "last_name",
+    "ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name",
 ]
 
 PERSON_ENGLISH_NAME_COLS = [
-    "english_first_name", "english_second_name", "english_third_name", "english_last_name",
+    "en_first_name", "en_second_name", "en_third_name", "en_last_name",
 ]
 
 MOTHER_NAME_COLS = [
-    "mother_first_name", "mother_second_name", "mother_third_name",
+    "mother_ar_first_name", "mother_ar_second_name", "mother_ar_last_name",
 ]
 
 MOTHER_ENGLISH_NAME_COLS = [
-    "mother_english_first_name", "mother_english_second_name", "mother_english_third_name",
+    "mother_en_first_name", "mother_en_second_name", "mother_en_last_name",
 ]
 
 ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "gif"}
@@ -86,6 +149,8 @@ unreg_store: dict[str, pd.DataFrame] = {}
 _data_version = 0
 _enriched_cache = None
 _enriched_cache_version = -1
+_members_index_cache = None
+_members_index_cache_version = -1
 
 YOUTH_GROUP_ID_COL = "youth_group_id"
 YOUTH_GROUP_NAME_COL = "youth_group_name"
@@ -96,9 +161,10 @@ LEGACY_YOUTH_GROUP_SHORT_NAME_COL = "منطقة|اسم مختصر"
 YOUTH_GROUP_PARISH_ID_COL = "parish_id"
 YOUTH_GROUP_USE_PARISH_LOGO_COL = "use_parish_logo"
 YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL = "inherit_parish_social_media"
-YOUTH_GROUP_SPECIAL_LOGO_ACTIVE_COL = "special_logo_active"
-YOUTH_GROUP_SPECIAL_LOGO_OCCASION_COL = "special_logo_occasion"
 YOUTH_GROUP_SHEET = "youth_groups"
+YOUTH_GROUP_SPECIAL_LOGO_SHEET = "youth_group_special_logos"
+SPECIAL_LOGO_ID_COL = "special_logo_id"
+YOUTH_GROUP_SPECIAL_LOGO_COLUMNS = ["youth_group_id", SPECIAL_LOGO_ID_COL, "occasion", "start_date", "end_date", "logo_file_name", "is_active"]
 NATIONALITY_ISO_SHEET = "nationality_iso_codes"
 
 _youth_group_name_by_id: dict[str, str] = {}
@@ -128,10 +194,12 @@ def _get_or_create_secret_key():
 
 
 def invalidate_enriched_cache():
-    global _data_version, _enriched_cache, _enriched_cache_version
+    global _data_version, _enriched_cache, _enriched_cache_version, _members_index_cache, _members_index_cache_version
     _data_version += 1
     _enriched_cache = None
     _enriched_cache_version = -1
+    _members_index_cache = None
+    _members_index_cache_version = -1
 
 
 def cache_state():
@@ -142,6 +210,16 @@ def set_enriched_cache(payload, version):
     global _enriched_cache, _enriched_cache_version
     _enriched_cache = payload
     _enriched_cache_version = version
+
+
+def members_index_cache_state():
+    return _members_index_cache, _members_index_cache_version, _data_version
+
+
+def set_members_index_cache(payload, version):
+    global _members_index_cache, _members_index_cache_version
+    _members_index_cache = payload
+    _members_index_cache_version = version
 
 
 def load():
@@ -163,6 +241,14 @@ def _normalize_text(v) -> str | None:
     if text in ("", "nan", "None", "null"):
         return None
     return text
+
+
+def _first_present(row: dict | None, *keys: str):
+    payload = row if isinstance(row, dict) else {}
+    for key in keys:
+        if key in payload:
+            return payload.get(key)
+    return None
 
 
 def _normalize_lookup_text(value) -> str:
@@ -213,10 +299,133 @@ def _normalize_mobile_number_type(value) -> str:
     if not text:
         return DEFAULT_MOBILE_NUMBER_TYPE
     lowered = text.lower()
+    if lowered.startswith("family:"):
+        return "family"
     known_types = {"personal", "work", "home", "family", "other"}
     if lowered in known_types:
         return lowered
     return text
+
+
+def _normalize_family_relation(value) -> str | None:
+    text = _normalize_text(value)
+    if not text:
+        return None
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _extract_family_relation_from_mobile_type(value) -> str | None:
+    text = _normalize_text(value)
+    if not text:
+        return None
+    prefix = "family:"
+    if text.lower().startswith(prefix):
+        return _normalize_family_relation(text[len(prefix):])
+    return None
+
+
+def _normalize_school_record_id(value) -> str | None:
+    text = _normalize_text(value)
+    if not text:
+        return None
+    text = text.upper()
+    if re.fullmatch(r"SC\d{6}", text):
+        return text
+    return None
+
+
+def _normalize_mobile_number_record_id(value) -> str | None:
+    text = _normalize_text(value)
+    if not text:
+        return None
+    text = text.upper()
+    if re.fullmatch(r"MB\d{6}", text):
+        return text
+    return None
+
+
+def _mobile_number_record_sequence(value) -> int | None:
+    record_id = _normalize_mobile_number_record_id(value)
+    if not record_id:
+        return None
+    return int(record_id[2:])
+
+
+def _format_mobile_number_record_id(sequence: int) -> str:
+    return f"MB{sequence:06d}"
+
+
+def _next_mobile_number_record_sequence() -> int:
+    max_sequence = 0
+    for source in (store, unreg_store):
+        df = source.get(MOBILE_NUMBER_SHEET, pd.DataFrame()) if isinstance(source, dict) else pd.DataFrame()
+        if df.empty or MOBILE_NUMBER_RECORD_ID_COL not in df.columns:
+            continue
+        for raw_value in df[MOBILE_NUMBER_RECORD_ID_COL].tolist():
+            sequence = _mobile_number_record_sequence(raw_value)
+            if sequence is not None and sequence > max_sequence:
+                max_sequence = sequence
+    return max_sequence + 1
+
+
+def _school_record_sequence(value) -> int | None:
+    record_id = _normalize_school_record_id(value)
+    if not record_id:
+        return None
+    return int(record_id[2:])
+
+
+def _format_school_record_id(sequence: int) -> str:
+    return f"SC{sequence:06d}"
+
+
+def _next_school_record_sequence() -> int:
+    max_sequence = 0
+    for source in (store, unreg_store):
+        df = source.get(SCHOOL_SHEET, pd.DataFrame()) if isinstance(source, dict) else pd.DataFrame()
+        if df.empty or SCHOOL_RECORD_ID_COL not in df.columns:
+            continue
+        for raw_value in df[SCHOOL_RECORD_ID_COL].tolist():
+            sequence = _school_record_sequence(raw_value)
+            if sequence is not None and sequence > max_sequence:
+                max_sequence = sequence
+    return max_sequence + 1
+
+
+def _normalize_school_grade_value(value) -> str | None:
+    return _normalize_text(value)
+
+
+def _normalize_final_gpa(value) -> str | None:
+    text = _normalize_text(value)
+    return text or None
+
+
+def _normalize_person_school_final_gpa(value) -> float | None:
+    text = _normalize_text(value)
+    if not text:
+        return None
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return None
+
+
+def _school_grade_values_from_value(value) -> list[str]:
+    if isinstance(value, (list, tuple, set)):
+        source = list(value)
+    else:
+        source = str(value or "").split("|")
+
+    grades: list[str] = []
+    seen: set[str] = set()
+    for raw_value in source:
+        grade = _normalize_school_grade_value(raw_value)
+        if not grade or grade in seen:
+            continue
+        seen.add(grade)
+        grades.append(grade)
+    return grades
 
 
 def _normalize_email_type(value) -> str:
@@ -224,9 +433,89 @@ def _normalize_email_type(value) -> str:
     if not text:
         return DEFAULT_EMAIL_TYPE
     lowered = text.lower()
-    if lowered in {"personal", "work"}:
+    if lowered.startswith("family:"):
+        return "family"
+    if lowered in {"personal", "work", "family"}:
         return lowered
     return text
+
+
+def _extract_family_relation_from_email_type(value) -> str | None:
+    text = _normalize_text(value)
+    if not text:
+        return None
+    prefix = "family:"
+    if text.lower().startswith(prefix):
+        return _normalize_family_relation(text[len(prefix):])
+    return None
+
+
+def _normalize_email_record_id(value) -> str | None:
+    text = _normalize_text(value)
+    if not text:
+        return None
+    text = text.upper()
+    if re.fullmatch(r"EM\d{6}", text):
+        return text
+    return None
+
+
+def _email_record_sequence(value) -> int | None:
+    record_id = _normalize_email_record_id(value)
+    if not record_id:
+        return None
+    return int(record_id[2:])
+
+
+def _format_email_record_id(sequence: int) -> str:
+    return f"EM{sequence:06d}"
+
+
+def _next_email_record_sequence() -> int:
+    max_sequence = 0
+    for source in (store, unreg_store):
+        df = source.get(EMAIL_SHEET, pd.DataFrame()) if isinstance(source, dict) else pd.DataFrame()
+        if df.empty or EMAIL_RECORD_ID_COL not in df.columns:
+            continue
+        for raw_value in df[EMAIL_RECORD_ID_COL].tolist():
+            sequence = _email_record_sequence(raw_value)
+            if sequence is not None and sequence > max_sequence:
+                max_sequence = sequence
+    return max_sequence + 1
+
+
+def _normalize_person_youth_group_record_id(value) -> str | None:
+    text = _normalize_text(value)
+    if not text:
+        return None
+    text = text.upper()
+    if re.fullmatch(r"PRYG\d{6}", text):
+        return text
+    return None
+
+
+def _person_youth_group_record_sequence(value) -> int | None:
+    record_id = _normalize_person_youth_group_record_id(value)
+    if not record_id:
+        return None
+    return int(record_id[4:])
+
+
+def _format_person_youth_group_record_id(sequence: int) -> str:
+    return f"PRYG{sequence:06d}"
+
+
+def _next_person_youth_group_record_sequence() -> int:
+    max_sequence = 0
+    for source in (store, unreg_store):
+        df = source.get(PERSON_YOUTH_GROUP_SHEET, pd.DataFrame()) if isinstance(source, dict) else pd.DataFrame()
+        if df.empty or PERSON_YOUTH_GROUP_RECORD_ID_COL not in df.columns:
+            continue
+        for raw_value in df[PERSON_YOUTH_GROUP_RECORD_ID_COL].tolist():
+            sequence = _person_youth_group_record_sequence(raw_value)
+            if sequence is not None and sequence > max_sequence:
+                max_sequence = sequence
+    return max_sequence + 1
 
 
 def _normalize_social_media_platform(value) -> str:
@@ -243,9 +532,80 @@ def _generate_record_id(prefix: str) -> str:
     return f"{prefix}_{uuid.uuid4().hex[:12]}"
 
 
-def _normalize_job_id(value) -> str:
+def _normalize_job_id(value) -> str | None:
     text = _normalize_text(value)
-    return text or _generate_record_id("job")
+    if not text:
+        return None
+    text = text.upper()
+    if re.fullmatch(r"JB\d{5}", text):
+        return text
+    return None
+
+
+def _job_id_sequence(value) -> int | None:
+    job_id = _normalize_job_id(value)
+    if not job_id:
+        return None
+    return int(job_id[2:])
+
+
+def _format_job_id(sequence: int) -> str:
+    return f"JB{sequence:05d}"
+
+
+def _next_job_id_sequence() -> int:
+    max_sequence = 0
+    for source in (store, unreg_store):
+        df = source.get(JOB_SHEET, pd.DataFrame()) if isinstance(source, dict) else pd.DataFrame()
+        if df.empty or JOB_ID_COL not in df.columns:
+            continue
+        for raw_value in df[JOB_ID_COL].tolist():
+            sequence = _job_id_sequence(raw_value)
+            if sequence is not None and sequence > max_sequence:
+                max_sequence = sequence
+    return max_sequence + 1
+
+
+def _normalize_job_id_key(value) -> str | None:
+    text = _normalize_text(value)
+    return text or None
+
+
+def normalize_youth_group_special_logo_rows(rows) -> list[dict]:
+    normalized = []
+    seen: set[tuple[str, str]] = set()
+
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        group_id = _normalize_text(row.get("youth_group_id"))
+        logo_id = _normalize_text(_first_present(row, SPECIAL_LOGO_ID_COL, "id"))
+        occasion = _normalize_text(row.get("occasion"))
+        start_date = _normalize_text(row.get("start_date"))
+        end_date = _normalize_text(row.get("end_date"))
+        file_name = _normalize_text(_first_present(row, "logo_file_name", "file_name"))
+        is_active = _to_bool(row.get("is_active"))
+
+        if not group_id or not logo_id or not file_name:
+            continue
+
+        dedupe_key = (group_id, logo_id)
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+
+        normalized.append({
+            "youth_group_id": group_id,
+            SPECIAL_LOGO_ID_COL: logo_id,
+            "occasion": occasion,
+            "start_date": start_date,
+            "end_date": None if is_active else end_date,
+            "logo_file_name": file_name,
+            "is_active": is_active,
+        })
+
+    return normalized
 
 
 def _normalize_linked_job_ids(value) -> list[str]:
@@ -282,6 +642,42 @@ def _serialize_linked_job_ids(value) -> str | None:
     if not linked_job_ids:
         return None
     return json.dumps(linked_job_ids, ensure_ascii=False)
+
+
+def _remap_linked_job_ids_value(value, id_map: dict[str, str] | None = None) -> list[str]:
+    normalized = []
+    seen: set[str] = set()
+    mappings = id_map or {}
+    for job_id in _normalize_linked_job_ids(value):
+        mapped = mappings.get(job_id, mappings.get(str(job_id), job_id))
+        mapped_id = _normalize_job_id(mapped)
+        if not mapped_id or mapped_id in seen:
+            continue
+        seen.add(mapped_id)
+        normalized.append(mapped_id)
+    return normalized
+
+
+def remap_job_links_in_email_rows(rows, id_map: dict[str, str] | None = None) -> list[dict]:
+    remapped = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        next_row = dict(row)
+        next_row["linked_job_ids"] = _remap_linked_job_ids_value(row.get("linked_job_ids"), id_map)
+        remapped.append(next_row)
+    return remapped
+
+
+def remap_job_links_in_mobile_rows(rows, id_map: dict[str, str] | None = None) -> list[dict]:
+    remapped = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        next_row = dict(row)
+        next_row["linked_job_ids"] = _remap_linked_job_ids_value(row.get("linked_job_ids"), id_map)
+        remapped.append(next_row)
+    return remapped
 
 
 def _to_bool_default_true(v) -> bool:
@@ -399,7 +795,7 @@ def normalize_address_rows(rows) -> list[dict]:
         person_id = _normalize_person_id(row.get("person_id"))
         governorate = _normalize_text(row.get("governorate"))
         city = _normalize_text(row.get("city"))
-        address = _normalize_text(row.get("address"))
+        address = _normalize_text(_first_present(row, STREET_ADDRESS_COL, "address"))
         country = _normalize_country(row.get("country"))
         lat = _normalize_coordinate(row.get("lat"), "lat")
         lng = _normalize_coordinate(row.get("lng"), "lng")
@@ -423,8 +819,8 @@ def normalize_address_rows(rows) -> list[dict]:
             "country": country,
             "governorate": governorate,
             "city": city,
+            STREET_ADDRESS_COL: address,
             "address": address,
-            "location_url": location_url,
             "lat": lat,
             "lng": lng,
             "is_primary": is_primary,
@@ -446,40 +842,943 @@ def normalize_address_rows(rows) -> list[dict]:
 
 def normalize_mobile_number_rows(rows) -> list[dict]:
     normalized = []
+    used_record_ids: set[str] = set()
+    next_sequence = _next_mobile_number_record_sequence()
     for row in rows or []:
         if not isinstance(row, dict):
             continue
         mobile_number = _normalize_mobile_number_value(row.get("mobile_number"))
         if not mobile_number:
             continue
-        mobile_type = _normalize_mobile_number_type(row.get("type"))
-        linked_job_ids = _serialize_linked_job_ids(row.get("linked_job_ids")) if mobile_type == "work" else None
+        raw_type = _first_present(row, MOBILE_NUMBER_TYPE_COL, "type")
+        mobile_type = _normalize_mobile_number_type(raw_type)
+        family_relation = _normalize_family_relation(row.get("family_relation"))
+        if mobile_type == "family" and family_relation is None:
+            family_relation = _extract_family_relation_from_mobile_type(raw_type)
+        if mobile_type != "family":
+            family_relation = None
+        linked_job_ids = _normalize_linked_job_ids(row.get("linked_job_ids")) if mobile_type == "work" else []
+        record_id = _normalize_mobile_number_record_id(row.get(MOBILE_NUMBER_RECORD_ID_COL))
+        if record_id and record_id not in used_record_ids:
+            used_record_ids.add(record_id)
+        else:
+            while True:
+                candidate = _format_mobile_number_record_id(next_sequence)
+                next_sequence += 1
+                if candidate not in used_record_ids:
+                    record_id = candidate
+                    used_record_ids.add(candidate)
+                    break
         normalized.append({
             "person_id": _normalize_person_id(row.get("person_id")),
+            MOBILE_NUMBER_RECORD_ID_COL: record_id,
             "mobile_number": mobile_number,
+            MOBILE_NUMBER_TYPE_COL: mobile_type,
             "type": mobile_type,
+            "family_relation": family_relation,
+            "is_primary": _to_bool(row.get("is_primary")) if mobile_type == "personal" else False,
             "phone_calls_flag": _to_bool_default_true(row.get("phone_calls_flag")),
             "whatsapp_flag": _to_bool_default_true(row.get("whatsapp_flag")),
             "linked_job_ids": linked_job_ids,
         })
+
+    grouped: dict[str, list[dict]] = {}
+    for row in normalized:
+        key = str(row.get("person_id"))
+        grouped.setdefault(key, []).append(row)
+
+    result = []
+    for entries in grouped.values():
+        primary_seen = False
+        for entry in entries:
+            if entry.get(MOBILE_NUMBER_TYPE_COL) != "personal":
+                entry["is_primary"] = False
+            elif entry.get("is_primary") and not primary_seen:
+                primary_seen = True
+            else:
+                entry["is_primary"] = False
+            result.append(entry)
+    return result
+
+
+def normalize_mobile_number_family_relation_rows(rows, valid_record_ids: set[str] | None = None) -> list[dict]:
+    normalized = []
+    seen: set[str] = set()
+    allowed_record_ids = valid_record_ids or set()
+
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        record_id = _normalize_mobile_number_record_id(row.get(MOBILE_NUMBER_RECORD_ID_COL))
+        if not record_id:
+            continue
+        if allowed_record_ids and record_id not in allowed_record_ids:
+            continue
+
+        family_relation = _normalize_family_relation(row.get("family_relation"))
+        if not family_relation:
+            continue
+        if record_id in seen:
+            continue
+        seen.add(record_id)
+
+        normalized.append({
+            MOBILE_NUMBER_RECORD_ID_COL: record_id,
+            "family_relation": family_relation,
+        })
+
     return normalized
+
+
+def mobile_number_family_relation_rows_from_mobile_rows(rows) -> list[dict]:
+    family_rows = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        record_id = _normalize_mobile_number_record_id(row.get(MOBILE_NUMBER_RECORD_ID_COL))
+        family_relation = _normalize_family_relation(row.get("family_relation"))
+        if not record_id or not family_relation:
+            continue
+        family_rows.append({
+            MOBILE_NUMBER_RECORD_ID_COL: record_id,
+            "family_relation": family_relation,
+        })
+    return normalize_mobile_number_family_relation_rows(family_rows)
+
+
+def normalize_personal_mobile_number_primary_rows(rows, valid_record_ids: set[str] | None = None) -> list[dict]:
+    normalized = []
+    seen: set[str] = set()
+    allowed_record_ids = valid_record_ids or set()
+
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        record_id = _normalize_mobile_number_record_id(row.get(MOBILE_NUMBER_RECORD_ID_COL))
+        if not record_id:
+            continue
+        if allowed_record_ids and record_id not in allowed_record_ids:
+            continue
+        if record_id in seen:
+            continue
+
+        seen.add(record_id)
+        normalized.append({
+            MOBILE_NUMBER_RECORD_ID_COL: record_id,
+            "is_primary": _to_bool(row.get("is_primary")),
+        })
+
+    return normalized
+
+
+def personal_mobile_number_primary_rows_from_mobile_rows(rows) -> list[dict]:
+    primary_rows = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        record_id = _normalize_mobile_number_record_id(row.get(MOBILE_NUMBER_RECORD_ID_COL))
+        mobile_type = _normalize_mobile_number_type(_first_present(row, MOBILE_NUMBER_TYPE_COL, "type"))
+        if not record_id or mobile_type != "personal":
+            continue
+
+        primary_rows.append({
+            MOBILE_NUMBER_RECORD_ID_COL: record_id,
+            "is_primary": _to_bool(row.get("is_primary")),
+        })
+
+    return normalize_personal_mobile_number_primary_rows(primary_rows)
+
+
+def normalize_mobile_number_linked_job_rows(rows, valid_record_ids: set[str] | None = None) -> list[dict]:
+    normalized = []
+    seen: set[tuple[str, str]] = set()
+    allowed_record_ids = valid_record_ids or set()
+
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        record_id = _normalize_mobile_number_record_id(row.get(MOBILE_NUMBER_RECORD_ID_COL))
+        if not record_id:
+            continue
+        if allowed_record_ids and record_id not in allowed_record_ids:
+            continue
+
+        for job_id in _normalize_linked_job_ids(row.get("linked_job_ids")):
+            dedupe_key = (record_id, job_id)
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            normalized.append({
+                MOBILE_NUMBER_RECORD_ID_COL: record_id,
+                "linked_job_ids": job_id,
+            })
+
+    return normalized
+
+
+def mobile_number_linked_job_rows_from_mobile_rows(rows) -> list[dict]:
+    linked_job_rows = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        record_id = _normalize_mobile_number_record_id(row.get(MOBILE_NUMBER_RECORD_ID_COL))
+        if not record_id:
+            continue
+        for job_id in _normalize_linked_job_ids(row.get("linked_job_ids")):
+            linked_job_rows.append({
+                MOBILE_NUMBER_RECORD_ID_COL: record_id,
+                "linked_job_ids": job_id,
+            })
+    return normalize_mobile_number_linked_job_rows(linked_job_rows)
+
+
+def mobile_number_rows_for_person(source_store: dict[str, pd.DataFrame], person_id) -> list[dict]:
+    mobile_numbers_df = source_store.get(MOBILE_NUMBER_SHEET, pd.DataFrame())
+    normalized_person_id = _normalize_person_id(person_id)
+    if mobile_numbers_df.empty or "person_id" not in mobile_numbers_df.columns or normalized_person_id in (None, ""):
+        return []
+
+    person_key = str(normalized_person_id)
+    rows = df_to_json(mobile_numbers_df[mobile_numbers_df["person_id"].astype(str) == person_key])
+    if not rows:
+        return []
+
+    person_record_ids = {
+        record_id
+        for record_id in (
+            _normalize_mobile_number_record_id(row.get(MOBILE_NUMBER_RECORD_ID_COL))
+            for row in rows
+        )
+        if record_id
+    }
+
+    family_df = source_store.get(MOBILE_NUMBER_FAMILY_RELATION_SHEET, pd.DataFrame())
+    family_map: dict[str, str] = {}
+    if not family_df.empty and MOBILE_NUMBER_RECORD_ID_COL in family_df.columns:
+        family_rows = normalize_mobile_number_family_relation_rows(
+            family_df.replace({np.nan: None}).to_dict(orient="records"),
+            person_record_ids,
+        )
+        for family_row in family_rows:
+            record_id = family_row.get(MOBILE_NUMBER_RECORD_ID_COL)
+            family_relation = family_row.get("family_relation")
+            if record_id and family_relation:
+                family_map[record_id] = family_relation
+
+    personal_primary_df = source_store.get(PERSONAL_MOBILE_NUMBER_PRIMARY_SHEET, pd.DataFrame())
+    personal_primary_map: dict[str, bool] = {}
+    if not personal_primary_df.empty and MOBILE_NUMBER_RECORD_ID_COL in personal_primary_df.columns:
+        personal_primary_rows = normalize_personal_mobile_number_primary_rows(
+            personal_primary_df.replace({np.nan: None}).to_dict(orient="records"),
+            person_record_ids,
+        )
+        for primary_row in personal_primary_rows:
+            record_id = primary_row.get(MOBILE_NUMBER_RECORD_ID_COL)
+            if record_id:
+                personal_primary_map[record_id] = _to_bool(primary_row.get("is_primary"))
+
+    linked_jobs_df = source_store.get(MOBILE_NUMBER_LINKED_JOB_SHEET, pd.DataFrame())
+    linked_job_map: dict[str, list[str]] = {}
+    if not linked_jobs_df.empty and MOBILE_NUMBER_RECORD_ID_COL in linked_jobs_df.columns:
+        linked_job_rows = normalize_mobile_number_linked_job_rows(
+            linked_jobs_df.replace({np.nan: None}).to_dict(orient="records"),
+            person_record_ids,
+        )
+        for linked_job_row in linked_job_rows:
+            record_id = linked_job_row.get(MOBILE_NUMBER_RECORD_ID_COL)
+            job_id = linked_job_row.get("linked_job_ids")
+            if record_id and job_id:
+                linked_job_map.setdefault(record_id, []).append(job_id)
+
+    for row in rows:
+        record_id = _normalize_mobile_number_record_id(row.get(MOBILE_NUMBER_RECORD_ID_COL))
+        family_relation = family_map.get(record_id)
+        row["family_relation"] = family_relation
+        linked_job_ids = linked_job_map.get(record_id, [])
+        if family_relation:
+            row[MOBILE_NUMBER_TYPE_COL] = "family"
+            row["type"] = "family"
+        elif linked_job_ids:
+            row[MOBILE_NUMBER_TYPE_COL] = "work"
+            row["type"] = "work"
+        else:
+            row[MOBILE_NUMBER_TYPE_COL] = _normalize_mobile_number_type(_first_present(row, MOBILE_NUMBER_TYPE_COL, "type"))
+            row["type"] = row[MOBILE_NUMBER_TYPE_COL]
+        row["is_primary"] = personal_primary_map.get(record_id, False) if row[MOBILE_NUMBER_TYPE_COL] == "personal" else False
+        row["linked_job_ids"] = linked_job_ids
+
+    return normalize_mobile_number_rows(rows)
+
+
+def replace_mobile_number_rows(target_store: dict[str, pd.DataFrame], person_id, rows):
+    normalized_person_id = _normalize_person_id(person_id)
+    person_key = str(normalized_person_id)
+    payload_rows = []
+    for row in normalize_mobile_number_rows(rows):
+        payload_rows.append({
+            **row,
+            "person_id": normalized_person_id,
+        })
+
+    mobile_rows = [{col: row.get(col) for col in MOBILE_NUMBER_COLUMNS} for row in payload_rows]
+    family_rows = mobile_number_family_relation_rows_from_mobile_rows(payload_rows)
+    personal_primary_rows = personal_mobile_number_primary_rows_from_mobile_rows(payload_rows)
+    linked_job_rows = mobile_number_linked_job_rows_from_mobile_rows(payload_rows)
+
+    mobile_df = target_store.get(MOBILE_NUMBER_SHEET, pd.DataFrame()).copy()
+    existing_record_ids: set[str] = set()
+    if not mobile_df.empty and "person_id" in mobile_df.columns and MOBILE_NUMBER_RECORD_ID_COL in mobile_df.columns:
+        for raw_record_id in mobile_df[mobile_df["person_id"].astype(str) == person_key][MOBILE_NUMBER_RECORD_ID_COL].tolist():
+            record_id = _normalize_mobile_number_record_id(raw_record_id)
+            if record_id:
+                existing_record_ids.add(record_id)
+    if not mobile_df.empty and "person_id" in mobile_df.columns:
+        mobile_df = mobile_df[mobile_df["person_id"].astype(str) != person_key]
+    if mobile_rows:
+        mobile_df = pd.concat([mobile_df, pd.DataFrame(mobile_rows)], ignore_index=True)
+    target_store[MOBILE_NUMBER_SHEET] = mobile_df
+
+    family_df = target_store.get(MOBILE_NUMBER_FAMILY_RELATION_SHEET, pd.DataFrame()).copy()
+    if not family_df.empty and MOBILE_NUMBER_RECORD_ID_COL in family_df.columns and existing_record_ids:
+        family_df = family_df[~family_df[MOBILE_NUMBER_RECORD_ID_COL].astype(str).isin(existing_record_ids)]
+    if family_rows:
+        family_df = pd.concat([family_df, pd.DataFrame(family_rows)], ignore_index=True)
+    target_store[MOBILE_NUMBER_FAMILY_RELATION_SHEET] = family_df
+
+    personal_primary_df = target_store.get(PERSONAL_MOBILE_NUMBER_PRIMARY_SHEET, pd.DataFrame()).copy()
+    if not personal_primary_df.empty and MOBILE_NUMBER_RECORD_ID_COL in personal_primary_df.columns and existing_record_ids:
+        personal_primary_df = personal_primary_df[~personal_primary_df[MOBILE_NUMBER_RECORD_ID_COL].astype(str).isin(existing_record_ids)]
+    if personal_primary_rows:
+        personal_primary_df = pd.concat([personal_primary_df, pd.DataFrame(personal_primary_rows)], ignore_index=True)
+    target_store[PERSONAL_MOBILE_NUMBER_PRIMARY_SHEET] = personal_primary_df
+
+    linked_jobs_df = target_store.get(MOBILE_NUMBER_LINKED_JOB_SHEET, pd.DataFrame()).copy()
+    if not linked_jobs_df.empty and MOBILE_NUMBER_RECORD_ID_COL in linked_jobs_df.columns and existing_record_ids:
+        linked_jobs_df = linked_jobs_df[~linked_jobs_df[MOBILE_NUMBER_RECORD_ID_COL].astype(str).isin(existing_record_ids)]
+    if linked_job_rows:
+        linked_jobs_df = pd.concat([linked_jobs_df, pd.DataFrame(linked_job_rows)], ignore_index=True)
+    target_store[MOBILE_NUMBER_LINKED_JOB_SHEET] = linked_jobs_df
+
+
+def normalize_nationality_payload_rows(rows) -> list[dict]:
+    normalized = []
+    seen_keys: set[tuple[str, str]] = set()
+
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        nationality = _normalize_text(row.get("nationality"))
+        if not nationality:
+            continue
+
+        person_id = _normalize_person_id(row.get("person_id"))
+        person_key = "" if person_id in (None, "") else str(person_id)
+        nationality_key = _normalize_lookup_text(nationality)
+        dedupe_key = (person_key, nationality_key)
+        if dedupe_key in seen_keys:
+            continue
+        seen_keys.add(dedupe_key)
+
+        normalized.append({
+            "person_id": person_id,
+            "nationality": nationality,
+        })
+
+    return normalized
+
+
+def normalize_nationality_rows(rows) -> list[dict]:
+    return [{col: row.get(col) for col in NATIONALITY_COLUMNS} for row in normalize_nationality_payload_rows(rows)]
+
+
+def _normalize_age_group(value) -> str | None:
+    text = _normalize_text(value)
+    if not text:
+        return None
+    return text
+
+
+def _normalize_membership_date_text(value) -> str | None:
+    return _normalize_text(value)
+
+
+def _normalize_youth_join_year(value) -> int | None:
+    return _to_int_or_none(value, 1900, 2500)
+
+
+def sort_age_group_history_rows(rows: list[dict] | None) -> list[dict]:
+    values = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        age_group = _normalize_age_group(row.get("age_group"))
+        if not age_group:
+            continue
+        values.append({
+            "age_group": age_group,
+            "start_date": _normalize_membership_date_text(row.get("start_date")),
+            "end_date": _normalize_membership_date_text(row.get("end_date")),
+        })
+    values.sort(key=lambda item: (
+        AGE_GROUP_ORDER_INDEX.get(item.get("age_group"), len(AGE_GROUP_ORDER_INDEX)),
+        item.get("start_date") or "",
+        item.get("end_date") or "",
+    ))
+    return values
+
+
+def current_age_group_from_history_rows(rows: list[dict] | None) -> str | None:
+    sorted_rows = sort_age_group_history_rows(rows)
+    return sorted_rows[0]["age_group"] if sorted_rows else None
+
+
+def normalize_person_youth_group_age_history_entries(rows) -> list[dict]:
+    normalized = []
+    seen: set[tuple[str, str, str, str]] = set()
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        record_id = _normalize_person_youth_group_record_id(row.get(PERSON_YOUTH_GROUP_RECORD_ID_COL))
+        age_group = _normalize_age_group(row.get("age_group"))
+        if not record_id or not age_group:
+            continue
+        start_date = _normalize_membership_date_text(row.get("start_date"))
+        end_date = _normalize_membership_date_text(row.get("end_date"))
+        dedupe_key = (record_id, age_group, start_date or "", end_date or "")
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        normalized.append({
+            PERSON_YOUTH_GROUP_RECORD_ID_COL: record_id,
+            "age_group": age_group,
+            "start_date": start_date,
+            "end_date": end_date,
+        })
+    normalized.sort(key=lambda item: (
+        item[PERSON_YOUTH_GROUP_RECORD_ID_COL],
+        AGE_GROUP_ORDER_INDEX.get(item.get("age_group"), len(AGE_GROUP_ORDER_INDEX)),
+        item.get("start_date") or "",
+        item.get("end_date") or "",
+    ))
+    return normalized
+
+
+def person_youth_group_age_history_lookup(history_df: pd.DataFrame | None = None) -> dict[str, list[dict]]:
+    df = history_df if history_df is not None else store.get(PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame())
+    if df is None or df.empty or PERSON_YOUTH_GROUP_RECORD_ID_COL not in df.columns:
+        return {}
+
+    lookup: dict[str, list[dict]] = {}
+    for row in normalize_person_youth_group_age_history_entries(df.replace({np.nan: None}).to_dict(orient="records")):
+        record_id = row[PERSON_YOUTH_GROUP_RECORD_ID_COL]
+        lookup.setdefault(record_id, []).append({
+            "age_group": row.get("age_group"),
+            "start_date": row.get("start_date"),
+            "end_date": row.get("end_date"),
+        })
+
+    return {record_id: sort_age_group_history_rows(rows) for record_id, rows in lookup.items()}
+
+
+def normalize_person_youth_group_rows(rows, history_lookup: dict[str, list[dict]] | None = None) -> list[dict]:
+    normalized = []
+    used_record_ids: set[str] = set()
+    next_sequence = _next_person_youth_group_record_sequence()
+    history_by_record_id = history_lookup or {}
+
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        youth_group_id = _normalize_text(row.get(YOUTH_GROUP_ID_COL))
+        if not youth_group_id:
+            continue
+
+        record_id = _normalize_person_youth_group_record_id(row.get(PERSON_YOUTH_GROUP_RECORD_ID_COL))
+        if record_id and record_id not in used_record_ids:
+            used_record_ids.add(record_id)
+        else:
+            while True:
+                candidate = _format_person_youth_group_record_id(next_sequence)
+                next_sequence += 1
+                if candidate not in used_record_ids:
+                    record_id = candidate
+                    used_record_ids.add(candidate)
+                    break
+
+        archived = row.get("archived")
+        current_age_group = current_age_group_from_history_rows(history_by_record_id.get(record_id)) or _normalize_age_group(row.get("age_group"))
+        normalized.append({
+            "person_id": _normalize_person_id(row.get("person_id")),
+            PERSON_YOUTH_GROUP_RECORD_ID_COL: record_id,
+            "youth_join_year": _normalize_youth_join_year(row.get("youth_join_year")),
+            "age_group": current_age_group,
+            YOUTH_GROUP_ID_COL: youth_group_id,
+            "archived": bool(archived) if archived is not None and str(archived) not in ("nan", "None", "") else False,
+        })
+
+    return normalized
+
+
+def person_youth_group_age_history_rows_from_membership_rows(rows, normalized_membership_rows: list[dict] | None = None) -> list[dict]:
+    membership_rows = normalized_membership_rows if normalized_membership_rows is not None else normalize_person_youth_group_rows(rows)
+    history_rows = []
+    membership_by_index = []
+    for index, membership_row in enumerate(membership_rows):
+        membership_by_index.append((index, membership_row))
+
+    for index, membership_row in membership_by_index:
+        source_row = rows[index] if isinstance(rows, list) and index < len(rows) and isinstance(rows[index], dict) else {}
+        record_id = membership_row.get(PERSON_YOUTH_GROUP_RECORD_ID_COL)
+        if not record_id:
+            continue
+        raw_history = source_row.get("age_group_history")
+        if isinstance(raw_history, list):
+            for item in raw_history:
+                if not isinstance(item, dict):
+                    continue
+                history_rows.append({
+                    PERSON_YOUTH_GROUP_RECORD_ID_COL: record_id,
+                    "age_group": item.get("age_group"),
+                    "start_date": item.get("start_date"),
+                    "end_date": item.get("end_date"),
+                })
+            continue
+
+        legacy_age_group = _normalize_age_group(source_row.get("age_group")) or _normalize_age_group(membership_row.get("age_group"))
+        if legacy_age_group:
+            history_rows.append({
+                PERSON_YOUTH_GROUP_RECORD_ID_COL: record_id,
+                "age_group": legacy_age_group,
+                "start_date": None,
+                "end_date": None,
+            })
+
+    return normalize_person_youth_group_age_history_entries(history_rows)
+
+
+def build_person_youth_group_payload_rows(df: pd.DataFrame | None, history_df: pd.DataFrame | None = None):
+    result = {}
+    if df is None or df.empty or "person_id" not in df.columns:
+        return result
+
+    history_lookup = person_youth_group_age_history_lookup(history_df)
+    for pid, grp in df.groupby("person_id", sort=False):
+        rows = []
+        for _, row in grp.iterrows():
+            yg_id = _normalize_text(row.get(YOUTH_GROUP_ID_COL))
+            if not yg_id:
+                continue
+            record_id = _normalize_person_youth_group_record_id(row.get(PERSON_YOUTH_GROUP_RECORD_ID_COL))
+            history_rows = history_lookup.get(record_id, [])
+            legacy_age_group = _normalize_age_group(row.get("age_group"))
+            if not history_rows and legacy_age_group:
+                history_rows = [{"age_group": legacy_age_group, "start_date": None, "end_date": None}]
+            current_age_group = current_age_group_from_history_rows(history_rows) or legacy_age_group or ""
+            join_year = _normalize_youth_join_year(row.get("youth_join_year"))
+            archived = row.get("archived")
+            rows.append({
+                PERSON_YOUTH_GROUP_RECORD_ID_COL: record_id,
+                "youth_group_id": yg_id,
+                "age_group": current_age_group,
+                "current_age_group": current_age_group,
+                "age_group_history": sort_age_group_history_rows(history_rows),
+                "youth_join_year": join_year,
+                "archived": bool(archived) if archived is not None and str(archived) not in ("nan", "None", "") else False,
+            })
+        result[pid] = rows
+    return result
+
+
+def get_person_youth_group_payload_rows(payload_rows_by_person: dict, pid) -> list[dict]:
+    if not isinstance(payload_rows_by_person, dict) or not payload_rows_by_person:
+        return []
+
+    if pid in payload_rows_by_person:
+        return payload_rows_by_person[pid]
+
+    normalized_pid = _normalize_person_id(pid)
+    if normalized_pid in payload_rows_by_person:
+        return payload_rows_by_person[normalized_pid]
+
+    pid_str = str(normalized_pid if normalized_pid is not None else pid).strip()
+    if pid_str in payload_rows_by_person:
+        return payload_rows_by_person[pid_str]
+
+    return []
+
+
+def _ensure_person_youth_group_schema() -> bool:
+    changed = False
+    pyg = store.get(PERSON_YOUTH_GROUP_SHEET, pd.DataFrame()).copy()
+    history_df = store.get(PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame()).copy()
+
+    if pyg.empty:
+        pyg = pd.DataFrame(columns=["person_id", PERSON_YOUTH_GROUP_RECORD_ID_COL, "youth_join_year", YOUTH_GROUP_ID_COL, "archived"])
+        changed = True
+    else:
+        required_columns = ["person_id", PERSON_YOUTH_GROUP_RECORD_ID_COL, "youth_join_year", YOUTH_GROUP_ID_COL, "archived"]
+        for col in required_columns:
+            if col not in pyg.columns:
+                pyg[col] = None
+                changed = True
+
+    if history_df.empty:
+        history_df = pd.DataFrame(columns=PERSON_YOUTH_GROUP_AGE_HISTORY_COLUMNS)
+        changed = True
+    else:
+        for col in PERSON_YOUTH_GROUP_AGE_HISTORY_COLUMNS:
+            if col not in history_df.columns:
+                history_df[col] = None
+                changed = True
+
+    existing_history_rows = normalize_person_youth_group_age_history_entries(history_df.replace({np.nan: None}).to_dict(orient="records")) if not history_df.empty else []
+    history_lookup = {}
+    for row in existing_history_rows:
+        history_lookup.setdefault(row[PERSON_YOUTH_GROUP_RECORD_ID_COL], []).append({
+            "age_group": row.get("age_group"),
+            "start_date": row.get("start_date"),
+            "end_date": row.get("end_date"),
+        })
+
+    main_source_rows = pyg.replace({np.nan: None}).to_dict(orient="records") if not pyg.empty else []
+    normalized_main_rows = normalize_person_youth_group_rows(main_source_rows, history_lookup)
+
+    supplemental_history_rows = []
+    existing_history_ids = {row[PERSON_YOUTH_GROUP_RECORD_ID_COL] for row in existing_history_rows}
+    for row in normalized_main_rows:
+        record_id = row.get(PERSON_YOUTH_GROUP_RECORD_ID_COL)
+        age_group = _normalize_age_group(row.get("age_group"))
+        if not record_id or not age_group or record_id in existing_history_ids:
+            continue
+        supplemental_history_rows.append({
+            PERSON_YOUTH_GROUP_RECORD_ID_COL: record_id,
+            "age_group": age_group,
+            "start_date": None,
+            "end_date": None,
+        })
+        existing_history_ids.add(record_id)
+        changed = True
+
+    valid_record_ids = {
+        row.get(PERSON_YOUTH_GROUP_RECORD_ID_COL)
+        for row in normalized_main_rows
+        if row.get(PERSON_YOUTH_GROUP_RECORD_ID_COL)
+    }
+    normalized_history_rows = [
+        row for row in normalize_person_youth_group_age_history_entries(existing_history_rows + supplemental_history_rows)
+        if row.get(PERSON_YOUTH_GROUP_RECORD_ID_COL) in valid_record_ids
+    ]
+    normalized_main_rows = normalize_person_youth_group_rows(main_source_rows, person_youth_group_age_history_lookup(pd.DataFrame(normalized_history_rows)))
+
+    if normalized_main_rows != normalize_person_youth_group_rows(main_source_rows, history_lookup):
+        changed = True
+    if normalized_history_rows != existing_history_rows:
+        changed = True
+
+    normalized_main_df = pd.DataFrame(normalized_main_rows, columns=PERSON_YOUTH_GROUP_COLUMNS)
+    if "youth_join_year" in normalized_main_df.columns:
+        normalized_main_df["youth_join_year"] = pd.array(normalized_main_df["youth_join_year"], dtype="Int64")
+    store[PERSON_YOUTH_GROUP_SHEET] = normalized_main_df
+    store[PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET] = pd.DataFrame(normalized_history_rows, columns=PERSON_YOUTH_GROUP_AGE_HISTORY_COLUMNS)
+    return changed
+
+
+def normalize_school_payload_rows(rows) -> list[dict]:
+    normalized = []
+    used_record_ids: set[str] = set()
+    next_sequence = _next_school_record_sequence()
+
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        normalized_row = {
+            "person_id": _normalize_person_id(row.get("person_id")),
+            SCHOOL_NAME_COL: _first_present(row, SCHOOL_NAME_COL, "school"),
+            "school": _first_present(row, SCHOOL_NAME_COL, "school"),
+            "section": row.get("section"),
+            "start_date": row.get("start_date"),
+            "end_date": row.get("end_date"),
+            "is_current": row.get("is_current"),
+            "grades_attended": _school_grade_values_from_value(row.get("grades_attended")),
+        }
+
+        record_id = _normalize_school_record_id(row.get(SCHOOL_RECORD_ID_COL))
+        if record_id and record_id not in used_record_ids:
+            normalized_row[SCHOOL_RECORD_ID_COL] = record_id
+            used_record_ids.add(record_id)
+        else:
+            while True:
+                candidate = _format_school_record_id(next_sequence)
+                next_sequence += 1
+                if candidate not in used_record_ids:
+                    normalized_row[SCHOOL_RECORD_ID_COL] = candidate
+                    used_record_ids.add(candidate)
+                    break
+
+        normalized.append(normalized_row)
+
+    return normalized
+
+
+def normalize_school_rows(rows) -> list[dict]:
+    normalized = []
+    for row in normalize_school_payload_rows(rows):
+        normalized.append({
+            "person_id": row.get("person_id"),
+            SCHOOL_RECORD_ID_COL: row.get(SCHOOL_RECORD_ID_COL),
+            SCHOOL_NAME_COL: row.get(SCHOOL_NAME_COL),
+            "school": row.get(SCHOOL_NAME_COL),
+            "section": row.get("section"),
+            "start_date": row.get("start_date"),
+            "end_date": row.get("end_date"),
+            "is_current": row.get("is_current"),
+        })
+    return normalized
+
+
+def normalize_school_section_rows(rows, valid_record_ids: set[str] | None = None) -> list[dict]:
+    normalized = []
+    seen: set[str] = set()
+    allowed_record_ids = valid_record_ids or set()
+
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        record_id = _normalize_school_record_id(row.get(SCHOOL_RECORD_ID_COL))
+        if not record_id:
+            continue
+        if allowed_record_ids and record_id not in allowed_record_ids:
+            continue
+
+        section = _normalize_text(row.get("section"))
+        if not section:
+            continue
+        if record_id in seen:
+            continue
+        seen.add(record_id)
+
+        normalized.append({
+            SCHOOL_RECORD_ID_COL: record_id,
+            "section": section,
+        })
+
+    return normalized
+
+
+def school_section_rows_from_school_rows(rows) -> list[dict]:
+    section_rows = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        record_id = _normalize_school_record_id(row.get(SCHOOL_RECORD_ID_COL))
+        section = _normalize_text(row.get("section"))
+        if not record_id or not section:
+            continue
+
+        section_rows.append({
+            SCHOOL_RECORD_ID_COL: record_id,
+            "section": section,
+        })
+
+    return normalize_school_section_rows(section_rows)
+
+
+def normalize_school_grade_rows(rows, valid_record_ids: set[str] | None = None) -> list[dict]:
+    normalized = []
+    seen: set[tuple[str, str]] = set()
+    allowed_record_ids = valid_record_ids or set()
+
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        record_id = _normalize_school_record_id(row.get(SCHOOL_RECORD_ID_COL))
+        if not record_id:
+            continue
+
+        grade = _normalize_school_grade_value(row.get("grade"))
+        if not grade:
+            continue
+
+        if allowed_record_ids and record_id not in allowed_record_ids:
+            continue
+
+        dedupe_key = (record_id, grade)
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+
+        normalized.append({
+            SCHOOL_RECORD_ID_COL: record_id,
+            "grade": grade,
+        })
+
+    return normalized
+
+
+def school_grade_rows_from_school_rows(rows) -> list[dict]:
+    grade_rows = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        record_id = _normalize_school_record_id(row.get(SCHOOL_RECORD_ID_COL))
+        if not record_id:
+            continue
+
+        for grade in _school_grade_values_from_value(row.get("grades_attended")):
+            grade_rows.append({
+                SCHOOL_RECORD_ID_COL: record_id,
+                "grade": grade,
+            })
+
+    return normalize_school_grade_rows(grade_rows)
+
+
+def school_rows_for_person(source_store: dict[str, pd.DataFrame], person_id) -> list[dict]:
+    schools_df = source_store.get(SCHOOL_SHEET, pd.DataFrame())
+    normalized_person_id = _normalize_person_id(person_id)
+    if schools_df.empty or "person_id" not in schools_df.columns or normalized_person_id in (None, ""):
+        return []
+
+    person_key = str(normalized_person_id)
+    rows = df_to_json(schools_df[schools_df["person_id"].astype(str) == person_key])
+    if not rows:
+        return []
+
+    person_record_ids = {
+        record_id
+        for record_id in (
+            _normalize_school_record_id(row.get(SCHOOL_RECORD_ID_COL))
+            for row in rows
+        )
+        if record_id
+    }
+
+    school_sections_df = source_store.get(SCHOOL_SECTION_SHEET, pd.DataFrame())
+    section_map: dict[str, str] = {}
+    if not school_sections_df.empty and SCHOOL_RECORD_ID_COL in school_sections_df.columns:
+        section_rows = normalize_school_section_rows(
+            school_sections_df.replace({np.nan: None}).to_dict(orient="records"),
+            person_record_ids,
+        )
+        for section_row in section_rows:
+            record_id = section_row.get(SCHOOL_RECORD_ID_COL)
+            section = section_row.get("section")
+            if record_id and section:
+                section_map[record_id] = section
+
+    school_grades_df = source_store.get(SCHOOL_GRADE_SHEET, pd.DataFrame())
+    grade_map: dict[str, list[str]] = {}
+    if not school_grades_df.empty and SCHOOL_RECORD_ID_COL in school_grades_df.columns:
+        grade_rows = normalize_school_grade_rows(
+            school_grades_df.replace({np.nan: None}).to_dict(orient="records"),
+            person_record_ids,
+        )
+        for grade_row in grade_rows:
+            record_id = grade_row.get(SCHOOL_RECORD_ID_COL)
+            if not record_id:
+                continue
+            grade_map.setdefault(record_id, []).append(grade_row["grade"])
+
+    for row in rows:
+        record_id = _normalize_school_record_id(row.get(SCHOOL_RECORD_ID_COL))
+        row["section"] = section_map.get(record_id)
+        row["grades_attended"] = grade_map.get(record_id, [])
+
+    return rows
+
+
+def replace_school_rows(target_store: dict[str, pd.DataFrame], person_id, rows):
+    normalized_person_id = _normalize_person_id(person_id)
+    person_key = str(normalized_person_id)
+    payload_rows = []
+    for row in normalize_school_payload_rows(rows):
+        payload_rows.append({
+            **row,
+            "person_id": normalized_person_id,
+        })
+
+    school_rows = [{col: row.get(col) for col in SCHOOL_COLUMNS} for row in payload_rows]
+    school_section_rows = school_section_rows_from_school_rows(payload_rows)
+    school_grade_rows = school_grade_rows_from_school_rows(payload_rows)
+
+    schools_df = target_store.get(SCHOOL_SHEET, pd.DataFrame()).copy()
+    existing_record_ids: set[str] = set()
+    if not schools_df.empty and "person_id" in schools_df.columns and SCHOOL_RECORD_ID_COL in schools_df.columns:
+        for raw_record_id in schools_df[schools_df["person_id"].astype(str) == person_key][SCHOOL_RECORD_ID_COL].tolist():
+            record_id = _normalize_school_record_id(raw_record_id)
+            if record_id:
+                existing_record_ids.add(record_id)
+    if not schools_df.empty and "person_id" in schools_df.columns:
+        schools_df = schools_df[schools_df["person_id"].astype(str) != person_key]
+    if school_rows:
+        schools_df = pd.concat([schools_df, pd.DataFrame(school_rows)], ignore_index=True)
+    target_store[SCHOOL_SHEET] = schools_df
+
+    school_sections_df = target_store.get(SCHOOL_SECTION_SHEET, pd.DataFrame()).copy()
+    if not school_sections_df.empty and SCHOOL_RECORD_ID_COL in school_sections_df.columns and existing_record_ids:
+        school_sections_df = school_sections_df[
+            ~school_sections_df[SCHOOL_RECORD_ID_COL].astype(str).isin(existing_record_ids)
+        ]
+    if school_section_rows:
+        school_sections_df = pd.concat([school_sections_df, pd.DataFrame(school_section_rows)], ignore_index=True)
+    target_store[SCHOOL_SECTION_SHEET] = school_sections_df
+
+    school_grades_df = target_store.get(SCHOOL_GRADE_SHEET, pd.DataFrame()).copy()
+    if not school_grades_df.empty and SCHOOL_RECORD_ID_COL in school_grades_df.columns and existing_record_ids:
+        school_grades_df = school_grades_df[
+            ~school_grades_df[SCHOOL_RECORD_ID_COL].astype(str).isin(existing_record_ids)
+        ]
+    if school_grade_rows:
+        school_grades_df = pd.concat([school_grades_df, pd.DataFrame(school_grade_rows)], ignore_index=True)
+    target_store[SCHOOL_GRADE_SHEET] = school_grades_df
 
 
 def normalize_email_rows(rows) -> list[dict]:
     normalized = []
+    used_record_ids: set[str] = set()
+    next_sequence = _next_email_record_sequence()
     for row in rows or []:
         if not isinstance(row, dict):
             continue
+        record_id = _normalize_email_record_id(row.get(EMAIL_RECORD_ID_COL))
         email = _normalize_text(row.get("email"))
         if not email:
             continue
-        email_type = _normalize_email_type(row.get("type"))
+        raw_type = _first_present(row, EMAIL_TYPE_COL, "type")
+        email_type = _normalize_email_type(raw_type)
+        family_relation = _normalize_family_relation(row.get("family_relation"))
+        if email_type == "family" and family_relation is None:
+            family_relation = _extract_family_relation_from_email_type(raw_type)
+        if email_type != "family":
+            family_relation = None
         is_primary = _to_bool(row.get("is_primary")) if email_type == "personal" else False
         linked_job_ids = _serialize_linked_job_ids(row.get("linked_job_ids")) if email_type == "work" else None
+        if not record_id or record_id in used_record_ids:
+            while True:
+                candidate = _format_email_record_id(next_sequence)
+                next_sequence += 1
+                if candidate not in used_record_ids:
+                    record_id = candidate
+                    break
+        used_record_ids.add(record_id)
         normalized.append({
             "person_id": _normalize_person_id(row.get("person_id")),
+            EMAIL_RECORD_ID_COL: record_id,
             "email": email,
+            EMAIL_TYPE_COL: email_type,
             "type": email_type,
+            "family_relation": family_relation,
             "is_primary": is_primary,
             "linked_job_ids": linked_job_ids,
         })
@@ -493,7 +1792,7 @@ def normalize_email_rows(rows) -> list[dict]:
     for entries in grouped.values():
         primary_seen = False
         for entry in entries:
-            if entry.get("type") != "personal":
+            if entry.get(EMAIL_TYPE_COL) != "personal":
                 entry["is_primary"] = False
             elif entry.get("is_primary") and not primary_seen:
                 primary_seen = True
@@ -501,6 +1800,347 @@ def normalize_email_rows(rows) -> list[dict]:
                 entry["is_primary"] = False
             result.append(entry)
     return result
+
+
+def _email_row_signature(row: dict | None) -> tuple[str | None, str | None, bool, str | None]:
+    payload = row if isinstance(row, dict) else {}
+    email_type = _normalize_email_type(_first_present(payload, EMAIL_TYPE_COL, "type"))
+    return (
+        _normalize_text(payload.get("email")),
+        email_type,
+        email_type == "personal",
+        _normalize_family_relation(payload.get("family_relation")) if email_type == "family" else None,
+        _serialize_linked_job_ids(payload.get("linked_job_ids")) if email_type == "work" else None,
+    )
+
+
+def normalize_email_family_relation_rows(rows, valid_record_ids: set[str] | None = None) -> list[dict]:
+    normalized = []
+    seen: set[str] = set()
+    allowed_record_ids = valid_record_ids or set()
+
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        record_id = _normalize_email_record_id(row.get(EMAIL_RECORD_ID_COL))
+        if not record_id:
+            continue
+        if allowed_record_ids and record_id not in allowed_record_ids:
+            continue
+
+        family_relation = _normalize_family_relation(row.get("family_relation"))
+        if not family_relation:
+            continue
+        if record_id in seen:
+            continue
+
+        seen.add(record_id)
+        normalized.append({
+            EMAIL_RECORD_ID_COL: record_id,
+            "family_relation": family_relation,
+        })
+
+    return normalized
+
+
+def email_family_relation_rows_from_email_rows(rows) -> list[dict]:
+    family_rows = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        record_id = _normalize_email_record_id(row.get(EMAIL_RECORD_ID_COL))
+        email_type = _normalize_email_type(_first_present(row, EMAIL_TYPE_COL, "type"))
+        family_relation = _normalize_family_relation(row.get("family_relation"))
+        if not record_id or email_type != "family" or not family_relation:
+            continue
+
+        family_rows.append({
+            EMAIL_RECORD_ID_COL: record_id,
+            "family_relation": family_relation,
+        })
+
+    return normalize_email_family_relation_rows(family_rows)
+
+
+def normalize_personal_email_primary_rows(rows, valid_record_ids: set[str] | None = None) -> list[dict]:
+    normalized = []
+    seen: set[str] = set()
+    allowed_record_ids = valid_record_ids or set()
+
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        record_id = _normalize_email_record_id(row.get(EMAIL_RECORD_ID_COL))
+        if not record_id:
+            continue
+        if allowed_record_ids and record_id not in allowed_record_ids:
+            continue
+        if record_id in seen:
+            continue
+
+        seen.add(record_id)
+        normalized.append({
+            EMAIL_RECORD_ID_COL: record_id,
+            "is_primary": _to_bool(row.get("is_primary")),
+        })
+
+    return normalized
+
+
+def personal_email_primary_rows_from_email_rows(rows) -> list[dict]:
+    primary_rows = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        record_id = _normalize_email_record_id(row.get(EMAIL_RECORD_ID_COL))
+        email_type = _normalize_email_type(_first_present(row, EMAIL_TYPE_COL, "type"))
+        if not record_id or email_type != "personal":
+            continue
+
+        primary_rows.append({
+            EMAIL_RECORD_ID_COL: record_id,
+            "is_primary": _to_bool(row.get("is_primary")),
+        })
+
+    return normalize_personal_email_primary_rows(primary_rows)
+
+
+def normalize_email_linked_job_rows(rows, valid_record_ids: set[str] | None = None) -> list[dict]:
+    normalized = []
+    seen: set[tuple[str, str]] = set()
+    allowed_record_ids = valid_record_ids or set()
+
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        record_id = _normalize_email_record_id(row.get(EMAIL_RECORD_ID_COL))
+        if not record_id:
+            continue
+        if allowed_record_ids and record_id not in allowed_record_ids:
+            continue
+
+        for job_id in _normalize_linked_job_ids(row.get("linked_job_ids")):
+            dedupe_key = (record_id, job_id)
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            normalized.append({
+                EMAIL_RECORD_ID_COL: record_id,
+                "linked_job_ids": job_id,
+            })
+
+    return normalized
+
+
+def email_linked_job_rows_from_email_rows(rows) -> list[dict]:
+    linked_job_rows = []
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        record_id = _normalize_email_record_id(row.get(EMAIL_RECORD_ID_COL))
+        if not record_id:
+            continue
+        for job_id in _normalize_linked_job_ids(row.get("linked_job_ids")):
+            linked_job_rows.append({
+                EMAIL_RECORD_ID_COL: record_id,
+                "linked_job_ids": job_id,
+            })
+    return normalize_email_linked_job_rows(linked_job_rows)
+
+
+def email_rows_for_person(source_store: dict[str, pd.DataFrame], person_id) -> list[dict]:
+    emails_df = source_store.get(EMAIL_SHEET, pd.DataFrame())
+    normalized_person_id = _normalize_person_id(person_id)
+    if emails_df.empty or "person_id" not in emails_df.columns or normalized_person_id in (None, ""):
+        return []
+
+    person_key = str(normalized_person_id)
+    rows = df_to_json(emails_df[emails_df["person_id"].astype(str) == person_key])
+    if not rows:
+        return []
+
+    person_record_ids = {
+        record_id
+        for record_id in (
+            _normalize_email_record_id(row.get(EMAIL_RECORD_ID_COL))
+            for row in rows
+        )
+        if record_id
+    }
+
+    family_df = source_store.get(EMAIL_FAMILY_RELATION_SHEET, pd.DataFrame())
+    family_map: dict[str, str] = {}
+    if not family_df.empty and EMAIL_RECORD_ID_COL in family_df.columns:
+        family_rows = normalize_email_family_relation_rows(
+            family_df.replace({np.nan: None}).to_dict(orient="records"),
+            person_record_ids,
+        )
+        for family_row in family_rows:
+            record_id = family_row.get(EMAIL_RECORD_ID_COL)
+            family_relation = family_row.get("family_relation")
+            if record_id and family_relation:
+                family_map[record_id] = family_relation
+
+    linked_jobs_df = source_store.get(EMAIL_LINKED_JOB_SHEET, pd.DataFrame())
+    linked_job_map: dict[str, list[str]] = {}
+    if not linked_jobs_df.empty and EMAIL_RECORD_ID_COL in linked_jobs_df.columns:
+        linked_job_rows = normalize_email_linked_job_rows(
+            linked_jobs_df.replace({np.nan: None}).to_dict(orient="records"),
+            person_record_ids,
+        )
+        for linked_job_row in linked_job_rows:
+            record_id = linked_job_row.get(EMAIL_RECORD_ID_COL)
+            job_id = linked_job_row.get("linked_job_ids")
+            if record_id and job_id:
+                linked_job_map.setdefault(record_id, []).append(job_id)
+
+    personal_primary_df = source_store.get(PERSONAL_EMAIL_PRIMARY_SHEET, pd.DataFrame())
+    personal_primary_map: dict[str, bool] = {}
+    if not personal_primary_df.empty and EMAIL_RECORD_ID_COL in personal_primary_df.columns:
+        personal_primary_rows = normalize_personal_email_primary_rows(
+            personal_primary_df.replace({np.nan: None}).to_dict(orient="records"),
+            person_record_ids,
+        )
+        for primary_row in personal_primary_rows:
+            record_id = primary_row.get(EMAIL_RECORD_ID_COL)
+            if record_id:
+                personal_primary_map[record_id] = _to_bool(primary_row.get("is_primary"))
+
+    for row in rows:
+        record_id = _normalize_email_record_id(row.get(EMAIL_RECORD_ID_COL))
+        family_relation = family_map.get(record_id)
+        linked_job_ids = linked_job_map.get(record_id, [])
+        if family_relation:
+            row[EMAIL_TYPE_COL] = "family"
+            row["type"] = "family"
+        elif linked_job_ids:
+            row[EMAIL_TYPE_COL] = "work"
+            row["type"] = "work"
+        else:
+            row[EMAIL_TYPE_COL] = _normalize_email_type(_first_present(row, EMAIL_TYPE_COL, "type"))
+            row["type"] = row[EMAIL_TYPE_COL]
+        row["family_relation"] = family_relation
+        row["is_primary"] = personal_primary_map.get(record_id, False) if row[EMAIL_TYPE_COL] == "personal" else False
+        row["linked_job_ids"] = linked_job_ids
+
+    return normalize_email_rows(rows)
+
+
+def prepare_email_rows_for_person(target_store: dict[str, pd.DataFrame], person_id, rows) -> list[dict]:
+    normalized_person_id = _normalize_person_id(person_id)
+    person_key = str(normalized_person_id)
+    emails_df = target_store.get(EMAIL_SHEET, pd.DataFrame()).copy()
+    existing_rows = []
+    if not emails_df.empty and "person_id" in emails_df.columns:
+        existing_rows = emails_df[emails_df["person_id"].astype(str) == person_key].replace({np.nan: None}).to_dict(orient="records")
+
+    existing_by_id: dict[str, dict] = {}
+    existing_order: list[dict] = []
+    for row in existing_rows:
+        existing_order.append(row)
+        existing_id = _normalize_email_record_id(row.get(EMAIL_RECORD_ID_COL))
+        if existing_id:
+            existing_by_id[existing_id] = row
+
+    assigned_existing_ids: set[str] = set()
+    used_record_ids: set[str] = set(existing_by_id.keys())
+    next_sequence = _next_email_record_sequence()
+    prepared_rows = []
+
+    for index, row in enumerate(rows or []):
+        if not isinstance(row, dict):
+            continue
+
+        normalized_rows = normalize_email_rows([row])
+        if not normalized_rows:
+            continue
+        normalized_row = normalized_rows[0]
+
+        canonical_record_id = _normalize_email_record_id(row.get(EMAIL_RECORD_ID_COL))
+        assigned_record_id = None
+
+        if canonical_record_id and canonical_record_id in existing_by_id and canonical_record_id not in assigned_existing_ids:
+            assigned_record_id = canonical_record_id
+        elif index < len(existing_order):
+            candidate_existing_id = _normalize_email_record_id(existing_order[index].get(EMAIL_RECORD_ID_COL))
+            if candidate_existing_id and candidate_existing_id not in assigned_existing_ids:
+                assigned_record_id = candidate_existing_id
+        if not assigned_record_id:
+            signature = _email_row_signature(normalized_row)
+            for existing_row in existing_order:
+                existing_id = _normalize_email_record_id(existing_row.get(EMAIL_RECORD_ID_COL))
+                if not existing_id or existing_id in assigned_existing_ids:
+                    continue
+                if _email_row_signature(existing_row) == signature:
+                    assigned_record_id = existing_id
+                    break
+        if not assigned_record_id:
+            while True:
+                candidate = _format_email_record_id(next_sequence)
+                next_sequence += 1
+                if candidate not in used_record_ids:
+                    assigned_record_id = candidate
+                    break
+
+        used_record_ids.add(assigned_record_id)
+        if assigned_record_id in existing_by_id:
+            assigned_existing_ids.add(assigned_record_id)
+
+        prepared_rows.append({
+            **normalized_row,
+            "person_id": normalized_person_id,
+            EMAIL_RECORD_ID_COL: assigned_record_id,
+        })
+
+    return prepared_rows
+
+
+def replace_email_rows(target_store: dict[str, pd.DataFrame], person_id, rows):
+    normalized_person_id = _normalize_person_id(person_id)
+    person_key = str(normalized_person_id)
+    prepared_rows = prepare_email_rows_for_person(target_store, person_id, rows)
+    email_rows = [{col: row.get(col) for col in EMAIL_COLUMNS} for row in prepared_rows]
+    emails_df = target_store.get(EMAIL_SHEET, pd.DataFrame()).copy()
+    existing_record_ids: set[str] = set()
+    if not emails_df.empty and "person_id" in emails_df.columns and EMAIL_RECORD_ID_COL in emails_df.columns:
+        for raw_record_id in emails_df[emails_df["person_id"].astype(str) == person_key][EMAIL_RECORD_ID_COL].tolist():
+            record_id = _normalize_email_record_id(raw_record_id)
+            if record_id:
+                existing_record_ids.add(record_id)
+    if not emails_df.empty and "person_id" in emails_df.columns:
+        emails_df = emails_df[emails_df["person_id"].astype(str) != person_key]
+    if email_rows:
+        emails_df = pd.concat([emails_df, pd.DataFrame(email_rows)], ignore_index=True)
+    target_store[EMAIL_SHEET] = emails_df
+
+    family_rows = email_family_relation_rows_from_email_rows(prepared_rows)
+    family_df = target_store.get(EMAIL_FAMILY_RELATION_SHEET, pd.DataFrame()).copy()
+    if not family_df.empty and EMAIL_RECORD_ID_COL in family_df.columns and existing_record_ids:
+        family_df = family_df[~family_df[EMAIL_RECORD_ID_COL].astype(str).isin(existing_record_ids)]
+    if family_rows:
+        family_df = pd.concat([family_df, pd.DataFrame(family_rows)], ignore_index=True)
+    target_store[EMAIL_FAMILY_RELATION_SHEET] = family_df
+
+    personal_primary_rows = personal_email_primary_rows_from_email_rows(prepared_rows)
+    personal_primary_df = target_store.get(PERSONAL_EMAIL_PRIMARY_SHEET, pd.DataFrame()).copy()
+    if not personal_primary_df.empty and EMAIL_RECORD_ID_COL in personal_primary_df.columns and existing_record_ids:
+        personal_primary_df = personal_primary_df[~personal_primary_df[EMAIL_RECORD_ID_COL].astype(str).isin(existing_record_ids)]
+    if personal_primary_rows:
+        personal_primary_df = pd.concat([personal_primary_df, pd.DataFrame(personal_primary_rows)], ignore_index=True)
+    target_store[PERSONAL_EMAIL_PRIMARY_SHEET] = personal_primary_df
+
+    linked_job_rows = email_linked_job_rows_from_email_rows(prepared_rows)
+    linked_jobs_df = target_store.get(EMAIL_LINKED_JOB_SHEET, pd.DataFrame()).copy()
+    if not linked_jobs_df.empty and EMAIL_RECORD_ID_COL in linked_jobs_df.columns and existing_record_ids:
+        linked_jobs_df = linked_jobs_df[~linked_jobs_df[EMAIL_RECORD_ID_COL].astype(str).isin(existing_record_ids)]
+    if linked_job_rows:
+        linked_jobs_df = pd.concat([linked_jobs_df, pd.DataFrame(linked_job_rows)], ignore_index=True)
+    target_store[EMAIL_LINKED_JOB_SHEET] = linked_jobs_df
 
 
 def normalize_social_media_rows(rows) -> list[dict]:
@@ -532,37 +2172,272 @@ def normalize_social_media_rows(rows) -> list[dict]:
     return result
 
 
-def normalize_job_rows(rows) -> list[dict]:
+def normalize_job_rows(rows, existing_id_map: dict[str, str] | None = None) -> tuple[list[dict], dict[str, str]]:
+    normalized = []
+    id_map: dict[str, str] = dict(existing_id_map or {})
+    used_job_ids: set[str] = {
+        mapped_id
+        for mapped_id in id_map.values()
+        if _normalize_job_id(mapped_id)
+    }
+    next_sequence = _next_job_id_sequence()
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        raw_job_id = row.get(JOB_ID_COL)
+        raw_job_id_key = _normalize_job_id_key(raw_job_id)
+        job_title = _normalize_text(row.get("job_title"))
+        company = _normalize_text(_first_present(row, EMPLOYER_NAME_COL, "company"))
+        start_date = _normalize_text(row.get("start_date"))
+        end_date = _normalize_text(row.get("end_date"))
+        state = _normalize_text(_first_present(row, EMPLOYMENT_STATE_COL, "state"))
+        legacy_is_current = row.get("is_current")
+        has_legacy_current = legacy_is_current not in (None, "", "nan", "None", "null")
+        is_current = _to_bool(legacy_is_current) if has_legacy_current else (not bool(end_date))
+        if not state:
+            state = "current" if is_current else "previous"
+        if state == "current":
+            end_date = None
+        if not (job_title or company or start_date or end_date or state):
+            continue
+
+        job_id = id_map.get(raw_job_id_key or "") if raw_job_id_key else None
+        if not job_id:
+            canonical_job_id = _normalize_job_id(raw_job_id)
+            if canonical_job_id and canonical_job_id not in used_job_ids:
+                job_id = canonical_job_id
+            else:
+                while True:
+                    candidate = _format_job_id(next_sequence)
+                    next_sequence += 1
+                    if candidate not in used_job_ids:
+                        job_id = candidate
+                        break
+        used_job_ids.add(job_id)
+        if raw_job_id_key:
+            id_map[raw_job_id_key] = job_id
+        id_map[job_id] = job_id
+
+        normalized.append({
+            "person_id": _normalize_person_id(row.get("person_id")),
+            JOB_ID_COL: job_id,
+            "job_title": job_title,
+            EMPLOYER_NAME_COL: company,
+            "company": company,
+            "start_date": start_date,
+            "end_date": end_date,
+            EMPLOYMENT_STATE_COL: state,
+            "state": state,
+        })
+    return normalized, id_map
+
+
+def normalize_higher_education_rows(rows) -> list[dict]:
     normalized = []
     for row in rows or []:
         if not isinstance(row, dict):
             continue
-        job_title = _normalize_text(row.get("job_title"))
-        company = _normalize_text(row.get("company"))
+
+        university_college = _normalize_text(_first_present(row, HIGHER_EDUCATION_INSTITUTION_COL, "university_college"))
+        major = _normalize_text(row.get("major"))
+        degree = _normalize_text(row.get("degree"))
         start_date = _normalize_text(row.get("start_date"))
         end_date = _normalize_text(row.get("end_date"))
-        state = _normalize_text(row.get("state"))
-        is_current = _to_bool(row.get("is_current")) if row.get("is_current") not in (None, "", "nan", "None", "null") else (not bool(end_date))
-        if not (job_title or company or start_date or end_date or state):
+        state = _normalize_text(_first_present(row, EDUCATION_STATE_COL, "state"))
+        legacy_is_current = row.get("is_current")
+        has_legacy_current = legacy_is_current not in (None, "", "nan", "None", "null")
+        is_current = _to_bool(legacy_is_current) if has_legacy_current else (not bool(end_date))
+
+        if not state:
+            state = "current" if is_current else None
+        if state == "current":
+            end_date = None
+
+        if not (university_college or major or degree or start_date or end_date or state):
             continue
+
         normalized.append({
             "person_id": _normalize_person_id(row.get("person_id")),
-            JOB_ID_COL: _normalize_job_id(row.get(JOB_ID_COL)),
-            "job_title": job_title,
-            "company": company,
+            HIGHER_EDUCATION_INSTITUTION_COL: university_college,
+            "university_college": university_college,
+            "major": major,
+            "degree": degree,
             "start_date": start_date,
             "end_date": end_date,
-            "is_current": is_current,
+            EDUCATION_STATE_COL: state,
             "state": state,
+            "final_gpa": _normalize_final_gpa(row.get("final_gpa")) if state in {"current", "graduated"} else None,
         })
     return normalized
+
+
+def normalize_responsibility_rows(rows) -> list[dict]:
+    normalized = []
+    current_year = pd.Timestamp.utcnow().year
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+
+        legacy_period = _normalize_text(_first_present(row, "responsibility_period", "time"))
+        jec_year = _to_int_or_none(row.get("jec_year"), 1900, 2100)
+        if jec_year is None and legacy_period:
+            if legacy_period in {"حاليًّا", "حاليًا", "حالي"}:
+                jec_year = current_year
+            else:
+                jec_year = _to_int_or_none(legacy_period, 1900, 2100)
+        legacy_is_current = row.get("is_current")
+        has_is_current_value = legacy_is_current not in (None, "", "nan", "None", "null")
+        legacy_is_active = row.get("is_active")
+        has_is_active_value = legacy_is_active not in (None, "", "nan", "None", "null")
+        has_current_flag = has_is_current_value or has_is_active_value
+        if has_is_current_value:
+            is_current = _to_bool(legacy_is_current)
+        elif has_is_active_value:
+            is_current = _to_bool(legacy_is_active)
+        elif legacy_period in {"حاليًّا", "حاليًا", "حالي"}:
+            is_current = True
+        elif legacy_period in {"سابقًا", "سابقا"} or _to_int_or_none(legacy_period, 1900, 2100) is not None:
+            is_current = False
+        else:
+            is_current = False
+        responsibility_name = _normalize_text(_first_present(row, "responsibility_name", "responsibility"))
+        start_date = _normalize_text(row.get("start_date"))
+        end_date = _normalize_text(row.get("end_date"))
+        youth_group_id = _normalize_text(row.get("youth_group_id"))
+
+        if not (jec_year is not None or has_current_flag or legacy_period or responsibility_name or start_date or end_date or youth_group_id):
+            continue
+
+        normalized.append({
+            "person_id": _normalize_person_id(row.get("person_id")),
+            "jec_year": jec_year,
+            "is_current": is_current,
+            "responsibility_name": responsibility_name,
+            "start_date": start_date,
+            "end_date": end_date,
+            "youth_group_id": youth_group_id,
+        })
+    return normalized
+
+
+def _job_row_signature(row: dict | None) -> tuple[str | None, str | None, str | None, str | None, str | None]:
+    payload = row if isinstance(row, dict) else {}
+    return (
+        _normalize_text(payload.get("job_title")),
+        _normalize_text(_first_present(payload, EMPLOYER_NAME_COL, "company")),
+        _normalize_text(payload.get("start_date")),
+        _normalize_text(payload.get("end_date")),
+        _normalize_text(_first_present(payload, EMPLOYMENT_STATE_COL, "state")),
+    )
+
+
+def prepare_job_rows_for_person(target_store: dict[str, pd.DataFrame], person_id, rows) -> tuple[list[dict], dict[str, str]]:
+    normalized_person_id = _normalize_person_id(person_id)
+    person_key = str(normalized_person_id)
+    jobs_df = target_store.get(JOB_SHEET, pd.DataFrame()).copy()
+    existing_rows = []
+    if not jobs_df.empty and "person_id" in jobs_df.columns:
+        existing_rows = jobs_df[jobs_df["person_id"].astype(str) == person_key].replace({np.nan: None}).to_dict(orient="records")
+
+    existing_by_id: dict[str, dict] = {}
+    existing_order: list[dict] = []
+    for row in existing_rows:
+        existing_order.append(row)
+        existing_id = _normalize_job_id(row.get(JOB_ID_COL))
+        if existing_id:
+            existing_by_id[existing_id] = row
+
+    id_map: dict[str, str] = {}
+    assigned_existing_ids: set[str] = set()
+    used_job_ids: set[str] = set(existing_by_id.keys())
+    next_sequence = _next_job_id_sequence()
+    prepared_rows = []
+
+    for index, row in enumerate(rows or []):
+        if not isinstance(row, dict):
+            continue
+
+        normalized_rows, _ = normalize_job_rows([row])
+        if not normalized_rows:
+            continue
+        normalized_row = normalized_rows[0]
+
+        raw_job_id_key = _normalize_job_id_key(row.get(JOB_ID_COL))
+        canonical_job_id = _normalize_job_id(row.get(JOB_ID_COL))
+        assigned_job_id = None
+
+        if canonical_job_id and canonical_job_id in existing_by_id and canonical_job_id not in assigned_existing_ids:
+            assigned_job_id = canonical_job_id
+        elif index < len(existing_order):
+            candidate_existing_id = _normalize_job_id(existing_order[index].get(JOB_ID_COL))
+            if candidate_existing_id and candidate_existing_id not in assigned_existing_ids:
+                assigned_job_id = candidate_existing_id
+        if not assigned_job_id:
+            signature = _job_row_signature(normalized_row)
+            for existing_row in existing_order:
+                existing_id = _normalize_job_id(existing_row.get(JOB_ID_COL))
+                if not existing_id or existing_id in assigned_existing_ids:
+                    continue
+                if _job_row_signature(existing_row) == signature:
+                    assigned_job_id = existing_id
+                    break
+        if not assigned_job_id:
+            while True:
+                candidate = _format_job_id(next_sequence)
+                next_sequence += 1
+                if candidate not in used_job_ids:
+                    assigned_job_id = candidate
+                    break
+
+        used_job_ids.add(assigned_job_id)
+        if assigned_job_id in existing_by_id:
+            assigned_existing_ids.add(assigned_job_id)
+        if raw_job_id_key:
+            id_map[raw_job_id_key] = assigned_job_id
+        id_map[assigned_job_id] = assigned_job_id
+
+        prepared_rows.append({
+            **normalized_row,
+            "person_id": normalized_person_id,
+            JOB_ID_COL: assigned_job_id,
+        })
+
+    return prepared_rows, id_map
+
+
+def replace_job_rows(target_store: dict[str, pd.DataFrame], person_id, rows) -> dict[str, str]:
+    normalized_person_id = _normalize_person_id(person_id)
+    person_key = str(normalized_person_id)
+    prepared_rows, id_map = prepare_job_rows_for_person(target_store, person_id, rows)
+    jobs_df = target_store.get(JOB_SHEET, pd.DataFrame()).copy()
+    if not jobs_df.empty and "person_id" in jobs_df.columns:
+        jobs_df = jobs_df[jobs_df["person_id"].astype(str) != person_key]
+    if prepared_rows:
+        jobs_df = pd.concat([jobs_df, pd.DataFrame(prepared_rows)], ignore_index=True)
+    target_store[JOB_SHEET] = jobs_df
+    return id_map
+
+
+def job_rows_for_person(source_store: dict[str, pd.DataFrame], person_id) -> list[dict]:
+    jobs_df = source_store.get(JOB_SHEET, pd.DataFrame())
+    normalized_person_id = _normalize_person_id(person_id)
+    if jobs_df.empty or "person_id" not in jobs_df.columns or normalized_person_id in (None, ""):
+        return []
+
+    person_key = str(normalized_person_id)
+    rows = df_to_json(jobs_df[jobs_df["person_id"].astype(str) == person_key])
+    if not rows:
+        return []
+
+    normalized_rows, _ = normalize_job_rows(rows)
+    return normalized_rows
 
 
 def address_rows_from_legacy_person_payload(person: dict | None) -> list[dict]:
     payload = person or {}
     governorate = _normalize_text(payload.get("governorate"))
     city = _normalize_text(payload.get("city"))
-    address = _normalize_text(payload.get("address"))
+    address = _normalize_text(_first_present(payload, STREET_ADDRESS_COL, "address"))
     country = _normalize_country(payload.get("country"))
     if not governorate and not city and not address:
         return []
@@ -570,8 +2445,8 @@ def address_rows_from_legacy_person_payload(person: dict | None) -> list[dict]:
         "country": country,
         "governorate": governorate,
         "city": city,
+        STREET_ADDRESS_COL: address,
         "address": address,
-        "location_url": None,
         "lat": None,
         "lng": None,
         "is_primary": True,
@@ -596,7 +2471,7 @@ def _primary_address_rows(df: pd.DataFrame) -> pd.DataFrame:
 
 def _project_primary_addresses(persons_df: pd.DataFrame, addresses_df: pd.DataFrame | None = None) -> pd.DataFrame:
     working = persons_df.copy()
-    for col in ("country", "governorate", "city", "address", "location_url", "lat", "lng"):
+    for col in ("country", "governorate", "city", STREET_ADDRESS_COL, "lat", "lng"):
         if col not in working.columns:
             working[col] = None
 
@@ -610,15 +2485,16 @@ def _project_primary_addresses(persons_df: pd.DataFrame, addresses_df: pd.DataFr
 
     indexed = working.reset_index().rename(columns={"index": "_store_index"})
     merged = indexed.merge(
-        primary_rows[["person_id", "country", "governorate", "city", "address", "location_url", "lat", "lng"]],
+        primary_rows[["person_id", "country", "governorate", "city", STREET_ADDRESS_COL, "lat", "lng"]],
         on="person_id",
         how="left",
         suffixes=("", "_primary"),
     )
-    for col in ("country", "governorate", "city", "address", "location_url", "lat", "lng"):
+    for col in ("country", "governorate", "city", STREET_ADDRESS_COL, "lat", "lng"):
         primary_col = f"{col}_primary"
         merged[col] = merged[primary_col].where(merged[primary_col].notna(), merged[col])
         merged = merged.drop(columns=[primary_col])
+    merged["address"] = merged[STREET_ADDRESS_COL]
     return merged.set_index("_store_index")
 
 
@@ -810,8 +2686,6 @@ def _create_youth_group_id_for_name(name: str) -> str:
             YOUTH_GROUP_PARISH_ID_COL,
             YOUTH_GROUP_USE_PARISH_LOGO_COL,
             YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL,
-            YOUTH_GROUP_SPECIAL_LOGO_ACTIVE_COL,
-            YOUTH_GROUP_SPECIAL_LOGO_OCCASION_COL,
         ])
     if YOUTH_GROUP_ID_COL not in yg_df.columns:
         yg_df[YOUTH_GROUP_ID_COL] = None
@@ -825,10 +2699,9 @@ def _create_youth_group_id_for_name(name: str) -> str:
         yg_df[YOUTH_GROUP_USE_PARISH_LOGO_COL] = False
     if YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL not in yg_df.columns:
         yg_df[YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL] = False
-    if YOUTH_GROUP_SPECIAL_LOGO_ACTIVE_COL not in yg_df.columns:
-        yg_df[YOUTH_GROUP_SPECIAL_LOGO_ACTIVE_COL] = False
-    if YOUTH_GROUP_SPECIAL_LOGO_OCCASION_COL not in yg_df.columns:
-        yg_df[YOUTH_GROUP_SPECIAL_LOGO_OCCASION_COL] = None
+    for legacy_col in ("special_logo_active", "special_logo_occasion"):
+        if legacy_col in yg_df.columns:
+            yg_df = yg_df.drop(columns=[legacy_col])
     if "safe_key" in yg_df.columns:
         yg_df = yg_df.drop(columns=["safe_key"])
     if YOUTH_GROUP_NAME_COL in yg_df.columns:
@@ -843,8 +2716,6 @@ def _create_youth_group_id_for_name(name: str) -> str:
             YOUTH_GROUP_PARISH_ID_COL: None,
             YOUTH_GROUP_USE_PARISH_LOGO_COL: False,
             YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL: False,
-            YOUTH_GROUP_SPECIAL_LOGO_ACTIVE_COL: False,
-            YOUTH_GROUP_SPECIAL_LOGO_OCCASION_COL: None,
         }]),
     ], ignore_index=True)
     store[YOUTH_GROUP_SHEET] = yg_df
@@ -866,8 +2737,6 @@ def _ensure_youth_group_catalog() -> bool:
             YOUTH_GROUP_PARISH_ID_COL,
             YOUTH_GROUP_USE_PARISH_LOGO_COL,
             YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL,
-            YOUTH_GROUP_SPECIAL_LOGO_ACTIVE_COL,
-            YOUTH_GROUP_SPECIAL_LOGO_OCCASION_COL,
         ])
         changed = True
     else:
@@ -889,12 +2758,10 @@ def _ensure_youth_group_catalog() -> bool:
         if YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL not in yg_df.columns:
             yg_df[YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL] = False
             changed = True
-        if YOUTH_GROUP_SPECIAL_LOGO_ACTIVE_COL not in yg_df.columns:
-            yg_df[YOUTH_GROUP_SPECIAL_LOGO_ACTIVE_COL] = False
-            changed = True
-        if YOUTH_GROUP_SPECIAL_LOGO_OCCASION_COL not in yg_df.columns:
-            yg_df[YOUTH_GROUP_SPECIAL_LOGO_OCCASION_COL] = None
-            changed = True
+        for legacy_col in ("special_logo_active", "special_logo_occasion"):
+            if legacy_col in yg_df.columns:
+                yg_df = yg_df.drop(columns=[legacy_col])
+                changed = True
         if "safe_key" in yg_df.columns:
             yg_df = yg_df.drop(columns=["safe_key"])
             changed = True
@@ -911,8 +2778,6 @@ def _ensure_youth_group_catalog() -> bool:
         parish_id = _normalize_text(row.get(YOUTH_GROUP_PARISH_ID_COL))
         use_parish_logo = _to_bool(row.get(YOUTH_GROUP_USE_PARISH_LOGO_COL))
         inherit_parish_social_media = _to_bool(row.get(YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL))
-        special_logo_active = _to_bool(row.get(YOUTH_GROUP_SPECIAL_LOGO_ACTIVE_COL))
-        special_logo_occasion = _normalize_text(row.get(YOUTH_GROUP_SPECIAL_LOGO_OCCASION_COL))
 
         if short_name:
             parsed_patron, parsed_short = _split_youth_group_name(short_name)
@@ -941,8 +2806,6 @@ def _ensure_youth_group_catalog() -> bool:
             YOUTH_GROUP_PARISH_ID_COL: parish_id,
             YOUTH_GROUP_USE_PARISH_LOGO_COL: use_parish_logo,
             YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL: inherit_parish_social_media,
-            YOUTH_GROUP_SPECIAL_LOGO_ACTIVE_COL: special_logo_active,
-            YOUTH_GROUP_SPECIAL_LOGO_OCCASION_COL: special_logo_occasion,
         })
 
     used_ids = set()
@@ -965,8 +2828,6 @@ def _ensure_youth_group_catalog() -> bool:
             YOUTH_GROUP_PARISH_ID_COL,
             YOUTH_GROUP_USE_PARISH_LOGO_COL,
             YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL,
-            YOUTH_GROUP_SPECIAL_LOGO_ACTIVE_COL,
-            YOUTH_GROUP_SPECIAL_LOGO_OCCASION_COL,
         ],
     )
     _refresh_youth_group_indexes()
@@ -1061,7 +2922,7 @@ def _ensure_addresses_schema() -> bool:
                 continue
             legacy_governorate = _normalize_text(row.get("governorate"))
             legacy_city = _normalize_text(row.get("city"))
-            legacy_address = _normalize_text(row.get("address"))
+            legacy_address = _normalize_text(_first_present(row, STREET_ADDRESS_COL, "address"))
             legacy_country = _normalize_country(row.get("country"))
             legacy_location_url = _normalize_text(row.get("location_url"))
             legacy_lat = _normalize_coordinate(row.get("lat"), "lat")
@@ -1075,8 +2936,8 @@ def _ensure_addresses_schema() -> bool:
                 "country": legacy_country,
                 "governorate": legacy_governorate,
                 "city": legacy_city,
+                STREET_ADDRESS_COL: legacy_address,
                 "address": legacy_address,
-                "location_url": legacy_location_url,
                 "lat": legacy_lat,
                 "lng": legacy_lng,
                 "is_primary": True,
@@ -1099,6 +2960,9 @@ def _ensure_addresses_schema() -> bool:
 def _ensure_mobile_numbers_schema() -> bool:
     changed = False
     mobile_numbers = store.get(MOBILE_NUMBER_SHEET, pd.DataFrame()).copy()
+    mobile_number_family_relations = store.get(MOBILE_NUMBER_FAMILY_RELATION_SHEET, pd.DataFrame()).copy()
+    personal_mobile_number_primary = store.get(PERSONAL_MOBILE_NUMBER_PRIMARY_SHEET, pd.DataFrame()).copy()
+    mobile_number_linked_jobs = store.get(MOBILE_NUMBER_LINKED_JOB_SHEET, pd.DataFrame()).copy()
 
     if mobile_numbers.empty:
         mobile_numbers = pd.DataFrame(columns=MOBILE_NUMBER_COLUMNS)
@@ -1108,19 +2972,205 @@ def _ensure_mobile_numbers_schema() -> bool:
             if col not in mobile_numbers.columns:
                 mobile_numbers[col] = None
                 changed = True
+        if any(col not in MOBILE_NUMBER_COLUMNS and col not in ("family_relation", "linked_job_ids") for col in mobile_numbers.columns):
+            changed = True
 
     existing_rows = mobile_numbers.replace({np.nan: None}).to_dict(orient="records") if not mobile_numbers.empty else []
-    normalized_rows = normalize_mobile_number_rows(existing_rows)
-    if normalized_rows != existing_rows:
+    normalized_payload_rows = normalize_mobile_number_rows(existing_rows)
+    normalized_rows = [{col: row.get(col) for col in MOBILE_NUMBER_COLUMNS} for row in normalized_payload_rows]
+    current_rows = [{col: row.get(col) for col in MOBILE_NUMBER_COLUMNS} for row in existing_rows]
+    if normalized_rows != current_rows:
+        changed = True
+
+    if mobile_number_family_relations.empty:
+        mobile_number_family_relations = pd.DataFrame(columns=MOBILE_NUMBER_FAMILY_RELATION_COLUMNS)
+        changed = True
+    else:
+        for col in MOBILE_NUMBER_FAMILY_RELATION_COLUMNS:
+            if col not in mobile_number_family_relations.columns:
+                mobile_number_family_relations[col] = None
+                changed = True
+        if any(col not in MOBILE_NUMBER_FAMILY_RELATION_COLUMNS for col in mobile_number_family_relations.columns):
+            changed = True
+
+    mobile_record_ids = {
+        str(row.get(MOBILE_NUMBER_RECORD_ID_COL))
+        for row in normalized_rows
+        if row.get(MOBILE_NUMBER_RECORD_ID_COL)
+    }
+    existing_family_rows = mobile_number_family_relations.replace({np.nan: None}).to_dict(orient="records") if not mobile_number_family_relations.empty else []
+    legacy_family_rows = mobile_number_family_relation_rows_from_mobile_rows(normalized_payload_rows)
+    normalized_family_rows = normalize_mobile_number_family_relation_rows(
+        existing_family_rows + legacy_family_rows,
+        mobile_record_ids,
+    )
+    current_family_rows = normalize_mobile_number_family_relation_rows(existing_family_rows, mobile_record_ids)
+    if normalized_family_rows != current_family_rows:
+        changed = True
+
+    if personal_mobile_number_primary.empty:
+        personal_mobile_number_primary = pd.DataFrame(columns=PERSONAL_MOBILE_NUMBER_PRIMARY_COLUMNS)
+        changed = True
+    else:
+        for col in PERSONAL_MOBILE_NUMBER_PRIMARY_COLUMNS:
+            if col not in personal_mobile_number_primary.columns:
+                personal_mobile_number_primary[col] = None
+                changed = True
+        if any(col not in PERSONAL_MOBILE_NUMBER_PRIMARY_COLUMNS for col in personal_mobile_number_primary.columns):
+            changed = True
+
+    personal_mobile_record_ids = {
+        str(row.get(MOBILE_NUMBER_RECORD_ID_COL))
+        for row in normalized_payload_rows
+        if row.get(MOBILE_NUMBER_RECORD_ID_COL) and _normalize_mobile_number_type(_first_present(row, MOBILE_NUMBER_TYPE_COL, "type")) == "personal"
+    }
+    existing_personal_primary_rows = personal_mobile_number_primary.replace({np.nan: None}).to_dict(orient="records") if not personal_mobile_number_primary.empty else []
+    legacy_personal_primary_rows = personal_mobile_number_primary_rows_from_mobile_rows(normalized_payload_rows)
+    normalized_personal_primary_rows = normalize_personal_mobile_number_primary_rows(
+        existing_personal_primary_rows + legacy_personal_primary_rows,
+        personal_mobile_record_ids,
+    )
+    current_personal_primary_rows = normalize_personal_mobile_number_primary_rows(existing_personal_primary_rows, personal_mobile_record_ids)
+    if normalized_personal_primary_rows != current_personal_primary_rows:
+        changed = True
+
+    if mobile_number_linked_jobs.empty:
+        mobile_number_linked_jobs = pd.DataFrame(columns=MOBILE_NUMBER_LINKED_JOB_COLUMNS)
+        changed = True
+    else:
+        for col in MOBILE_NUMBER_LINKED_JOB_COLUMNS:
+            if col not in mobile_number_linked_jobs.columns:
+                mobile_number_linked_jobs[col] = None
+                changed = True
+        if any(col not in MOBILE_NUMBER_LINKED_JOB_COLUMNS for col in mobile_number_linked_jobs.columns):
+            changed = True
+
+    existing_linked_job_rows = mobile_number_linked_jobs.replace({np.nan: None}).to_dict(orient="records") if not mobile_number_linked_jobs.empty else []
+    legacy_linked_job_rows = mobile_number_linked_job_rows_from_mobile_rows(normalized_payload_rows)
+    normalized_linked_job_rows = normalize_mobile_number_linked_job_rows(
+        existing_linked_job_rows + legacy_linked_job_rows,
+        mobile_record_ids,
+    )
+    current_linked_job_rows = normalize_mobile_number_linked_job_rows(existing_linked_job_rows, mobile_record_ids)
+    if normalized_linked_job_rows != current_linked_job_rows:
         changed = True
 
     store[MOBILE_NUMBER_SHEET] = pd.DataFrame(normalized_rows, columns=MOBILE_NUMBER_COLUMNS)
+    store[MOBILE_NUMBER_FAMILY_RELATION_SHEET] = pd.DataFrame(normalized_family_rows, columns=MOBILE_NUMBER_FAMILY_RELATION_COLUMNS)
+    store[PERSONAL_MOBILE_NUMBER_PRIMARY_SHEET] = pd.DataFrame(normalized_personal_primary_rows, columns=PERSONAL_MOBILE_NUMBER_PRIMARY_COLUMNS)
+    store[MOBILE_NUMBER_LINKED_JOB_SHEET] = pd.DataFrame(normalized_linked_job_rows, columns=MOBILE_NUMBER_LINKED_JOB_COLUMNS)
+    return changed
+
+
+def _ensure_nationality_schema() -> bool:
+    changed = False
+    nationality = store.get(NATIONALITY_SHEET, pd.DataFrame()).copy()
+
+    if nationality.empty:
+        nationality = pd.DataFrame(columns=NATIONALITY_COLUMNS)
+        changed = True
+    else:
+        for col in NATIONALITY_COLUMNS:
+            if col not in nationality.columns:
+                nationality[col] = None
+                changed = True
+        if any(col not in NATIONALITY_COLUMNS for col in nationality.columns):
+            changed = True
+
+    existing_rows = nationality.replace({np.nan: None}).to_dict(orient="records") if not nationality.empty else []
+    normalized_payload_rows = normalize_nationality_payload_rows(existing_rows)
+    normalized_rows = [{col: row.get(col) for col in NATIONALITY_COLUMNS} for row in normalized_payload_rows]
+    current_rows = [{col: row.get(col) for col in NATIONALITY_COLUMNS} for row in existing_rows]
+    if normalized_rows != current_rows:
+        changed = True
+
+    store[NATIONALITY_SHEET] = pd.DataFrame(normalized_rows, columns=NATIONALITY_COLUMNS)
+    return changed
+
+
+def _ensure_schools_schema() -> bool:
+    changed = False
+    schools = store.get(SCHOOL_SHEET, pd.DataFrame()).copy()
+    school_sections = store.get(SCHOOL_SECTION_SHEET, pd.DataFrame()).copy()
+    school_grades = store.get(SCHOOL_GRADE_SHEET, pd.DataFrame()).copy()
+
+    if schools.empty:
+        schools = pd.DataFrame(columns=SCHOOL_COLUMNS)
+        changed = True
+    else:
+        for col in SCHOOL_COLUMNS:
+            if col not in schools.columns:
+                schools[col] = None
+                changed = True
+        if any(col not in SCHOOL_COLUMNS and col not in ("section", "grades_attended") for col in schools.columns):
+            changed = True
+
+    existing_rows = schools.replace({np.nan: None}).to_dict(orient="records") if not schools.empty else []
+    normalized_payload_rows = normalize_school_payload_rows(existing_rows)
+    normalized_rows = [{col: row.get(col) for col in SCHOOL_COLUMNS} for row in normalized_payload_rows]
+    current_rows = [{col: row.get(col) for col in SCHOOL_COLUMNS} for row in existing_rows]
+    if normalized_rows != current_rows:
+        changed = True
+
+    if school_sections.empty:
+        school_sections = pd.DataFrame(columns=SCHOOL_SECTION_COLUMNS)
+        changed = True
+    else:
+        for col in SCHOOL_SECTION_COLUMNS:
+            if col not in school_sections.columns:
+                school_sections[col] = None
+                changed = True
+        if any(col not in SCHOOL_SECTION_COLUMNS for col in school_sections.columns):
+            changed = True
+
+    if school_grades.empty:
+        school_grades = pd.DataFrame(columns=SCHOOL_GRADE_COLUMNS)
+        changed = True
+    else:
+        for col in SCHOOL_GRADE_COLUMNS:
+            if col not in school_grades.columns:
+                school_grades[col] = None
+                changed = True
+        if any(col not in SCHOOL_GRADE_COLUMNS for col in school_grades.columns):
+            changed = True
+
+    school_record_ids = {
+        str(row.get(SCHOOL_RECORD_ID_COL))
+        for row in normalized_rows
+        if row.get(SCHOOL_RECORD_ID_COL)
+    }
+    existing_section_rows = school_sections.replace({np.nan: None}).to_dict(orient="records") if not school_sections.empty else []
+    legacy_section_rows = school_section_rows_from_school_rows(normalized_payload_rows)
+    normalized_section_rows = normalize_school_section_rows(
+        existing_section_rows + legacy_section_rows,
+        school_record_ids,
+    )
+    current_section_rows = normalize_school_section_rows(existing_section_rows, school_record_ids)
+    if normalized_section_rows != current_section_rows:
+        changed = True
+
+    existing_grade_rows = school_grades.replace({np.nan: None}).to_dict(orient="records") if not school_grades.empty else []
+    legacy_grade_rows = school_grade_rows_from_school_rows(normalized_payload_rows)
+    normalized_grade_rows = normalize_school_grade_rows(
+        existing_grade_rows + legacy_grade_rows,
+        school_record_ids,
+    )
+    current_grade_rows = normalize_school_grade_rows(existing_grade_rows, school_record_ids)
+    if normalized_grade_rows != current_grade_rows:
+        changed = True
+
+    store[SCHOOL_SHEET] = pd.DataFrame(normalized_rows, columns=SCHOOL_COLUMNS)
+    store[SCHOOL_SECTION_SHEET] = pd.DataFrame(normalized_section_rows, columns=SCHOOL_SECTION_COLUMNS)
+    store[SCHOOL_GRADE_SHEET] = pd.DataFrame(normalized_grade_rows, columns=SCHOOL_GRADE_COLUMNS)
     return changed
 
 
 def _ensure_emails_schema() -> bool:
     changed = False
     emails = store.get(EMAIL_SHEET, pd.DataFrame()).copy()
+    email_family_relations = store.get(EMAIL_FAMILY_RELATION_SHEET, pd.DataFrame()).copy()
+    personal_email_primary = store.get(PERSONAL_EMAIL_PRIMARY_SHEET, pd.DataFrame()).copy()
+    email_linked_jobs = store.get(EMAIL_LINKED_JOB_SHEET, pd.DataFrame()).copy()
 
     if emails.empty:
         emails = pd.DataFrame(columns=EMAIL_COLUMNS)
@@ -1130,13 +3180,97 @@ def _ensure_emails_schema() -> bool:
             if col not in emails.columns:
                 emails[col] = None
                 changed = True
+        if any(col not in EMAIL_COLUMNS for col in emails.columns):
+            changed = True
+
+    if email_family_relations.empty:
+        email_family_relations = pd.DataFrame(columns=EMAIL_FAMILY_RELATION_COLUMNS)
+        changed = True
+    else:
+        for col in EMAIL_FAMILY_RELATION_COLUMNS:
+            if col not in email_family_relations.columns:
+                email_family_relations[col] = None
+                changed = True
+        if any(col not in EMAIL_FAMILY_RELATION_COLUMNS for col in email_family_relations.columns):
+            changed = True
+
+    if personal_email_primary.empty:
+        personal_email_primary = pd.DataFrame(columns=PERSONAL_EMAIL_PRIMARY_COLUMNS)
+        changed = True
+    else:
+        for col in PERSONAL_EMAIL_PRIMARY_COLUMNS:
+            if col not in personal_email_primary.columns:
+                personal_email_primary[col] = None
+                changed = True
+        if any(col not in PERSONAL_EMAIL_PRIMARY_COLUMNS for col in personal_email_primary.columns):
+            changed = True
+
+    if email_linked_jobs.empty:
+        email_linked_jobs = pd.DataFrame(columns=EMAIL_LINKED_JOB_COLUMNS)
+        changed = True
+    else:
+        for col in EMAIL_LINKED_JOB_COLUMNS:
+            if col not in email_linked_jobs.columns:
+                email_linked_jobs[col] = None
+                changed = True
+        if any(col not in EMAIL_LINKED_JOB_COLUMNS for col in email_linked_jobs.columns):
+            changed = True
 
     existing_rows = emails.replace({np.nan: None}).to_dict(orient="records") if not emails.empty else []
+    existing_family_rows = email_family_relations.replace({np.nan: None}).to_dict(orient="records") if not email_family_relations.empty else []
+    existing_personal_primary_rows = personal_email_primary.replace({np.nan: None}).to_dict(orient="records") if not personal_email_primary.empty else []
+    existing_linked_job_rows = email_linked_jobs.replace({np.nan: None}).to_dict(orient="records") if not email_linked_jobs.empty else []
     normalized_rows = normalize_email_rows(existing_rows)
-    if normalized_rows != existing_rows:
+    email_record_ids = {
+        record_id
+        for record_id in (
+            _normalize_email_record_id(row.get(EMAIL_RECORD_ID_COL))
+            for row in normalized_rows
+        )
+        if record_id
+    }
+    personal_email_record_ids = {
+        record_id
+        for record_id in (
+            _normalize_email_record_id(row.get(EMAIL_RECORD_ID_COL))
+            for row in normalized_rows
+            if _normalize_email_type(_first_present(row, EMAIL_TYPE_COL, "type")) == "personal"
+        )
+        if record_id
+    }
+    legacy_family_rows = email_family_relation_rows_from_email_rows(existing_rows)
+    normalized_family_rows = normalize_email_family_relation_rows(
+        existing_family_rows + legacy_family_rows,
+        email_record_ids,
+    )
+    legacy_personal_primary_rows = personal_email_primary_rows_from_email_rows(existing_rows)
+    normalized_personal_primary_rows = normalize_personal_email_primary_rows(
+        existing_personal_primary_rows + legacy_personal_primary_rows,
+        personal_email_record_ids,
+    )
+    legacy_linked_job_rows = email_linked_job_rows_from_email_rows(existing_rows)
+    normalized_linked_job_rows = normalize_email_linked_job_rows(
+        existing_linked_job_rows + legacy_linked_job_rows,
+        email_record_ids,
+    )
+    current_rows = [{col: row.get(col) for col in EMAIL_COLUMNS} for row in existing_rows]
+    normalized_email_sheet_rows = [{col: row.get(col) for col in EMAIL_COLUMNS} for row in normalized_rows]
+    if normalized_email_sheet_rows != current_rows:
+        changed = True
+    current_family_rows = normalize_email_family_relation_rows(existing_family_rows, email_record_ids)
+    if normalized_family_rows != current_family_rows:
+        changed = True
+    current_personal_primary_rows = normalize_personal_email_primary_rows(existing_personal_primary_rows, personal_email_record_ids)
+    if normalized_personal_primary_rows != current_personal_primary_rows:
+        changed = True
+    current_linked_job_rows = normalize_email_linked_job_rows(existing_linked_job_rows, email_record_ids)
+    if normalized_linked_job_rows != current_linked_job_rows:
         changed = True
 
-    store[EMAIL_SHEET] = pd.DataFrame(normalized_rows, columns=EMAIL_COLUMNS)
+    store[EMAIL_SHEET] = pd.DataFrame(normalized_email_sheet_rows, columns=EMAIL_COLUMNS)
+    store[EMAIL_FAMILY_RELATION_SHEET] = pd.DataFrame(normalized_family_rows, columns=EMAIL_FAMILY_RELATION_COLUMNS)
+    store[PERSONAL_EMAIL_PRIMARY_SHEET] = pd.DataFrame(normalized_personal_primary_rows, columns=PERSONAL_EMAIL_PRIMARY_COLUMNS)
+    store[EMAIL_LINKED_JOB_SHEET] = pd.DataFrame(normalized_linked_job_rows, columns=EMAIL_LINKED_JOB_COLUMNS)
     return changed
 
 
@@ -1174,24 +3308,171 @@ def _ensure_jobs_schema() -> bool:
             if col not in jobs.columns:
                 jobs[col] = None
                 changed = True
+        if any(col not in JOB_BASE_COLUMNS and col != "is_current" for col in jobs.columns):
+            changed = True
 
     existing_rows = jobs.replace({np.nan: None}).to_dict(orient="records") if not jobs.empty else []
-    normalized_rows = normalize_job_rows(existing_rows)
-    if normalized_rows != existing_rows:
+    normalized_rows, job_id_map = normalize_job_rows(existing_rows)
+    current_rows = [{col: row.get(col) for col in JOB_BASE_COLUMNS} for row in existing_rows]
+    if normalized_rows != current_rows:
         changed = True
 
-    store[JOB_SHEET] = pd.DataFrame(normalized_rows)
+    emails = store.get(EMAIL_SHEET, pd.DataFrame()).copy()
+    email_rows = emails.replace({np.nan: None}).to_dict(orient="records") if not emails.empty else []
+    normalized_email_rows = normalize_email_rows(email_rows)
+    current_email_rows = [{col: row.get(col) for col in EMAIL_COLUMNS} for row in email_rows]
+    normalized_email_sheet_rows = [{col: row.get(col) for col in EMAIL_COLUMNS} for row in normalized_email_rows]
+    if normalized_email_sheet_rows != current_email_rows:
+        changed = True
+    store[EMAIL_SHEET] = pd.DataFrame(normalized_email_sheet_rows, columns=EMAIL_COLUMNS)
+
+    email_linked_jobs = store.get(EMAIL_LINKED_JOB_SHEET, pd.DataFrame()).copy()
+    email_linked_job_rows = email_linked_jobs.replace({np.nan: None}).to_dict(orient="records") if not email_linked_jobs.empty else []
+    remapped_email_linked_job_rows = []
+    for row in email_linked_job_rows:
+        if not isinstance(row, dict):
+            continue
+        record_id = _normalize_email_record_id(row.get(EMAIL_RECORD_ID_COL))
+        if not record_id:
+            continue
+        for job_id in _remap_linked_job_ids_value(row.get("linked_job_ids"), job_id_map):
+            remapped_email_linked_job_rows.append({
+                EMAIL_RECORD_ID_COL: record_id,
+                "linked_job_ids": job_id,
+            })
+    normalized_email_linked_job_rows = normalize_email_linked_job_rows(remapped_email_linked_job_rows)
+    if normalized_email_linked_job_rows != email_linked_job_rows:
+        changed = True
+    store[EMAIL_LINKED_JOB_SHEET] = pd.DataFrame(normalized_email_linked_job_rows, columns=EMAIL_LINKED_JOB_COLUMNS)
+
+    mobile_linked_jobs = store.get(MOBILE_NUMBER_LINKED_JOB_SHEET, pd.DataFrame()).copy()
+    mobile_linked_job_rows = mobile_linked_jobs.replace({np.nan: None}).to_dict(orient="records") if not mobile_linked_jobs.empty else []
+    remapped_mobile_linked_job_rows = []
+    for row in mobile_linked_job_rows:
+        if not isinstance(row, dict):
+            continue
+        record_id = _normalize_mobile_number_record_id(row.get(MOBILE_NUMBER_RECORD_ID_COL))
+        if not record_id:
+            continue
+        for job_id in _remap_linked_job_ids_value(row.get("linked_job_ids"), job_id_map):
+            remapped_mobile_linked_job_rows.append({
+                MOBILE_NUMBER_RECORD_ID_COL: record_id,
+                "linked_job_ids": job_id,
+            })
+    normalized_mobile_linked_job_rows = normalize_mobile_number_linked_job_rows(remapped_mobile_linked_job_rows)
+    if normalized_mobile_linked_job_rows != mobile_linked_job_rows:
+        changed = True
+    store[MOBILE_NUMBER_LINKED_JOB_SHEET] = pd.DataFrame(normalized_mobile_linked_job_rows, columns=MOBILE_NUMBER_LINKED_JOB_COLUMNS)
+
+    store[JOB_SHEET] = pd.DataFrame(normalized_rows, columns=JOB_BASE_COLUMNS)
     return changed
+
+
+def _ensure_higher_education_schema() -> bool:
+    changed = False
+    higher_education = store.get(HIGHER_EDUCATION_SHEET, pd.DataFrame()).copy()
+
+    if higher_education.empty:
+        higher_education = pd.DataFrame(columns=HIGHER_EDUCATION_COLUMNS)
+        changed = True
+    else:
+        for col in HIGHER_EDUCATION_COLUMNS:
+            if col not in higher_education.columns:
+                higher_education[col] = None
+                changed = True
+        if any(col not in HIGHER_EDUCATION_COLUMNS and col != "is_current" for col in higher_education.columns):
+            changed = True
+
+    existing_rows = higher_education.replace({np.nan: None}).to_dict(orient="records") if not higher_education.empty else []
+    normalized_rows = normalize_higher_education_rows(existing_rows)
+    current_rows = [{col: row.get(col) for col in HIGHER_EDUCATION_COLUMNS} for row in existing_rows]
+    if normalized_rows != current_rows:
+        changed = True
+
+    store[HIGHER_EDUCATION_SHEET] = pd.DataFrame(normalized_rows, columns=HIGHER_EDUCATION_COLUMNS)
+    return changed
+
+
+def _ensure_responsibility_schema() -> bool:
+    changed = False
+    responsibilities = store.get(RESPONSIBILITY_SHEET, pd.DataFrame()).copy()
+
+    if responsibilities.empty:
+        responsibilities = pd.DataFrame(columns=RESPONSIBILITY_COLUMNS)
+        changed = True
+    else:
+        for col in RESPONSIBILITY_COLUMNS:
+            if col not in responsibilities.columns:
+                responsibilities[col] = None
+                changed = True
+        if any(col not in RESPONSIBILITY_COLUMNS and col not in {"time", "responsibility", "responsibility_period", "is_active"} for col in responsibilities.columns):
+            changed = True
+
+    existing_rows = responsibilities.replace({np.nan: None}).to_dict(orient="records") if not responsibilities.empty else []
+    normalized_rows = normalize_responsibility_rows(existing_rows)
+    current_rows = [{col: row.get(col) for col in RESPONSIBILITY_COLUMNS} for row in existing_rows]
+    normalized_sheet_rows = [{col: row.get(col) for col in RESPONSIBILITY_COLUMNS} for row in normalized_rows]
+    if normalized_sheet_rows != current_rows:
+        changed = True
+
+    store[RESPONSIBILITY_SHEET] = pd.DataFrame(normalized_sheet_rows, columns=RESPONSIBILITY_COLUMNS)
+    return changed
+
+
+def _ensure_youth_group_special_logo_schema() -> bool:
+    changed = False
+    special_logos = store.get(YOUTH_GROUP_SPECIAL_LOGO_SHEET, pd.DataFrame()).copy()
+
+    if special_logos.empty:
+        special_logos = pd.DataFrame(columns=YOUTH_GROUP_SPECIAL_LOGO_COLUMNS)
+        changed = True
+    else:
+        for col in YOUTH_GROUP_SPECIAL_LOGO_COLUMNS:
+            if col not in special_logos.columns:
+                special_logos[col] = None
+                changed = True
+        if any(col not in YOUTH_GROUP_SPECIAL_LOGO_COLUMNS for col in special_logos.columns):
+            changed = True
+
+    existing_rows = special_logos.replace({np.nan: None}).to_dict(orient="records") if not special_logos.empty else []
+    normalized_rows = normalize_youth_group_special_logo_rows(existing_rows)
+    current_rows = [{col: row.get(col) for col in YOUTH_GROUP_SPECIAL_LOGO_COLUMNS} for row in existing_rows]
+    if normalized_rows != current_rows:
+        changed = True
+
+    store[YOUTH_GROUP_SPECIAL_LOGO_SHEET] = pd.DataFrame(normalized_rows, columns=YOUTH_GROUP_SPECIAL_LOGO_COLUMNS)
+    return changed
+
+
+def _coerce_person_id_columns(target_store: dict[str, pd.DataFrame]):
+    """Convert any float64 person_id columns to nullable Int64 so that
+    .astype(str) produces '2' instead of '2.0'."""
+    for sheet_name in list(target_store.keys()):
+        df = target_store[sheet_name]
+        if "person_id" in df.columns and df["person_id"].dtype == np.float64:
+            target_store[sheet_name] = df.copy()
+            target_store[sheet_name]["person_id"] = df["person_id"].astype("Int64")
 
 
 def save():
     _ensure_persons_schema()
+    _ensure_person_titles_schema()
+    _ensure_person_school_system_sector_schema()
+    _ensure_person_health_condition_schema()
+    _ensure_person_special_note_schema()
+    _ensure_person_youth_group_schema()
     _ensure_youth_group_schema()
+    _ensure_youth_group_special_logo_schema()
+    _ensure_nationality_schema()
+    _ensure_schools_schema()
     _ensure_mobile_numbers_schema()
     _ensure_emails_schema()
     _ensure_social_media_schema()
+    _ensure_higher_education_schema()
     _ensure_jobs_schema()
+    _ensure_responsibility_schema()
     _ensure_addresses_schema()
+    _coerce_person_id_columns(store)
     db.save_excel_sheets(store)
     invalidate_enriched_cache()
     print("💾 Saved to Excel.")
@@ -1206,7 +3487,7 @@ def df_to_json(df: pd.DataFrame):
 
 
 def person_name(row):
-    parts = [row.get("first_name"), row.get("second_name"), row.get("third_name"), row.get("last_name")]
+    parts = [row.get("ar_first_name"), row.get("ar_second_name"), row.get("ar_third_name"), row.get("ar_last_name")]
     return " ".join(p for p in parts if p)
 
 
@@ -1285,6 +3566,8 @@ def normalize_person_birth_fields(person: dict) -> dict:
 
     p["birth_day"] = day
     p["birth_month"] = month
+    if "school_final_gpa" in p:
+        p["school_final_gpa"] = _normalize_person_school_final_gpa(p.get("school_final_gpa"))
     p.pop("birth_date", None)
     return p
 
@@ -1331,9 +3614,6 @@ def _ensure_persons_schema():
     if "registered" not in persons.columns:
         persons["registered"] = True
         changed = True
-    if "title" not in persons.columns:
-        persons["title"] = None
-        changed = True
 
     for col in PERSON_NAME_COLS + PERSON_ENGLISH_NAME_COLS + MOTHER_NAME_COLS + MOTHER_ENGLISH_NAME_COLS:
         if col not in persons.columns:
@@ -1354,6 +3634,12 @@ def _ensure_persons_schema():
     if before_registered is not None and not before_registered.equals(persons["registered"]):
         changed = True
 
+    if "school_final_gpa" in persons.columns:
+        normalized_school_final_gpa = persons["school_final_gpa"].apply(_normalize_person_school_final_gpa)
+        if not normalized_school_final_gpa.equals(persons["school_final_gpa"]):
+            persons["school_final_gpa"] = normalized_school_final_gpa
+            changed = True
+
     store["persons"] = persons
     return changed
 
@@ -1361,13 +3647,25 @@ def _ensure_persons_schema():
 def _registered_persons_df() -> pd.DataFrame:
     _ensure_persons_schema()
     persons = store["persons"]
-    return _project_primary_addresses(persons[persons["registered"] == True])
+    projected = _project_primary_addresses(persons[persons["registered"] == True])
+    return merge_person_school_system_sectors(merge_person_titles(projected))
 
 
 def _unregistered_persons_df() -> pd.DataFrame:
     _ensure_persons_schema()
     persons = store["persons"]
-    return _project_primary_addresses(persons[persons["registered"] == False])
+    projected = _project_primary_addresses(persons[persons["registered"] == False])
+    return merge_person_school_system_sectors(merge_person_titles(projected))
+
+
+def unregistered_persons_view_df() -> pd.DataFrame:
+    return merge_person_school_system_sectors(
+        merge_person_titles(
+            unreg_store.get("persons", pd.DataFrame()),
+            unreg_store.get(PERSON_TITLE_SHEET, pd.DataFrame()),
+        ),
+        unreg_store.get(PERSON_SCHOOL_SYSTEM_SECTOR_SHEET, pd.DataFrame()),
+    )
 
 
 def _next_person_id() -> int:
@@ -1379,9 +3677,357 @@ def _next_person_id() -> int:
 
 
 def _normalize_person_id(v):
+    if isinstance(v, float):
+        if v != v:  # NaN
+            return None
+        return int(v)
     if isinstance(v, str) and re.fullmatch(r"\d+", v.strip()):
         return int(v.strip())
     return v
+
+
+def normalize_person_title_rows(rows: list[dict] | None) -> list[dict]:
+    by_person_id: dict[str, dict] = {}
+    for row in rows or []:
+        payload = row or {}
+        person_id = _normalize_person_id(payload.get("person_id"))
+        title = _normalize_text(payload.get("title"))
+        if person_id in (None, ""):
+            continue
+        key = str(person_id)
+        if not title:
+            by_person_id.pop(key, None)
+            continue
+        by_person_id[key] = {
+            "person_id": person_id,
+            "title": title,
+        }
+    return list(by_person_id.values())
+
+
+def normalize_person_school_system_sector_rows(rows: list[dict] | None) -> list[dict]:
+    by_person_id: dict[str, dict] = {}
+    for row in rows or []:
+        payload = row or {}
+        person_id = _normalize_person_id(payload.get("person_id"))
+        school_system_sector = _normalize_text(payload.get("school_system_sector"))
+        if person_id in (None, ""):
+            continue
+        key = str(person_id)
+        if not school_system_sector:
+            by_person_id.pop(key, None)
+            continue
+        by_person_id[key] = {
+            "person_id": person_id,
+            "school_system_sector": school_system_sector,
+        }
+    return list(by_person_id.values())
+
+
+def _normalize_person_health_condition_type(value) -> str | None:
+    text = _normalize_text(value)
+    if not text:
+        return None
+
+    lookup = text.strip().lower().replace("_", "-")
+    if lookup in ("illness", "illnesses", "health-condition", "health-conditions", "health condition", "health conditions", "مرض", "امراض", "أمراض", "الحالة الصحية", "الحالات الصحية"):
+        return "illness"
+    if lookup in ("allergy", "allergies", "حساسية", "حساسيه", "حساسيات"):
+        return "allergy"
+    if lookup in ("surgery", "surgeries", "operation", "operations", "عملية", "عمليات", "العمليات الجراحية", "العمليات الجراجية"):
+        return "surgery"
+    return None
+
+
+def normalize_person_health_condition_rows(rows: list[dict] | None) -> list[dict]:
+    normalized_rows: list[dict] = []
+    seen: set[tuple[str, str, str]] = set()
+    for row in rows or []:
+        payload = row or {}
+        person_id = _normalize_person_id(payload.get("person_id"))
+        condition_type = _normalize_person_health_condition_type(_first_present(payload, CONDITION_TYPE_COL, "type"))
+        details = _normalize_text(payload.get("details"))
+        if person_id in (None, "") or not condition_type or not details:
+            continue
+        dedupe_key = (str(person_id), condition_type, details)
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        normalized_rows.append({
+            "person_id": person_id,
+            CONDITION_TYPE_COL: condition_type,
+            "type": condition_type,
+            "details": details,
+        })
+    return normalized_rows
+
+
+def normalize_person_special_note_rows(rows: list[dict] | None) -> list[dict]:
+    normalized_rows: list[dict] = []
+    seen: set[tuple[str, str, str]] = set()
+    for row in rows or []:
+        payload = row or {}
+        person_id = _normalize_person_id(payload.get("person_id"))
+        note_title = _normalize_text(payload.get("note_title"))
+        note = _normalize_text(payload.get("note"))
+        if person_id in (None, "") or not note_title or not note:
+            continue
+        dedupe_key = (str(person_id), note_title, note)
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        normalized_rows.append({
+            "person_id": person_id,
+            "note_title": note_title,
+            "note": note,
+        })
+    return normalized_rows
+
+
+def person_title_lookup(title_df: pd.DataFrame | None = None) -> dict[str, str]:
+    df = title_df if title_df is not None else store.get(PERSON_TITLE_SHEET, pd.DataFrame())
+    if df is None or df.empty or "person_id" not in df.columns:
+        return {}
+
+    lookup: dict[str, str] = {}
+    for row in df.replace({np.nan: None}).to_dict(orient="records"):
+        person_id = _normalize_person_id(row.get("person_id"))
+        title = _normalize_text(row.get("title"))
+        if person_id in (None, "") or not title:
+            continue
+        lookup[str(person_id)] = title
+    return lookup
+
+
+def person_school_system_sector_lookup(sector_df: pd.DataFrame | None = None) -> dict[str, str]:
+    df = sector_df if sector_df is not None else store.get(PERSON_SCHOOL_SYSTEM_SECTOR_SHEET, pd.DataFrame())
+    if df is None or df.empty or "person_id" not in df.columns:
+        return {}
+
+    lookup: dict[str, str] = {}
+    for row in df.replace({np.nan: None}).to_dict(orient="records"):
+        person_id = _normalize_person_id(row.get("person_id"))
+        school_system_sector = _normalize_text(row.get("school_system_sector"))
+        if person_id in (None, "") or not school_system_sector:
+            continue
+        lookup[str(person_id)] = school_system_sector
+    return lookup
+
+
+def merge_person_titles(persons_df: pd.DataFrame | None, title_df: pd.DataFrame | None = None) -> pd.DataFrame:
+    if persons_df is None:
+        return pd.DataFrame()
+
+    persons = persons_df.copy()
+    if persons.empty:
+        if "title" not in persons.columns:
+            persons["title"] = None
+        return persons
+
+    if "person_id" not in persons.columns:
+        if "title" not in persons.columns:
+            persons["title"] = None
+        return persons
+
+    lookup = person_title_lookup(title_df)
+    persons["title"] = persons["person_id"].apply(
+        lambda value: lookup.get(str(_normalize_person_id(value)))
+    )
+    return persons
+
+
+def merge_person_school_system_sectors(persons_df: pd.DataFrame | None, sector_df: pd.DataFrame | None = None) -> pd.DataFrame:
+    if persons_df is None:
+        return pd.DataFrame()
+
+    persons = persons_df.copy()
+    if persons.empty:
+        if "school_system_sector" not in persons.columns:
+            persons["school_system_sector"] = None
+        return persons
+
+    if "person_id" not in persons.columns:
+        if "school_system_sector" not in persons.columns:
+            persons["school_system_sector"] = None
+        return persons
+
+    lookup = person_school_system_sector_lookup(sector_df)
+    persons["school_system_sector"] = persons["person_id"].apply(
+        lambda value: lookup.get(str(_normalize_person_id(value)))
+    )
+    return persons
+
+
+def replace_person_title(target_store: dict[str, pd.DataFrame], person_id, title_value):
+    current_df = target_store.get(PERSON_TITLE_SHEET, pd.DataFrame())
+    current_rows = []
+    if current_df is not None and not current_df.empty:
+        current_rows = current_df.replace({np.nan: None}).to_dict(orient="records")
+
+    normalized_person_id = _normalize_person_id(person_id)
+    filtered_rows = [
+        row for row in current_rows
+        if str(_normalize_person_id((row or {}).get("person_id"))) != str(normalized_person_id)
+    ]
+
+    title = _normalize_text(title_value)
+    if normalized_person_id not in (None, "") and title:
+        filtered_rows.append({
+            "person_id": normalized_person_id,
+            "title": title,
+        })
+
+    normalized_rows = normalize_person_title_rows(filtered_rows)
+    target_store[PERSON_TITLE_SHEET] = pd.DataFrame(normalized_rows, columns=PERSON_TITLE_COLUMNS)
+
+
+def replace_person_school_system_sector(target_store: dict[str, pd.DataFrame], person_id, sector_value):
+    current_df = target_store.get(PERSON_SCHOOL_SYSTEM_SECTOR_SHEET, pd.DataFrame())
+    current_rows = []
+    if current_df is not None and not current_df.empty:
+        current_rows = current_df.replace({np.nan: None}).to_dict(orient="records")
+
+    normalized_person_id = _normalize_person_id(person_id)
+    filtered_rows = [
+        row for row in current_rows
+        if str(_normalize_person_id((row or {}).get("person_id"))) != str(normalized_person_id)
+    ]
+
+    sector = _normalize_text(sector_value)
+    if normalized_person_id not in (None, "") and sector:
+        filtered_rows.append({
+            "person_id": normalized_person_id,
+            "school_system_sector": sector,
+        })
+
+    normalized_rows = normalize_person_school_system_sector_rows(filtered_rows)
+    target_store[PERSON_SCHOOL_SYSTEM_SECTOR_SHEET] = pd.DataFrame(normalized_rows, columns=PERSON_SCHOOL_SYSTEM_SECTOR_COLUMNS)
+
+
+def _ensure_person_titles_schema() -> bool:
+    changed = False
+    persons = store.get("persons", pd.DataFrame()).copy()
+    titles_df = store.get(PERSON_TITLE_SHEET, pd.DataFrame())
+
+    existing_rows = []
+    if titles_df is not None and not titles_df.empty:
+        existing_rows = titles_df.replace({np.nan: None}).to_dict(orient="records")
+    normalized_rows = normalize_person_title_rows(existing_rows)
+    existing_ids = {str(row.get("person_id")) for row in normalized_rows}
+
+    if not persons.empty and "person_id" in persons.columns and "title" in persons.columns:
+        for row in persons.replace({np.nan: None}).to_dict(orient="records"):
+            person_id = _normalize_person_id(row.get("person_id"))
+            title = _normalize_text(row.get("title"))
+            if person_id in (None, "") or not title:
+                continue
+            key = str(person_id)
+            if key in existing_ids:
+                continue
+            normalized_rows.append({
+                "person_id": person_id,
+                "title": title,
+            })
+            existing_ids.add(key)
+            changed = True
+        persons = persons.drop(columns=["title"])
+        changed = True
+
+    normalized_rows = normalize_person_title_rows(normalized_rows)
+    if PERSON_TITLE_SHEET not in store or normalized_rows != normalize_person_title_rows(existing_rows):
+        changed = True
+
+    store["persons"] = persons
+    store[PERSON_TITLE_SHEET] = pd.DataFrame(normalized_rows, columns=PERSON_TITLE_COLUMNS)
+    return changed
+
+
+def _ensure_person_school_system_sector_schema() -> bool:
+    changed = False
+    persons = store.get("persons", pd.DataFrame()).copy()
+    sector_df = store.get(PERSON_SCHOOL_SYSTEM_SECTOR_SHEET, pd.DataFrame())
+
+    existing_rows = []
+    if sector_df is not None and not sector_df.empty:
+        existing_rows = sector_df.replace({np.nan: None}).to_dict(orient="records")
+    normalized_rows = normalize_person_school_system_sector_rows(existing_rows)
+    existing_ids = {str(row.get("person_id")) for row in normalized_rows}
+
+    if not persons.empty and "person_id" in persons.columns and "school_system_sector" in persons.columns:
+        for row in persons.replace({np.nan: None}).to_dict(orient="records"):
+            person_id = _normalize_person_id(row.get("person_id"))
+            school_system_sector = _normalize_text(row.get("school_system_sector"))
+            if person_id in (None, "") or not school_system_sector:
+                continue
+            key = str(person_id)
+            if key in existing_ids:
+                continue
+            normalized_rows.append({
+                "person_id": person_id,
+                "school_system_sector": school_system_sector,
+            })
+            existing_ids.add(key)
+            changed = True
+        persons = persons.drop(columns=["school_system_sector"])
+        changed = True
+
+    normalized_rows = normalize_person_school_system_sector_rows(normalized_rows)
+    if PERSON_SCHOOL_SYSTEM_SECTOR_SHEET not in store or normalized_rows != normalize_person_school_system_sector_rows(existing_rows):
+        changed = True
+
+    store["persons"] = persons
+    store[PERSON_SCHOOL_SYSTEM_SECTOR_SHEET] = pd.DataFrame(normalized_rows, columns=PERSON_SCHOOL_SYSTEM_SECTOR_COLUMNS)
+    return changed
+
+
+def _ensure_person_health_condition_schema() -> bool:
+    changed = False
+    health_df = store.get(PERSON_HEALTH_CONDITION_SHEET, pd.DataFrame()).copy()
+
+    if health_df.empty:
+        health_df = pd.DataFrame(columns=PERSON_HEALTH_CONDITION_COLUMNS)
+        changed = True
+    else:
+        for col in PERSON_HEALTH_CONDITION_COLUMNS:
+            if col not in health_df.columns:
+                health_df[col] = None
+                changed = True
+        if any(col not in PERSON_HEALTH_CONDITION_COLUMNS for col in health_df.columns):
+            changed = True
+
+    existing_rows = health_df.replace({np.nan: None}).to_dict(orient="records") if not health_df.empty else []
+    normalized_rows = normalize_person_health_condition_rows(existing_rows)
+    current_rows = [{col: row.get(col) for col in PERSON_HEALTH_CONDITION_COLUMNS} for row in existing_rows]
+    if normalized_rows != current_rows:
+        changed = True
+
+    store[PERSON_HEALTH_CONDITION_SHEET] = pd.DataFrame(normalized_rows, columns=PERSON_HEALTH_CONDITION_COLUMNS)
+    return changed
+
+
+def _ensure_person_special_note_schema() -> bool:
+    changed = False
+    notes_df = store.get(PERSON_SPECIAL_NOTE_SHEET, pd.DataFrame()).copy()
+
+    if notes_df.empty:
+        notes_df = pd.DataFrame(columns=PERSON_SPECIAL_NOTE_COLUMNS)
+        changed = True
+    else:
+        for col in PERSON_SPECIAL_NOTE_COLUMNS:
+            if col not in notes_df.columns:
+                notes_df[col] = None
+                changed = True
+        if any(col not in PERSON_SPECIAL_NOTE_COLUMNS for col in notes_df.columns):
+            changed = True
+
+    existing_rows = notes_df.replace({np.nan: None}).to_dict(orient="records") if not notes_df.empty else []
+    normalized_rows = normalize_person_special_note_rows(existing_rows)
+    current_rows = [{col: row.get(col) for col in PERSON_SPECIAL_NOTE_COLUMNS} for row in existing_rows]
+    if normalized_rows != current_rows:
+        changed = True
+
+    store[PERSON_SPECIAL_NOTE_SHEET] = pd.DataFrame(normalized_rows, columns=PERSON_SPECIAL_NOTE_COLUMNS)
+    return changed
 
 
 def _sheet_for_registered(sheet: str) -> pd.DataFrame:
@@ -1408,7 +4054,7 @@ def nationality_iso_lookup() -> dict[str, dict[str, str | None]]:
     return lookup
 
 
-def enrich_nationality_rows(rows: list[dict] | None) -> list[dict]:
+def enrich_nationality_rows(rows: list[dict] | None, source_store: dict[str, pd.DataFrame] | None = None) -> list[dict]:
     lookup = nationality_iso_lookup()
     enriched: list[dict] = []
     for row in rows or []:
@@ -1445,16 +4091,16 @@ def normalize_arabic(text):
 def name_parts_norm(row):
     return [
         normalize_arabic(row.get(k))
-        for k in ("first_name", "second_name", "third_name", "last_name")
+        for k in ("ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name")
         if row.get(k)
     ]
 
 
 def avatar_initial_from_person(row):
-    first_name = str(row.get("first_name") or "").strip()
-    if first_name:
-        return first_name[0]
-    for key in ("second_name", "third_name", "last_name"):
+    ar_first_name = str(row.get("ar_first_name") or "").strip()
+    if ar_first_name:
+        return ar_first_name[0]
+    for key in ("ar_second_name", "ar_third_name", "ar_last_name"):
         value = str(row.get(key) or "").strip()
         if value:
             return value[0]
@@ -1502,6 +4148,7 @@ def get_unreg_photo_path(uid):
 def build_enriched():
     persons = _registered_persons_df().replace({np.nan: None})
     pyg = _sheet_for_registered("person_youth_group")
+    pyg_history = store.get(PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame())
     resp = _sheet_for_registered("responsibilities")
     nat = _sheet_for_registered("nationality")
     sch = _sheet_for_registered("schools")
@@ -1515,40 +4162,18 @@ def build_enriched():
             result[int(pid)] = grp[col].dropna().astype(str).unique().tolist()
         return result
 
-    def pid_to_youth_rows(df):
-        result = {}
-        if df.empty or "person_id" not in df.columns:
-            return result
-
-        for pid, grp in df.groupby("person_id", sort=False):
-            rows = []
-            for _, row in grp.iterrows():
-                yg_id = _normalize_text(row.get(YOUTH_GROUP_ID_COL))
-                if not yg_id:
-                    continue
-                age_group = _normalize_text(row.get("age_group")) or ""
-                join_year = _normalize_text(row.get("youth_join_year")) or ""
-                archived = row.get("archived")
-                rows.append({
-                    "youth_group_id": yg_id,
-                    "age_group": age_group,
-                    "youth_join_year": join_year,
-                    "archived": bool(archived) if archived is not None and str(archived) not in ("nan", "None", "") else False,
-                })
-            result[int(pid)] = rows
-        return result
-
     nat_map = pid_to_list(nat, "nationality")
-    sch_map = pid_to_list(sch, "school")
-    youth_rows_map = pid_to_youth_rows(pyg)
+    sch_map = pid_to_list(sch, SCHOOL_NAME_COL)
+    youth_rows_map = build_person_youth_group_payload_rows(pyg, pyg_history)
     ryg_id_map = pid_to_list(resp, YOUTH_GROUP_ID_COL)
-    rtime_map = pid_to_list(resp, "time")
-    rrole_map = pid_to_list(resp, "responsibility")
-    uni_map = pid_to_list(he, "university_college")
+    ryear_map = pid_to_list(resp, "jec_year")
+    rcurrent_map = pid_to_list(resp, "is_current")
+    rrole_map = pid_to_list(resp, "responsibility_name")
+    uni_map = pid_to_list(he, HIGHER_EDUCATION_INSTITUTION_COL)
     maj_map = pid_to_list(he, "major")
     deg_map = pid_to_list(he, "degree")
     job_map = pid_to_list(jobs, "job_title")
-    comp_map = pid_to_list(jobs, "company")
+    comp_map = pid_to_list(jobs, EMPLOYER_NAME_COL)
     hob_map = pid_to_list(hob, "hobby_skill")
 
     photo_ids = set()
@@ -1567,7 +4192,7 @@ def build_enriched():
         row["_avatar_initial"] = avatar_initial_from_person(row)
         row["_nationalities"] = nat_map.get(pid, [])
         row["_schools"] = sch_map.get(pid, [])
-        youth_rows = youth_rows_map.get(pid, [])
+        youth_rows = get_person_youth_group_payload_rows(youth_rows_map, pid)
         active_youth_rows = [entry for entry in youth_rows if not bool(entry.get("archived"))]
         archived_youth_rows = [entry for entry in youth_rows if bool(entry.get("archived"))]
         row["_youth_memberships"] = youth_rows
@@ -1581,7 +4206,112 @@ def build_enriched():
         ryg_ids = ryg_id_map.get(pid, [])
         row["_responsibility_youth_group_ids"] = ryg_ids
         row["_responsibility_youth_groups"] = [youth_group_name(gid) or gid for gid in ryg_ids]
-        row["_responsibility_times"] = rtime_map.get(pid, [])
+        row["_responsibility_jec_years"] = ryear_map.get(pid, [])
+        row["_responsibility_current_states"] = [
+            "حاليًّا" if _to_bool(value) else "سابقًا"
+            for value in rcurrent_map.get(pid, [])
+        ]
+        row["_responsibilities"] = rrole_map.get(pid, [])
+        row["_universities"] = uni_map.get(pid, [])
+        row["_majors"] = maj_map.get(pid, [])
+        row["_degrees"] = deg_map.get(pid, [])
+        row["_job_titles"] = job_map.get(pid, [])
+        row["_companies"] = comp_map.get(pid, [])
+        row["_hobbies"] = hob_map.get(pid, [])
+        row["_photo"] = f"/api/person/{pid}/photo" if pid in photo_ids else None
+        row["archived"] = bool(youth_rows) and len(active_youth_rows) == 0
+        enriched.append(row)
+    return enriched
+
+
+def build_members_index():
+    persons = _registered_persons_df().replace({np.nan: None})
+    pyg = _sheet_for_registered("person_youth_group")
+    pyg_history = store.get(PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame())
+    resp = _sheet_for_registered("responsibilities")
+    nat = _sheet_for_registered("nationality")
+    sch = _sheet_for_registered("schools")
+    he = _sheet_for_registered("higher_education")
+    jobs = _sheet_for_registered("jobs")
+    hob = _sheet_for_registered("hobbies_skills")
+
+    person_columns = [
+        "person_id",
+        "title",
+        "ar_first_name",
+        "ar_second_name",
+        "ar_third_name",
+        "ar_last_name",
+        "en_first_name",
+        "en_second_name",
+        "en_third_name",
+        "en_last_name",
+        "gender",
+        "governorate",
+        "birth_year",
+        "birth_month",
+        "birth_day",
+    ]
+    existing_person_columns = [col for col in person_columns if col in persons.columns]
+    persons = persons[existing_person_columns].copy()
+
+    def pid_to_list(df, col):
+        result = {}
+        if df.empty or "person_id" not in df.columns or col not in df.columns:
+            return result
+        for pid, grp in df.dropna(subset=[col]).groupby("person_id"):
+            result[int(pid)] = grp[col].dropna().astype(str).unique().tolist()
+        return result
+
+    nat_map = pid_to_list(nat, "nationality")
+    sch_map = pid_to_list(sch, SCHOOL_NAME_COL)
+    youth_rows_map = build_person_youth_group_payload_rows(pyg, pyg_history)
+    ryg_id_map = pid_to_list(resp, YOUTH_GROUP_ID_COL)
+    ryear_map = pid_to_list(resp, "jec_year")
+    rcurrent_map = pid_to_list(resp, "is_current")
+    rrole_map = pid_to_list(resp, "responsibility_name")
+    uni_map = pid_to_list(he, HIGHER_EDUCATION_INSTITUTION_COL)
+    maj_map = pid_to_list(he, "major")
+    deg_map = pid_to_list(he, "degree")
+    job_map = pid_to_list(jobs, "job_title")
+    comp_map = pid_to_list(jobs, EMPLOYER_NAME_COL)
+    hob_map = pid_to_list(hob, "hobby_skill")
+
+    photo_ids = set()
+    for name in os.listdir(PROFILE_PHOTOS_DIR):
+        if "." not in name:
+            continue
+        pid_part, ext = name.rsplit(".", 1)
+        if ext.lower() not in ALLOWED_EXTENSIONS:
+            continue
+        if pid_part.isdigit():
+            photo_ids.add(int(pid_part))
+
+    enriched = []
+    for row in persons.to_dict(orient="records"):
+        pid = int(row["person_id"]) if row.get("person_id") is not None else None
+        youth_rows = get_person_youth_group_payload_rows(youth_rows_map, pid)
+        active_youth_rows = [entry for entry in youth_rows if not bool(entry.get("archived"))]
+        archived_youth_rows = [entry for entry in youth_rows if bool(entry.get("archived"))]
+        yg_ids = [entry["youth_group_id"] for entry in active_youth_rows]
+        ryg_ids = ryg_id_map.get(pid, [])
+        archived_yg_ids = [entry["youth_group_id"] for entry in archived_youth_rows]
+
+        row["_nationalities"] = nat_map.get(pid, [])
+        row["_schools"] = sch_map.get(pid, [])
+        row["_youth_group_ids"] = yg_ids
+        row["_youth_groups"] = [youth_group_name(gid) or gid for gid in yg_ids]
+        row["_age_groups"] = [entry["age_group"] for entry in active_youth_rows]
+        row["_youth_join_years"] = [entry["youth_join_year"] for entry in active_youth_rows]
+        row["_archived_youth_group_ids"] = archived_yg_ids
+        row["_archived_youth_groups"] = [youth_group_name(gid) or gid for gid in archived_yg_ids]
+        row["_archived_age_groups"] = [entry["age_group"] for entry in archived_youth_rows]
+        row["_responsibility_youth_groups"] = [youth_group_name(gid) or gid for gid in ryg_ids]
+        row["_responsibility_jec_years"] = ryear_map.get(pid, [])
+        row["_responsibility_current_states"] = [
+            "حاليًّا" if _to_bool(value) else "سابقًا"
+            for value in rcurrent_map.get(pid, [])
+        ]
         row["_responsibilities"] = rrole_map.get(pid, [])
         row["_universities"] = uni_map.get(pid, [])
         row["_majors"] = maj_map.get(pid, [])
@@ -1619,6 +4349,114 @@ def _sync_unreg_view_from_store():
         if s == "persons":
             continue
         df = store.get(s, pd.DataFrame()).copy()
+        if s == MOBILE_NUMBER_FAMILY_RELATION_SHEET:
+            mobile_numbers_df = unreg_store.get(MOBILE_NUMBER_SHEET, pd.DataFrame())
+            if df.empty or MOBILE_NUMBER_RECORD_ID_COL not in df.columns or mobile_numbers_df.empty or MOBILE_NUMBER_RECORD_ID_COL not in mobile_numbers_df.columns:
+                unreg_store[s] = pd.DataFrame(columns=MOBILE_NUMBER_FAMILY_RELATION_COLUMNS)
+                continue
+            unreg_record_ids = set()
+            for raw_record_id in mobile_numbers_df[MOBILE_NUMBER_RECORD_ID_COL].tolist():
+                record_id = _normalize_mobile_number_record_id(raw_record_id)
+                if record_id:
+                    unreg_record_ids.add(record_id)
+            unreg_store[s] = df[df[MOBILE_NUMBER_RECORD_ID_COL].astype(str).isin(unreg_record_ids)].copy()
+            continue
+        if s == PERSONAL_MOBILE_NUMBER_PRIMARY_SHEET:
+            mobile_numbers_df = unreg_store.get(MOBILE_NUMBER_SHEET, pd.DataFrame())
+            if df.empty or MOBILE_NUMBER_RECORD_ID_COL not in df.columns or mobile_numbers_df.empty or MOBILE_NUMBER_RECORD_ID_COL not in mobile_numbers_df.columns:
+                unreg_store[s] = pd.DataFrame(columns=PERSONAL_MOBILE_NUMBER_PRIMARY_COLUMNS)
+                continue
+            unreg_record_ids = set()
+            for raw_record_id in mobile_numbers_df[MOBILE_NUMBER_RECORD_ID_COL].tolist():
+                record_id = _normalize_mobile_number_record_id(raw_record_id)
+                if record_id:
+                    unreg_record_ids.add(record_id)
+            unreg_store[s] = df[df[MOBILE_NUMBER_RECORD_ID_COL].astype(str).isin(unreg_record_ids)].copy()
+            continue
+        if s == MOBILE_NUMBER_LINKED_JOB_SHEET:
+            mobile_numbers_df = unreg_store.get(MOBILE_NUMBER_SHEET, pd.DataFrame())
+            if df.empty or MOBILE_NUMBER_RECORD_ID_COL not in df.columns or mobile_numbers_df.empty or MOBILE_NUMBER_RECORD_ID_COL not in mobile_numbers_df.columns:
+                unreg_store[s] = pd.DataFrame(columns=MOBILE_NUMBER_LINKED_JOB_COLUMNS)
+                continue
+            unreg_record_ids = set()
+            for raw_record_id in mobile_numbers_df[MOBILE_NUMBER_RECORD_ID_COL].tolist():
+                record_id = _normalize_mobile_number_record_id(raw_record_id)
+                if record_id:
+                    unreg_record_ids.add(record_id)
+            unreg_store[s] = df[df[MOBILE_NUMBER_RECORD_ID_COL].astype(str).isin(unreg_record_ids)].copy()
+            continue
+        if s == EMAIL_FAMILY_RELATION_SHEET:
+            emails_df = unreg_store.get(EMAIL_SHEET, pd.DataFrame())
+            if df.empty or EMAIL_RECORD_ID_COL not in df.columns or emails_df.empty or EMAIL_RECORD_ID_COL not in emails_df.columns:
+                unreg_store[s] = pd.DataFrame(columns=EMAIL_FAMILY_RELATION_COLUMNS)
+                continue
+            unreg_record_ids = set()
+            for raw_record_id in emails_df[EMAIL_RECORD_ID_COL].tolist():
+                record_id = _normalize_email_record_id(raw_record_id)
+                if record_id:
+                    unreg_record_ids.add(record_id)
+            unreg_store[s] = df[df[EMAIL_RECORD_ID_COL].astype(str).isin(unreg_record_ids)].copy()
+            continue
+        if s == PERSONAL_EMAIL_PRIMARY_SHEET:
+            emails_df = unreg_store.get(EMAIL_SHEET, pd.DataFrame())
+            if df.empty or EMAIL_RECORD_ID_COL not in df.columns or emails_df.empty or EMAIL_RECORD_ID_COL not in emails_df.columns:
+                unreg_store[s] = pd.DataFrame(columns=PERSONAL_EMAIL_PRIMARY_COLUMNS)
+                continue
+            unreg_record_ids = set()
+            for raw_record_id in emails_df[EMAIL_RECORD_ID_COL].tolist():
+                record_id = _normalize_email_record_id(raw_record_id)
+                if record_id:
+                    unreg_record_ids.add(record_id)
+            unreg_store[s] = df[df[EMAIL_RECORD_ID_COL].astype(str).isin(unreg_record_ids)].copy()
+            continue
+        if s == EMAIL_LINKED_JOB_SHEET:
+            emails_df = unreg_store.get(EMAIL_SHEET, pd.DataFrame())
+            if df.empty or EMAIL_RECORD_ID_COL not in df.columns or emails_df.empty or EMAIL_RECORD_ID_COL not in emails_df.columns:
+                unreg_store[s] = pd.DataFrame(columns=EMAIL_LINKED_JOB_COLUMNS)
+                continue
+            unreg_record_ids = set()
+            for raw_record_id in emails_df[EMAIL_RECORD_ID_COL].tolist():
+                record_id = _normalize_email_record_id(raw_record_id)
+                if record_id:
+                    unreg_record_ids.add(record_id)
+            unreg_store[s] = df[df[EMAIL_RECORD_ID_COL].astype(str).isin(unreg_record_ids)].copy()
+            continue
+        if s == PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET:
+            memberships_df = unreg_store.get(PERSON_YOUTH_GROUP_SHEET, pd.DataFrame())
+            if df.empty or PERSON_YOUTH_GROUP_RECORD_ID_COL not in df.columns or memberships_df.empty or PERSON_YOUTH_GROUP_RECORD_ID_COL not in memberships_df.columns:
+                unreg_store[s] = pd.DataFrame(columns=PERSON_YOUTH_GROUP_AGE_HISTORY_COLUMNS)
+                continue
+            unreg_record_ids = set()
+            for raw_record_id in memberships_df[PERSON_YOUTH_GROUP_RECORD_ID_COL].tolist():
+                record_id = _normalize_person_youth_group_record_id(raw_record_id)
+                if record_id:
+                    unreg_record_ids.add(record_id)
+            unreg_store[s] = df[df[PERSON_YOUTH_GROUP_RECORD_ID_COL].astype(str).isin(unreg_record_ids)].copy()
+            continue
+        if s == SCHOOL_SECTION_SHEET:
+            schools_df = unreg_store.get(SCHOOL_SHEET, pd.DataFrame())
+            if df.empty or SCHOOL_RECORD_ID_COL not in df.columns or schools_df.empty or SCHOOL_RECORD_ID_COL not in schools_df.columns:
+                unreg_store[s] = pd.DataFrame(columns=SCHOOL_SECTION_COLUMNS)
+                continue
+            unreg_record_ids = set()
+            for raw_record_id in schools_df[SCHOOL_RECORD_ID_COL].tolist():
+                record_id = _normalize_school_record_id(raw_record_id)
+                if record_id:
+                    unreg_record_ids.add(record_id)
+            unreg_store[s] = df[df[SCHOOL_RECORD_ID_COL].astype(str).isin(unreg_record_ids)].copy()
+            continue
+        if s == SCHOOL_GRADE_SHEET:
+            schools_df = unreg_store.get(SCHOOL_SHEET, pd.DataFrame())
+            if df.empty or SCHOOL_RECORD_ID_COL not in df.columns or schools_df.empty or SCHOOL_RECORD_ID_COL not in schools_df.columns:
+                unreg_store[s] = pd.DataFrame(columns=SCHOOL_GRADE_COLUMNS)
+                continue
+            unreg_record_ids = set()
+            for raw_record_id in schools_df[SCHOOL_RECORD_ID_COL].tolist():
+                record_id = _normalize_school_record_id(raw_record_id)
+                if record_id:
+                    unreg_record_ids.add(record_id)
+            unreg_store[s] = df[df[SCHOOL_RECORD_ID_COL].astype(str).isin(unreg_record_ids)].copy()
+            continue
         if df.empty or "person_id" not in df.columns:
             unreg_store[s] = pd.DataFrame()
             continue
@@ -1662,13 +4500,104 @@ def _save_unreg_store():
         if s == "persons":
             continue
         base = store.get(s, pd.DataFrame())
-        if not base.empty and "person_id" in base.columns:
+        if s == MOBILE_NUMBER_FAMILY_RELATION_SHEET:
+            unreg_mobile_numbers = unreg_store.get(MOBILE_NUMBER_SHEET, pd.DataFrame()).copy()
+            unreg_record_ids = set()
+            if not unreg_mobile_numbers.empty and MOBILE_NUMBER_RECORD_ID_COL in unreg_mobile_numbers.columns:
+                for raw_record_id in unreg_mobile_numbers[MOBILE_NUMBER_RECORD_ID_COL].tolist():
+                    record_id = _normalize_mobile_number_record_id(raw_record_id)
+                    if record_id:
+                        unreg_record_ids.add(record_id)
+            if not base.empty and MOBILE_NUMBER_RECORD_ID_COL in base.columns and unreg_record_ids:
+                base = base[~base[MOBILE_NUMBER_RECORD_ID_COL].astype(str).isin(unreg_record_ids)]
+        elif s == PERSONAL_MOBILE_NUMBER_PRIMARY_SHEET:
+            unreg_mobile_numbers = unreg_store.get(MOBILE_NUMBER_SHEET, pd.DataFrame()).copy()
+            unreg_record_ids = set()
+            if not unreg_mobile_numbers.empty and MOBILE_NUMBER_RECORD_ID_COL in unreg_mobile_numbers.columns:
+                for raw_record_id in unreg_mobile_numbers[MOBILE_NUMBER_RECORD_ID_COL].tolist():
+                    record_id = _normalize_mobile_number_record_id(raw_record_id)
+                    if record_id:
+                        unreg_record_ids.add(record_id)
+            if not base.empty and MOBILE_NUMBER_RECORD_ID_COL in base.columns and unreg_record_ids:
+                base = base[~base[MOBILE_NUMBER_RECORD_ID_COL].astype(str).isin(unreg_record_ids)]
+        elif s == MOBILE_NUMBER_LINKED_JOB_SHEET:
+            unreg_mobile_numbers = unreg_store.get(MOBILE_NUMBER_SHEET, pd.DataFrame()).copy()
+            unreg_record_ids = set()
+            if not unreg_mobile_numbers.empty and MOBILE_NUMBER_RECORD_ID_COL in unreg_mobile_numbers.columns:
+                for raw_record_id in unreg_mobile_numbers[MOBILE_NUMBER_RECORD_ID_COL].tolist():
+                    record_id = _normalize_mobile_number_record_id(raw_record_id)
+                    if record_id:
+                        unreg_record_ids.add(record_id)
+            if not base.empty and MOBILE_NUMBER_RECORD_ID_COL in base.columns and unreg_record_ids:
+                base = base[~base[MOBILE_NUMBER_RECORD_ID_COL].astype(str).isin(unreg_record_ids)]
+        elif s == EMAIL_FAMILY_RELATION_SHEET:
+            unreg_emails = unreg_store.get(EMAIL_SHEET, pd.DataFrame()).copy()
+            unreg_record_ids = set()
+            if not unreg_emails.empty and EMAIL_RECORD_ID_COL in unreg_emails.columns:
+                for raw_record_id in unreg_emails[EMAIL_RECORD_ID_COL].tolist():
+                    record_id = _normalize_email_record_id(raw_record_id)
+                    if record_id:
+                        unreg_record_ids.add(record_id)
+            if not base.empty and EMAIL_RECORD_ID_COL in base.columns and unreg_record_ids:
+                base = base[~base[EMAIL_RECORD_ID_COL].astype(str).isin(unreg_record_ids)]
+        elif s == PERSONAL_EMAIL_PRIMARY_SHEET:
+            unreg_emails = unreg_store.get(EMAIL_SHEET, pd.DataFrame()).copy()
+            unreg_record_ids = set()
+            if not unreg_emails.empty and EMAIL_RECORD_ID_COL in unreg_emails.columns:
+                for raw_record_id in unreg_emails[EMAIL_RECORD_ID_COL].tolist():
+                    record_id = _normalize_email_record_id(raw_record_id)
+                    if record_id:
+                        unreg_record_ids.add(record_id)
+            if not base.empty and EMAIL_RECORD_ID_COL in base.columns and unreg_record_ids:
+                base = base[~base[EMAIL_RECORD_ID_COL].astype(str).isin(unreg_record_ids)]
+        elif s == EMAIL_LINKED_JOB_SHEET:
+            unreg_emails = unreg_store.get(EMAIL_SHEET, pd.DataFrame()).copy()
+            unreg_record_ids = set()
+            if not unreg_emails.empty and EMAIL_RECORD_ID_COL in unreg_emails.columns:
+                for raw_record_id in unreg_emails[EMAIL_RECORD_ID_COL].tolist():
+                    record_id = _normalize_email_record_id(raw_record_id)
+                    if record_id:
+                        unreg_record_ids.add(record_id)
+            if not base.empty and EMAIL_RECORD_ID_COL in base.columns and unreg_record_ids:
+                base = base[~base[EMAIL_RECORD_ID_COL].astype(str).isin(unreg_record_ids)]
+        elif s == PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET:
+            unreg_memberships = unreg_store.get(PERSON_YOUTH_GROUP_SHEET, pd.DataFrame()).copy()
+            unreg_record_ids = set()
+            if not unreg_memberships.empty and PERSON_YOUTH_GROUP_RECORD_ID_COL in unreg_memberships.columns:
+                for raw_record_id in unreg_memberships[PERSON_YOUTH_GROUP_RECORD_ID_COL].tolist():
+                    record_id = _normalize_person_youth_group_record_id(raw_record_id)
+                    if record_id:
+                        unreg_record_ids.add(record_id)
+            if not base.empty and PERSON_YOUTH_GROUP_RECORD_ID_COL in base.columns and unreg_record_ids:
+                base = base[~base[PERSON_YOUTH_GROUP_RECORD_ID_COL].astype(str).isin(unreg_record_ids)]
+        elif s == SCHOOL_SECTION_SHEET:
+            unreg_schools = unreg_store.get(SCHOOL_SHEET, pd.DataFrame()).copy()
+            unreg_record_ids = set()
+            if not unreg_schools.empty and SCHOOL_RECORD_ID_COL in unreg_schools.columns:
+                for raw_record_id in unreg_schools[SCHOOL_RECORD_ID_COL].tolist():
+                    record_id = _normalize_school_record_id(raw_record_id)
+                    if record_id:
+                        unreg_record_ids.add(record_id)
+            if not base.empty and SCHOOL_RECORD_ID_COL in base.columns and unreg_record_ids:
+                base = base[~base[SCHOOL_RECORD_ID_COL].astype(str).isin(unreg_record_ids)]
+        elif s == SCHOOL_GRADE_SHEET:
+            unreg_schools = unreg_store.get(SCHOOL_SHEET, pd.DataFrame()).copy()
+            unreg_record_ids = set()
+            if not unreg_schools.empty and SCHOOL_RECORD_ID_COL in unreg_schools.columns:
+                for raw_record_id in unreg_schools[SCHOOL_RECORD_ID_COL].tolist():
+                    record_id = _normalize_school_record_id(raw_record_id)
+                    if record_id:
+                        unreg_record_ids.add(record_id)
+            if not base.empty and SCHOOL_RECORD_ID_COL in base.columns and unreg_record_ids:
+                base = base[~base[SCHOOL_RECORD_ID_COL].astype(str).isin(unreg_record_ids)]
+        elif not base.empty and "person_id" in base.columns:
             base = base[~base["person_id"].astype(str).isin(unreg_ids)]
         incoming = unreg_store.get(s, pd.DataFrame()).copy()
         if not incoming.empty:
-            if "person_id" not in incoming.columns:
+            if s not in (MOBILE_NUMBER_FAMILY_RELATION_SHEET, PERSONAL_MOBILE_NUMBER_PRIMARY_SHEET, MOBILE_NUMBER_LINKED_JOB_SHEET, EMAIL_FAMILY_RELATION_SHEET, PERSONAL_EMAIL_PRIMARY_SHEET, EMAIL_LINKED_JOB_SHEET, PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, SCHOOL_SECTION_SHEET, SCHOOL_GRADE_SHEET) and "person_id" not in incoming.columns:
                 incoming["person_id"] = None
-            incoming["person_id"] = incoming["person_id"].apply(_normalize_person_id)
+            if s not in (MOBILE_NUMBER_FAMILY_RELATION_SHEET, PERSONAL_MOBILE_NUMBER_PRIMARY_SHEET, MOBILE_NUMBER_LINKED_JOB_SHEET, EMAIL_FAMILY_RELATION_SHEET, PERSONAL_EMAIL_PRIMARY_SHEET, EMAIL_LINKED_JOB_SHEET, PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, SCHOOL_SECTION_SHEET, SCHOOL_GRADE_SHEET):
+                incoming["person_id"] = incoming["person_id"].apply(_normalize_person_id)
             base = pd.concat([base, incoming], ignore_index=True)
         store[s] = base
 
@@ -1679,12 +4608,21 @@ def _save_unreg_store():
 def init_state():
     load()
     schema_changed = _ensure_persons_schema()
+    person_title_schema_changed = _ensure_person_titles_schema()
+    person_school_system_sector_schema_changed = _ensure_person_school_system_sector_schema()
+    person_youth_group_schema_changed = _ensure_person_youth_group_schema()
     group_schema_changed = _ensure_youth_group_schema()
+    group_special_logo_schema_changed = _ensure_youth_group_special_logo_schema()
+    nationality_schema_changed = _ensure_nationality_schema()
+    schools_schema_changed = _ensure_schools_schema()
     mobile_schema_changed = _ensure_mobile_numbers_schema()
     email_schema_changed = _ensure_emails_schema()
     social_media_schema_changed = _ensure_social_media_schema()
+    higher_education_schema_changed = _ensure_higher_education_schema()
     jobs_schema_changed = _ensure_jobs_schema()
+    responsibility_schema_changed = _ensure_responsibility_schema()
     address_schema_changed = _ensure_addresses_schema()
-    if schema_changed or group_schema_changed or mobile_schema_changed or email_schema_changed or social_media_schema_changed or jobs_schema_changed or address_schema_changed:
+    _coerce_person_id_columns(store)
+    if schema_changed or person_title_schema_changed or person_school_system_sector_schema_changed or person_youth_group_schema_changed or group_schema_changed or group_special_logo_schema_changed or nationality_schema_changed or schools_schema_changed or mobile_schema_changed or email_schema_changed or social_media_schema_changed or higher_education_schema_changed or jobs_schema_changed or responsibility_schema_changed or address_schema_changed:
         save()
     _load_unreg_store()

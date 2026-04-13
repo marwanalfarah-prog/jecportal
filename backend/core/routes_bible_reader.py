@@ -57,7 +57,7 @@ def _normalize_chapters(chapters: list) -> list[dict]:
 
 
 def _bible_books_tree_path() -> str:
-    return os.path.join(S.db.data_dir, "bible_books_tree.json")
+    return os.path.join(S.db.data_dir, "bible_books.json")
 
 
 def _bible_books_root_dir() -> str:
@@ -71,10 +71,7 @@ def _load_bible_books_tree() -> list[dict]:
     return raw
 
 
-def _book_meta_index() -> tuple[dict[str, dict], list[str]]:
-    out: dict[str, dict] = {}
-    order: list[str] = []
-
+def _iter_tree_books(tree: list[dict]):
     def visit_section(testament_id: str, testament_name: str, section_row: dict):
         section = section_row if isinstance(section_row, dict) else {}
         section_id = _clean_text(section.get("id"))
@@ -87,7 +84,7 @@ def _book_meta_index() -> tuple[dict[str, dict], list[str]]:
             book_id = _clean_text(row.get("id"))
             if not book_id:
                 continue
-            out[book_id] = {
+            yield book_id, {
                 "book_id": book_id,
                 "name": _clean_text(row.get("name")),
                 "abbr": _clean_text(row.get("abbr")),
@@ -96,25 +93,33 @@ def _book_meta_index() -> tuple[dict[str, dict], list[str]]:
                 "section_id": section_id,
                 "section_name": section_name,
             }
-            order.append(book_id)
 
         subsections = section.get("subsections") if isinstance(section.get("subsections"), list) else []
         for subsection in subsections:
-            visit_section(testament_id, testament_name, subsection)
+            yield from visit_section(testament_id, testament_name, subsection)
 
-    for testament in _load_bible_books_tree():
+    for testament in tree:
         if not isinstance(testament, dict):
             continue
         testament_id = _clean_text(testament.get("id"))
         testament_name = _clean_text(testament.get("name"))
         sections = testament.get("sections") if isinstance(testament.get("sections"), list) else []
         for section in sections:
-            visit_section(testament_id, testament_name, section)
+            yield from visit_section(testament_id, testament_name, section)
+
+
+def _book_meta_index(tree: list[dict]) -> tuple[dict[str, dict], list[str]]:
+    out: dict[str, dict] = {}
+    order: list[str] = []
+
+    for book_id, meta in _iter_tree_books(tree):
+        out[book_id] = meta
+        order.append(book_id)
 
     return out, order
 
 
-def _enriched_bible_books_tree(meta_index: dict[str, dict], files_by_id: dict[str, str]) -> list[dict]:
+def _enriched_bible_books_tree(tree: list[dict], files_by_id: dict[str, str]) -> list[dict]:
     def enrich_section(section_row: dict) -> dict:
         section = section_row if isinstance(section_row, dict) else {}
         out = dict(section)
@@ -124,13 +129,12 @@ def _enriched_bible_books_tree(meta_index: dict[str, dict], files_by_id: dict[st
         for row in raw_books:
             book = row if isinstance(row, dict) else {}
             book_id = _clean_text(book.get("id"))
-            meta = dict(meta_index.get(book_id) or {})
             has_content = bool(files_by_id.get(book_id))
             books.append({
                 **book,
                 "book_id": book_id,
-                "name": _clean_text(book.get("name")) or _clean_text(meta.get("name")),
-                "abbr": _clean_text(book.get("abbr")) or _clean_text(meta.get("abbr")),
+                "name": _clean_text(book.get("name")),
+                "abbr": _clean_text(book.get("abbr")),
                 "has_content": has_content,
             })
         out["books"] = books
@@ -139,15 +143,15 @@ def _enriched_bible_books_tree(meta_index: dict[str, dict], files_by_id: dict[st
         out["subsections"] = [enrich_section(subsection) for subsection in raw_subsections]
         return out
 
-    tree: list[dict] = []
-    for testament_row in _load_bible_books_tree():
+    out_tree: list[dict] = []
+    for testament_row in tree:
         testament = testament_row if isinstance(testament_row, dict) else {}
         out_testament = dict(testament)
         raw_sections = testament.get("sections") if isinstance(testament.get("sections"), list) else []
         out_testament["sections"] = [enrich_section(section) for section in raw_sections]
-        tree.append(out_testament)
+        out_tree.append(out_testament)
 
-    return tree
+    return out_tree
 
 
 def _discover_books_from_directory() -> list[dict]:
@@ -168,14 +172,14 @@ def _discover_books_from_directory() -> list[dict]:
     return rows
 
 
-def _resolve_book_files() -> dict[str, str]:
+def _resolve_book_files(book_ids: set[str]) -> dict[str, str]:
     root = Path(_bible_books_root_dir()).resolve()
     out: dict[str, str] = {}
 
     for row in _discover_books_from_directory():
         book_id = _clean_text(row.get("book_id"))
         rel_file = _clean_text(row.get("rel_file"))
-        if not book_id or not rel_file:
+        if not book_id or not rel_file or book_id not in book_ids:
             continue
 
         full_path = (root / rel_file).resolve()
@@ -206,8 +210,9 @@ def register_bible_reader_routes(app):
         if err:
             return err
 
-        meta_index, order = _book_meta_index()
-        files_by_id = _resolve_book_files()
+        tree = _load_bible_books_tree()
+        meta_index, order = _book_meta_index(tree)
+        files_by_id = _resolve_book_files(set(meta_index))
 
         books = []
         for book_id in order:
@@ -219,7 +224,7 @@ def register_bible_reader_routes(app):
             meta["chapter_count"] = chapter_count
             books.append(meta)
 
-        tree = _enriched_bible_books_tree(meta_index, files_by_id)
+        tree = _enriched_bible_books_tree(tree, files_by_id)
         return jsonify({"ok": True, "books": books, "tree": tree})
 
     @app.get("/api/bible-reader/books/<book_id>")
@@ -232,11 +237,12 @@ def register_bible_reader_routes(app):
         if not bid:
             return jsonify({"error": "invalid book id"}), 400
 
-        meta_index, _ = _book_meta_index()
+        tree = _load_bible_books_tree()
+        meta_index, _ = _book_meta_index(tree)
         if bid not in meta_index:
             return jsonify({"error": "book not found"}), 404
 
-        files_by_id = _resolve_book_files()
+        files_by_id = _resolve_book_files(set(meta_index))
         file_path = files_by_id.get(bid)
         if not file_path:
             return jsonify({"error": "book not found"}), 404
