@@ -1924,11 +1924,308 @@ tbody td {
   background: var(--green-light);
 }
 
+.profile-toolbar {
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border: 1px solid rgba(15, 39, 68, 0.08);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
+  box-shadow: 0 10px 24px rgba(15, 39, 68, 0.05);
+}
+
+.profile-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.profile-edit-mode-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(201, 150, 60, 0.28);
+  background: linear-gradient(135deg, rgba(201, 150, 60, 0.16), rgba(255, 255, 255, 0.95));
+  color: #8a6420;
+  font-size: 0.78rem;
+  font-weight: 800;
+  box-shadow: 0 8px 18px rgba(201, 150, 60, 0.12);
+}
+
+.profile-saving-indicator {
+  font-size: 0.82rem;
+  color: var(--gray-400);
+}
+
+.profile-edit-toggle.is-active {
+  border-color: rgba(201, 150, 60, 0.26);
+  background: rgba(201, 150, 60, 0.1);
+  color: var(--navy);
+}
+
+.profile-page-editing {
+  gap: 20px;
+}
+
+.profile-page-editing .profile-tabs {
+  border-color: rgba(15, 39, 68, 0.1);
+  background:
+    radial-gradient(circle at top right, rgba(201, 150, 60, 0.18), transparent 34%),
+    radial-gradient(circle at bottom left, rgba(15, 39, 68, 0.09), transparent 36%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(246, 249, 252, 0.97));
+  box-shadow: 0 12px 28px rgba(15, 39, 68, 0.08);
+}
+
+.profile-page-editing .profile-tabs .tab {
+  color: var(--gray-600);
+}
+
+.profile-page-editing .profile-tabs .tab:hover {
+  background: rgba(15, 39, 68, 0.06);
+}
+
+.profile-page-editing .profile-tabs .tab.active {
+  color: var(--white);
+  background: linear-gradient(135deg, rgba(15, 39, 68, 0.96), rgba(34, 61, 97, 0.9));
+  box-shadow: 0 12px 24px rgba(15, 39, 68, 0.22);
+}
+
+.profile-page-editing .profile-tab-panel {
+  gap: 18px;
+}
+
+.profile-page-editing .card {
+  border-color: rgba(15, 39, 68, 0.1);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(246, 248, 252, 0.97));
+  box-shadow: 0 16px 38px rgba(15, 39, 68, 0.07);
+}
+
+.profile-page-editing .card-header {
+  border-bottom-color: rgba(15, 39, 68, 0.08);
+  background: linear-gradient(180deg, rgba(15, 39, 68, 0.045), rgba(255, 255, 255, 0));
+}
+
+.profile-page-editing .card-title {
+  letter-spacing: 0.01em;
+}
+
+.profile-page-editing .profile-two-column-layout {
+  gap: 14px;
+}
+
+.profile-page-editing .info-row {
+  align-items: flex-start;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(15, 39, 68, 0.08);
+  border-radius: 16px;
+  border-bottom: none;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+.profile-page-editing .info-key {
+  min-width: 140px;
+  padding-top: 12px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: var(--gray-500);
+}
+
+.profile-page-editing .editable-inline {
+  align-items: center;
+  gap: 10px;
+}
+
+.profile-page-editing .editable-inline input {
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid rgba(15, 39, 68, 0.1);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 249, 252, 0.96));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 6px 16px rgba(15, 39, 68, 0.05);
+  transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+}
+
+.profile-page-editing .editable-inline input:focus {
+  background: var(--white);
+  border-color: rgba(15, 39, 68, 0.2);
+  box-shadow: 0 0 0 4px rgba(15, 39, 68, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.profile-page-editing .edit-icon {
+  width: 32px;
+  height: 32px;
+  padding: 8px;
+  border-radius: 50%;
+  color: var(--navy);
+  background: rgba(15, 39, 68, 0.06);
+}
+
+.profile-page-editing .form-control,
+.profile-page-editing .combo-trigger,
+.profile-page-editing .combo-input,
+.profile-page-editing .tag-input,
+.profile-page-editing .sub-table input,
+.profile-page-editing .sub-table select {
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid rgba(15, 39, 68, 0.1);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 249, 252, 0.96));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 6px 16px rgba(15, 39, 68, 0.05);
+  color: var(--gray-700);
+  transition: border-color var(--transition), box-shadow var(--transition), background var(--transition), transform var(--transition);
+}
+
+.profile-page-editing .combo-trigger {
+  padding-inline: 12px;
+}
+
+.profile-page-editing .form-control:focus,
+.profile-page-editing .combo-trigger:hover,
+.profile-page-editing .combo-trigger:focus,
+.profile-page-editing .combo-input:focus,
+.profile-page-editing .tag-input:focus,
+.profile-page-editing .sub-table input:focus,
+.profile-page-editing .sub-table select:focus {
+  background: var(--white);
+  border-color: rgba(15, 39, 68, 0.2);
+  box-shadow: 0 0 0 4px rgba(15, 39, 68, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.profile-page-editing .combo-dropdown {
+  border-color: rgba(15, 39, 68, 0.1);
+  border-radius: 16px;
+  box-shadow: 0 18px 44px rgba(15, 39, 68, 0.16);
+}
+
+.profile-page-editing .combo-search {
+  padding: 10px 12px;
+  background: linear-gradient(180deg, rgba(245, 248, 252, 0.92), rgba(255, 255, 255, 0.96));
+  border-bottom-color: rgba(15, 39, 68, 0.08);
+}
+
+.profile-page-editing .combo-item {
+  padding: 10px 14px;
+}
+
+.profile-page-editing .combo-item.selected {
+  background: linear-gradient(135deg, var(--navy), #29486e);
+}
+
+.profile-page-editing .tag-list {
+  gap: 8px;
+}
+
+.profile-page-editing .tag {
+  padding: 6px 12px;
+  border: 1px solid rgba(15, 39, 68, 0.08);
+  background: linear-gradient(180deg, rgba(15, 39, 68, 0.05), rgba(255, 255, 255, 0.95));
+  box-shadow: 0 4px 10px rgba(15, 39, 68, 0.04);
+}
+
+.profile-page-editing .add-row-btn {
+  min-height: 48px;
+  border-style: solid;
+  border-color: rgba(15, 39, 68, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(245, 248, 252, 0.96));
+  color: var(--navy);
+  font-weight: 700;
+  box-shadow: 0 8px 20px rgba(15, 39, 68, 0.06);
+}
+
+.profile-page-editing .add-row-btn:hover {
+  border-color: rgba(15, 39, 68, 0.2);
+  background: var(--white);
+  box-shadow: 0 12px 24px rgba(15, 39, 68, 0.08);
+  transform: translateY(-1px);
+}
+
+.profile-page-editing .sub-table {
+  border-collapse: separate;
+  border-spacing: 0 10px;
+}
+
+.profile-page-editing .sub-table th {
+  padding: 0 10px 4px;
+  border-bottom: none;
+}
+
+.profile-page-editing .sub-table td {
+  padding: 10px;
+  border-top: 1px solid rgba(15, 39, 68, 0.08);
+  border-bottom: 1px solid rgba(15, 39, 68, 0.08);
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.profile-page-editing .sub-table td:first-child {
+  border-inline-start: 1px solid rgba(15, 39, 68, 0.08);
+  border-start-start-radius: 14px;
+  border-end-start-radius: 14px;
+}
+
+.profile-page-editing .sub-table td:last-child {
+  border-inline-end: 1px solid rgba(15, 39, 68, 0.08);
+  border-start-end-radius: 14px;
+  border-end-end-radius: 14px;
+}
+
+.profile-page-editing .profile-nationality-editor-card,
+.profile-page-editing .profile-nationality-editor-add,
+.profile-page-editing .profile-nationality-editor-empty,
+.profile-page-editing .profile-nationality-editor-hint,
+.profile-page-editing .profile-nationality-editor-error {
+  border-radius: 18px;
+  border-color: rgba(15, 39, 68, 0.08);
+  box-shadow: 0 10px 24px rgba(15, 39, 68, 0.05);
+}
+
+.profile-page-editing .am-address-card {
+  padding: 14px;
+  border: 1px solid rgba(15, 39, 68, 0.1);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(246, 248, 252, 0.97));
+  box-shadow: 0 12px 28px rgba(15, 39, 68, 0.06);
+}
+
+.profile-page-editing .am-address-card-header {
+  margin-bottom: 14px;
+}
+
+.profile-page-editing .am-address-grid {
+  gap: 14px;
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.profile-page-editing .am-address-map-icon {
+  border-color: rgba(15, 39, 68, 0.12);
+  background: var(--white);
+  box-shadow: 0 6px 14px rgba(15, 39, 68, 0.06);
+}
+
+.profile-page-editing .am-address-map-icon.active {
+  box-shadow: 0 8px 16px rgba(21, 128, 61, 0.14);
+}
+
 @media (max-width: 640px) {
   .profile-two-column-layout,
   .profile-view-grid,
   .profile-name-columns {
     grid-template-columns: 1fr;
+  }
+
+  .profile-toolbar {
+    padding: 14px;
+  }
+
+  .profile-toolbar-actions {
+    width: 100%;
   }
 
   .profile-hero {

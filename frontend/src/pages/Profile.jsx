@@ -3,7 +3,7 @@ import {
   ArrowRight, Pencil, Trash2, Plus, Check, Camera, UserX, Download,
   GraduationCap, Briefcase, Heart, Users, Shield,
   Phone, PhoneCall, Globe, School, GitBranch, Archive, ArchiveRestore, MapPin, Mail,
-  Facebook, Instagram, Linkedin, ExternalLink
+  Facebook, Instagram, Linkedin, ExternalLink, AlertCircle
 } from 'lucide-react'
 import { parsePhoneNumberFromString } from 'libphonenumber-js'
 import { api, getApiErrorMessage } from '../api.js'
@@ -12,14 +12,15 @@ import { downloadProfilePdf } from '../profilePdf.js'
 
 function GenderChipContent({ gender }) {
   const normalized = String(gender || '').trim()
+  const canonical = normalized.replace(/[أإآ]/g, 'ا')
   const text = normalized || '—'
   let symbol = ''
   let toneClass = ''
 
-  if (normalized === 'ذكر') {
+  if (canonical === 'ذكر') {
     symbol = '♂'
     toneClass = 'male'
-  } else if (normalized === 'انثى') {
+  } else if (canonical === 'انثى') {
     symbol = '♀'
     toneClass = 'female'
   }
@@ -42,6 +43,7 @@ function ComboDropdown({ value, onChange, options, placeholder = '—', dir = 'r
   const [open, setOpen]     = useState(false)
   const [query, setQuery]   = useState('')
   const [custom, setCustom] = useState(false)
+  const [customValue, setCustomValue] = useState(String(value || ''))
   const ref = useRef(null)
   const textAlign = dir === 'ltr' ? 'left' : 'right'
   const safeOptions = Array.isArray(options) ? options : []
@@ -52,6 +54,11 @@ function ComboDropdown({ value, onChange, options, placeholder = '—', dir = 'r
     document.addEventListener('mousedown', h)
     return () => document.removeEventListener('mousedown', h)
   }, [])
+
+  useEffect(() => {
+    if (!custom) return
+    setCustomValue(String(value || ''))
+  }, [custom, value])
 
   const getLabel = (o) => (o?.label || o?.value)
   const selectedOption = safeOptions.find(o => o?.value === value)
@@ -70,11 +77,21 @@ function ComboDropdown({ value, onChange, options, placeholder = '—', dir = 'r
           autoFocus
           className="combo-input"
           placeholder={customInputPlaceholder}
-          defaultValue={value || ''}
+          value={customValue}
           dir={dir}
           style={{ direction: dir, textAlign }}
-          onBlur={e => { onChange(e.target.value); setCustom(false) }}
-          onKeyDown={e => { if (e.key === 'Enter') { onChange(e.target.value); setCustom(false) } if (e.key === 'Escape') setCustom(false) }}
+          onChange={e => setCustomValue(e.target.value)}
+          onBlur={() => { onChange(customValue); setCustom(false) }}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              onChange(customValue)
+              setCustom(false)
+            }
+            if (e.key === 'Escape') {
+              setCustomValue(String(value || ''))
+              setCustom(false)
+            }
+          }}
         />
         <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '2px 6px', fontSize: '0.75rem' }}
           onClick={() => setCustom(false)}>✕</button>
@@ -115,7 +132,7 @@ function ComboDropdown({ value, onChange, options, placeholder = '—', dir = 'r
             ))}
             <button type="button" className="combo-item combo-other"
               style={{ textAlign, direction: dir }}
-              onClick={() => { setOpen(false); setQuery(''); setCustom(true) }}>
+              onClick={() => { setOpen(false); setQuery(''); setCustomValue(String(value || '')); setCustom(true) }}>
               {customActionLabel}
             </button>
           </div>
@@ -182,6 +199,76 @@ const MONTHS = [
   { en: 'Dec', ar: 'كانون الأول',  num: 12 },
 ]
 
+const COUNTRY_NAME_ARABIC_LOOKUP = new Map([
+  ['jordan', 'الأردن'],
+  ['the hashemite kingdom of jordan', 'الأردن'],
+  ['egypt', 'مصر'],
+  ['arab republic of egypt', 'مصر'],
+  ['palestine', 'فلسطين'],
+  ['state of palestine', 'فلسطين'],
+  ['palestinian territories', 'فلسطين'],
+  ['united arab emirates', 'الإمارات'],
+  ['uae', 'الإمارات'],
+  ['saudi arabia', 'السعودية'],
+  ['oman', 'عُمان'],
+  ['yemen', 'اليمن'],
+  ['iraq', 'العراق'],
+  ['syria', 'سوريا'],
+  ['lebanon', 'لبنان'],
+  ['qatar', 'قطر'],
+  ['bahrain', 'البحرين'],
+  ['kuwait', 'الكويت'],
+  ['israel', 'إسرائيل'],
+  ['turkey', 'تركيا'],
+  ['germany', 'ألمانيا'],
+  ['united kingdom', 'المملكة المتحدة'],
+  ['uk', 'المملكة المتحدة'],
+  ['great britain', 'المملكة المتحدة'],
+  ['austria', 'النمسا'],
+  ['switzerland', 'سويسرا'],
+  ['italy', 'إيطاليا'],
+  ['spain', 'إسبانيا'],
+  ['france', 'فرنسا'],
+  ['belgium', 'بلجيكا'],
+  ['netherlands', 'هولندا'],
+  ['norway', 'النرويج'],
+  ['sweden', 'السويد'],
+  ['denmark', 'الدنمارك'],
+  ['greece', 'اليونان'],
+  ['south africa', 'جنوب أفريقيا'],
+  ['united states', 'الولايات المتحدة'],
+  ['united states of america', 'الولايات المتحدة'],
+  ['usa', 'الولايات المتحدة'],
+  ['us', 'الولايات المتحدة'],
+  ['georgia', 'جورجيا'],
+  ['azerbaijan', 'أذربيجان'],
+  ['kyrgyzstan', 'قيرغيزستان'],
+  ['uzbekistan', 'أوزبكستان'],
+])
+
+const ARABIC_REGION_DISPLAY_NAMES = (() => {
+  try {
+    if (typeof Intl === 'undefined' || typeof Intl.DisplayNames !== 'function') return null
+    return new Intl.DisplayNames(['ar'], { type: 'region' })
+  } catch {
+    return null
+  }
+})()
+
+function translateCountryNameToArabic(text) {
+  const normalized = String(text || '').trim()
+  if (!normalized) return ''
+
+  const fromLookup = COUNTRY_NAME_ARABIC_LOOKUP.get(normalized.toLowerCase())
+  if (fromLookup) return fromLookup
+
+  if (/^[A-Za-z]{2}$/.test(normalized) && ARABIC_REGION_DISPLAY_NAMES) {
+    return ARABIC_REGION_DISPLAY_NAMES.of(normalized.toUpperCase()) || normalized
+  }
+
+  return normalized
+}
+
 function normalizeCountryValue(value) {
   const text = String(value || '').replace(/\s+/g, ' ').trim()
   if (!text) return 'الأردن'
@@ -198,7 +285,7 @@ function normalizeCountryValue(value) {
     return 'الأردن'
   }
 
-  return text
+  return translateCountryNameToArabic(text)
 }
 
 function normalizePersonTitles(raw) {
@@ -331,17 +418,6 @@ function normalizeSchoolRows(rows, { dropEmpty = false, graduatedFromSchools = f
     }))
     .filter((row) => (dropEmpty ? row.school : true))
 
-  const activeIndexes = normalized
-    .map((row, index) => (row.is_current ? index : -1))
-    .filter((index) => index >= 0)
-
-  if (activeIndexes.length > 1) {
-    const keepIndex = activeIndexes[activeIndexes.length - 1]
-    normalized.forEach((row, index) => {
-      if (index !== keepIndex) row.is_current = false
-    })
-  }
-
   return dropEmpty
     ? normalized.map((row) => ({
         ...row,
@@ -380,6 +456,11 @@ function higherEducationStateLabel(value) {
   return match?.label || normalized
 }
 
+function shouldDisplayHigherEducationGpa(row) {
+  const state = normalizeHigherEducationStateValue(row?.state, { isCurrent: Boolean(row?.is_current) })
+  return Boolean(normalizeFinalGpaValue(row?.final_gpa)) || state === 'current' || state === 'graduated'
+}
+
 function normalizeHigherEducationRows(rows, { dropEmpty = false } = {}) {
   const source = Array.isArray(rows) ? rows : []
   const normalized = source
@@ -403,7 +484,7 @@ function normalizeHigherEducationRows(rows, { dropEmpty = false } = {}) {
         end_date: isCurrent ? '' : sanitizeDateInput(row?.end_date),
         is_current: isCurrent,
         state,
-        final_gpa: (state === 'current' || state === 'graduated') ? normalizeFinalGpaValue(row?.final_gpa) : '',
+        final_gpa: normalizeFinalGpaValue(row?.final_gpa),
       }
     })
     .filter((row) => (dropEmpty ? (row.university_college || row.major || row.degree || row.start_date || row.end_date || row.state || row.final_gpa) : true))
@@ -416,7 +497,7 @@ function normalizeHigherEducationRows(rows, { dropEmpty = false } = {}) {
         start_date: row.start_date || null,
         end_date: row.end_date || null,
         state: row.state || null,
-        final_gpa: row.state === 'current' || row.state === 'graduated' ? row.final_gpa || null : null,
+        final_gpa: row.final_gpa || null,
       }))
     : normalized
 }
@@ -603,7 +684,7 @@ function normalizeSocialPlatform(value) {
   const text = normalizeLooseInput(value).toLowerCase()
   if (!text) return 'facebook'
   if (text === 'facebook' || text === 'instagram' || text === 'linkedin') return text
-  return 'facebook'
+  return text
 }
 
 function socialPlatformLabel(value) {
@@ -611,14 +692,15 @@ function socialPlatformLabel(value) {
   if (normalized === 'facebook') return 'Facebook'
   if (normalized === 'instagram') return 'Instagram'
   if (normalized === 'linkedin') return 'LinkedIn'
-  return normalized
+  return normalized.replace(/[-_]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
 function socialPlatformIcon(value, size = 16) {
   const normalized = normalizeSocialPlatform(value)
   if (normalized === 'facebook') return <Facebook size={size} />
   if (normalized === 'instagram') return <Instagram size={size} />
-  return <Linkedin size={size} />
+  if (normalized === 'linkedin') return <Linkedin size={size} />
+  return <Globe size={size} />
 }
 
 function socialPlatformTheme(value) {
@@ -648,14 +730,26 @@ function socialPlatformTheme(value) {
     }
   }
 
+  if (normalized === 'linkedin') {
+    return {
+      iconBackground: '#0A66C2',
+      iconColor: '#ffffff',
+      cardBackground: 'rgba(10, 102, 194, 0.08)',
+      cardBorder: 'rgba(10, 102, 194, 0.18)',
+      cardShadow: 'rgba(10, 102, 194, 0.14)',
+      accent: '#0A66C2',
+      accentSoft: 'rgba(10, 102, 194, 0.12)',
+    }
+  }
+
   return {
-    iconBackground: '#0A66C2',
-    iconColor: '#ffffff',
-    cardBackground: 'rgba(10, 102, 194, 0.08)',
-    cardBorder: 'rgba(10, 102, 194, 0.18)',
-    cardShadow: 'rgba(10, 102, 194, 0.14)',
-    accent: '#0A66C2',
-    accentSoft: 'rgba(10, 102, 194, 0.12)',
+    iconBackground: 'var(--gray-200)',
+    iconColor: 'var(--navy)',
+    cardBackground: 'var(--gray-50)',
+    cardBorder: 'var(--gray-200)',
+    cardShadow: 'rgba(15, 39, 68, 0.08)',
+    accent: 'var(--navy)',
+    accentSoft: 'rgba(15, 39, 68, 0.08)',
   }
 }
 
@@ -848,6 +942,16 @@ const SOCIAL_MEDIA_PLATFORM_OPTIONS = [
   { value: 'instagram', label: 'Instagram' },
   { value: 'linkedin', label: 'LinkedIn' },
 ]
+
+function socialPlatformOptionsForValue(value) {
+  const normalized = normalizeSocialPlatform(value)
+  if (!normalized || SOCIAL_MEDIA_PLATFORM_OPTIONS.some((option) => option.value === normalized)) {
+    return SOCIAL_MEDIA_PLATFORM_OPTIONS
+  }
+
+  return [...SOCIAL_MEDIA_PLATFORM_OPTIONS, { value: normalized, label: socialPlatformLabel(normalized) }]
+}
+
 const SCHOOL_GRADE_OPTIONS = [
   'الروضة الصغرى (KG1)',
   'الروضة الكبرى (KG2)',
@@ -900,6 +1004,28 @@ function formatUniversityGpaDisplay(value) {
   const normalized = normalizeFinalGpaValue(value)
   if (!normalized) return ''
   return /\/\s*4$/.test(normalized) ? normalized.replace(/\/\s*4$/, '/4') : `${normalized}/4`
+}
+
+const PHOTO_UPLOAD_MAX_BYTES = 10 * 1024 * 1024
+const PHOTO_UPLOAD_ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+const PHOTO_UPLOAD_ALLOWED_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif'])
+
+function validatePhotoUpload(file) {
+  if (!(file instanceof File)) return 'لم يتم اختيار ملف صورة صالح'
+
+  const extension = String(file.name || '').split('.').pop()?.toLowerCase() || ''
+  const hasAllowedType = PHOTO_UPLOAD_ALLOWED_MIME_TYPES.has(String(file.type || '').toLowerCase())
+  const hasAllowedExtension = PHOTO_UPLOAD_ALLOWED_EXTENSIONS.has(extension)
+
+  if (!hasAllowedType && !hasAllowedExtension) {
+    return 'يرجى اختيار صورة بصيغة JPG أو PNG أو WEBP أو GIF'
+  }
+
+  if (file.size > PHOTO_UPLOAD_MAX_BYTES) {
+    return 'الحد الأقصى لحجم الصورة هو 10 ميغابايت'
+  }
+
+  return ''
 }
 
 function storedSchoolSystemValue(value) {
@@ -1048,7 +1174,7 @@ function SpecialNotesEditor({ rows, onChange }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {normalizedRows.map((row, index) => (
-        <div key={`special-note-${index}`} style={{ border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-md)', padding: 12, background: 'var(--gray-50)' }}>
+        <div key={`special-note-${index}`} style={PROFILE_EDITOR_SURFACE_STYLE}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
             <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{row.note_title || 'ملاحظة خاصة'}</div>
             <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => removeRow(index)}>
@@ -1293,13 +1419,10 @@ const PHONE_COUNTRY_DIAL_CODES = [
   { code: '974', iso: 'QA', name: 'قطر' },
   { code: '973', iso: 'BH', name: 'البحرين' },
   { code: '972', iso: 'IL', name: 'إسرائيل' },
-  { code: '971', iso: 'AE', name: 'الإمارات' },
-  { code: '970', iso: 'PS', name: 'فلسطين' },
   { code: '994', iso: 'AZ', name: 'أذربيجان' },
   { code: '995', iso: 'GE', name: 'جورجيا' },
   { code: '996', iso: 'KG', name: 'قيرغيزستان' },
   { code: '998', iso: 'UZ', name: 'أوزبكستان' },
-  { code: '995', iso: 'GE', name: 'جورجيا' },
   { code: '90', iso: 'TR', name: 'تركيا' },
   { code: '49', iso: 'DE', name: 'ألمانيا' },
   { code: '44', iso: 'GB', name: 'المملكة المتحدة' },
@@ -1392,17 +1515,11 @@ function formatDisplayPhoneNumber(value) {
 }
 
 function normalizeWhatsAppPhone(value) {
-  let digits = String(value ?? '').replace(/[^\d+]/g, '').trim()
-  if (!digits) return ''
-
-  if (digits.startsWith('+')) digits = digits.slice(1)
-  if (digits.startsWith('00')) digits = digits.slice(2)
-
-  const plainDigits = digits.replace(/\D/g, '')
+  const plainDigits = normalizePhoneDigits(value)
   if (!plainDigits) return ''
 
   if (plainDigits.startsWith('962')) return plainDigits
-  if (plainDigits.startsWith('0')) return `962${plainDigits.slice(1)}`
+  if (/^07\d{8}$/.test(plainDigits)) return `962${plainDigits.slice(1)}`
   if (plainDigits.startsWith('7') && plainDigits.length === 9) return `962${plainDigits}`
 
   return plainDigits
@@ -1566,6 +1683,55 @@ function contactCardSurfaceStyle(active) {
   }
 }
 
+const PROFILE_EDITOR_SURFACE_STYLE = {
+  border: '1px solid rgba(15, 39, 68, 0.1)',
+  borderRadius: 18,
+  padding: 14,
+  background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(246, 248, 252, 0.97))',
+  boxShadow: '0 12px 28px rgba(15, 39, 68, 0.06)',
+}
+
+const PROFILE_EDITOR_META_PILL_STYLE = {
+  background: 'rgba(15, 39, 68, 0.04)',
+  border: '1px solid rgba(15, 39, 68, 0.08)',
+  color: 'var(--gray-500)',
+  borderRadius: 999,
+  padding: '4px 10px',
+  fontSize: '0.76rem',
+  fontWeight: 700,
+}
+
+const PROFILE_EDITOR_PRIMARY_PILL_STYLE = {
+  background: 'linear-gradient(135deg, rgba(201, 150, 60, 0.18), rgba(255, 255, 255, 0.96))',
+  border: '1px solid rgba(201, 150, 60, 0.4)',
+  color: '#8a6420',
+  borderRadius: 999,
+  padding: '4px 10px',
+  fontSize: '0.72rem',
+  fontWeight: 800,
+  boxShadow: '0 8px 18px rgba(201, 150, 60, 0.14)',
+}
+
+const PROFILE_EDITOR_INSET_STYLE = {
+  padding: 10,
+  borderRadius: 14,
+  background: 'rgba(255, 255, 255, 0.84)',
+  border: '1px solid rgba(15, 39, 68, 0.08)',
+}
+
+function profileEditorCardStyle(active = false) {
+  if (active) {
+    return {
+      ...PROFILE_EDITOR_SURFACE_STYLE,
+      border: '1px solid rgba(201, 150, 60, 0.34)',
+      background: 'linear-gradient(135deg, rgba(201, 150, 60, 0.16), rgba(255, 255, 255, 0.98))',
+      boxShadow: '0 16px 30px rgba(201, 150, 60, 0.16)',
+    }
+  }
+
+  return { ...PROFILE_EDITOR_SURFACE_STYLE }
+}
+
 function parseLegacyBirthDate(str) {
   if (!str) return { month: '', day: '' }
   const s = String(str).trim()
@@ -1618,7 +1784,6 @@ function BirthDatePicker({ day, month, legacyValue, onChange }) {
       return
     }
     const legacy = parseLegacyBirthDate(legacyValue)
-    setDayState(legacy.day)
     setMonthState(legacy.month)
   }, [day, month, legacyValue])
 
@@ -1765,7 +1930,6 @@ function NationalityRowsEditor({ rows, onChange, options = [], lookup = null, pl
       return
     }
 
-    setMessage('')
     updateRows([
       ...normalizedRows,
       { nationality, iso_alpha2: resolveNationalityIsoAlpha2(nationality, '', lookup) },
@@ -1950,7 +2114,7 @@ function PhoneNumbersEditor({ rows, onChange, jobRows = [] }) {
         const canChoosePrimary = typeMeta.baseType === 'personal' && personalRowCount > 1 && !isPrimaryPersonal
         const highlightPrimary = typeMeta.baseType === 'personal' && personalRowCount > 1 && isPrimaryPersonal
         return (
-          <div key={row.mobile_number_record_id || `phone-row-${index}`} style={{ ...contactCardSurfaceStyle(highlightPrimary), borderRadius: 'var(--radius-md)', padding: 12 }}>
+          <div key={row.mobile_number_record_id || `phone-row-${index}`} style={profileEditorCardStyle(highlightPrimary)}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
               <div
                 style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: canChoosePrimary ? 'pointer' : 'default' }}
@@ -1958,9 +2122,9 @@ function PhoneNumbersEditor({ rows, onChange, jobRows = [] }) {
                 title={canChoosePrimary ? 'اضغط لتحديد هذا الرقم كالعنصر الأساسي' : undefined}
               >
                 <div dir="ltr" style={{ fontWeight: 700, color: 'var(--navy)', direction: 'ltr', unicodeBidi: 'plaintext' }}>{row.mobile_number || '—'}</div>
-                <span style={{ fontSize: '0.78rem', color: 'var(--gray-500)', fontWeight: 600 }}>{mobileNumberBadgeLabel(row)}</span>
+                <span style={PROFILE_EDITOR_META_PILL_STYLE}>{mobileNumberBadgeLabel(row)}</span>
                 {isPrimaryPersonal ? (
-                  <span style={{ background: '#fff7d6', border: '1px solid rgba(201, 150, 60, 0.38)', color: '#8a6420', borderRadius: 999, padding: '3px 9px', fontSize: '0.72rem', fontWeight: 800 }}>
+                  <span style={PROFILE_EDITOR_PRIMARY_PILL_STYLE}>
                     الرئيسي
                   </span>
                 ) : null}
@@ -2138,7 +2302,7 @@ function EmailsEditor({ rows, onChange, jobRows = [] }) {
         const canChoosePrimary = typeMeta.normalized === 'personal' && personalRowCount > 1 && !isPrimaryPersonal
         const highlightPrimary = typeMeta.normalized === 'personal' && personalRowCount > 1 && isPrimaryPersonal
         return (
-          <div key={row.email_record_id || `email-row-${index}`} style={{ ...contactCardSurfaceStyle(highlightPrimary), borderRadius: 'var(--radius-md)', padding: 12 }}>
+          <div key={row.email_record_id || `email-row-${index}`} style={profileEditorCardStyle(highlightPrimary)}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
               <div
                 style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: canChoosePrimary ? 'pointer' : 'default' }}
@@ -2146,11 +2310,11 @@ function EmailsEditor({ rows, onChange, jobRows = [] }) {
                 title={canChoosePrimary ? 'اضغط لتحديد هذا البريد كالعنصر الأساسي' : undefined}
               >
                 <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{row.email || '—'}</div>
-                <span style={{ fontSize: '0.78rem', color: 'var(--gray-500)', fontWeight: 600 }}>
+                <span style={PROFILE_EDITOR_META_PILL_STYLE}>
                   {emailTypeLabel(row.type, row.family_relation)}
                 </span>
                 {isPrimaryPersonal ? (
-                  <span style={{ background: '#fff7d6', border: '1px solid rgba(201, 150, 60, 0.38)', color: '#8a6420', borderRadius: 999, padding: '3px 9px', fontSize: '0.72rem', fontWeight: 800 }}>
+                  <span style={PROFILE_EDITOR_PRIMARY_PILL_STYLE}>
                     الرئيسي
                   </span>
                 ) : null}
@@ -2274,7 +2438,7 @@ function SocialMediaEditor({ rows, onChange }) {
         const canChoosePrimary = platformRowCount > 1 && !row.is_primary
         const highlightPrimary = platformRowCount > 1 && Boolean(row.is_primary)
         return (
-          <div key={`social-row-${index}`} style={{ ...contactCardSurfaceStyle(highlightPrimary), borderRadius: 'var(--radius-md)', padding: 12 }}>
+          <div key={`social-row-${index}`} style={profileEditorCardStyle(highlightPrimary)}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
               <div
                 style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: canChoosePrimary ? 'pointer' : 'default' }}
@@ -2286,7 +2450,7 @@ function SocialMediaEditor({ rows, onChange }) {
                   <span>{socialPlatformLabel(row.platform)}</span>
                 </div>
                 {row.is_primary ? (
-                  <span style={{ background: '#fff7d6', border: '1px solid rgba(201, 150, 60, 0.38)', color: '#8a6420', borderRadius: 999, padding: '3px 9px', fontSize: '0.72rem', fontWeight: 800 }}>
+                  <span style={PROFILE_EDITOR_PRIMARY_PILL_STYLE}>
                     الرئيسي
                   </span>
                 ) : null}
@@ -2312,7 +2476,7 @@ function SocialMediaEditor({ rows, onChange }) {
                   <SelectDropdown
                     value={row.platform}
                     onChange={(value) => updateRow(index, 'platform', value)}
-                    options={SOCIAL_MEDIA_PLATFORM_OPTIONS}
+                    options={socialPlatformOptionsForValue(row.platform)}
                     placeholder="اختر المنصة…"
                     dir="ltr"
                   />
@@ -2639,7 +2803,7 @@ function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches =
           : [...configuredSections, row.section]
 
         return (
-          <div key={row.school_record_id || `school-row-${index}`} style={{ border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-md)', padding: 12, background: 'var(--gray-50)' }}>
+          <div key={row.school_record_id || `school-row-${index}`} style={PROFILE_EDITOR_SURFACE_STYLE}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{row.school || '—'}</div>
@@ -2814,9 +2978,6 @@ function HigherEducationRowsEditor({ rows, onChange, universityOptions = [], maj
         } else if (nextState === 'exited' || nextState === 'graduated') {
           nextRow.is_current = false
         }
-        if (nextState !== 'current' && nextState !== 'graduated') {
-          nextRow.final_gpa = ''
-        }
       }
 
       if (nextRow.is_current) nextRow.end_date = ''
@@ -2884,11 +3045,11 @@ function HigherEducationRowsEditor({ rows, onChange, universityOptions = [], maj
         const stateLabel = higherEducationStateLabel(row.state)
 
         return (
-          <div key={`higher-education-row-${index}`} style={{ border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-md)', padding: 12, background: 'var(--gray-50)' }}>
+          <div key={`higher-education-row-${index}`} style={PROFILE_EDITOR_SURFACE_STYLE}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{row.university_college || '—'}</div>
-                {stateLabel ? <span style={{ fontSize: '0.78rem', color: 'var(--gray-500)', fontWeight: 600 }}>{stateLabel}</span> : null}
+                {stateLabel ? <span style={PROFILE_EDITOR_META_PILL_STYLE}>{stateLabel}</span> : null}
               </div>
               <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => removeRow(index)}>
                 حذف
@@ -2950,7 +3111,7 @@ function HigherEducationRowsEditor({ rows, onChange, universityOptions = [], maj
                   placeholder="اختر الحالة…"
                 />
               </label>
-              {row.state === 'current' || row.state === 'graduated' ? (
+              {shouldDisplayHigherEducationGpa(row) ? (
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>المعدل التراكمي</span>
                   <input
@@ -3123,11 +3284,11 @@ function JobRowsEditor({ rows, onChange, jobTitleOptions = [], companyOptions = 
         const stateLabel = jobStateLabel(row.state)
 
         return (
-          <div key={row.job_id || `job-row-${index}`} style={{ border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-md)', padding: 12, background: 'var(--gray-50)' }}>
+          <div key={row.job_id || `job-row-${index}`} style={PROFILE_EDITOR_SURFACE_STYLE}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{jobRowLabel(row, index)}</div>
-                {stateLabel ? <span style={{ fontSize: '0.78rem', color: 'var(--gray-500)', fontWeight: 600 }}>{stateLabel}</span> : null}
+                {stateLabel ? <span style={PROFILE_EDITOR_META_PILL_STYLE}>{stateLabel}</span> : null}
               </div>
               <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => removeRow(index)}>
                 حذف
@@ -3297,11 +3458,11 @@ function ResponsibilityRowsEditor({ rows, onChange, youthGroupOptions = [], resp
           : youthGroupOptions
 
         return (
-          <div key={`responsibility-row-${index}`} style={{ border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-md)', padding: 12, background: 'var(--gray-50)' }}>
+          <div key={`responsibility-row-${index}`} style={PROFILE_EDITOR_SURFACE_STYLE}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{title}</div>
-                <span style={{ fontSize: '0.78rem', color: 'var(--gray-500)', fontWeight: 600 }}>{stateLabel}</span>
+                <span style={PROFILE_EDITOR_META_PILL_STYLE}>{stateLabel}</span>
               </div>
               <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => removeRow(index)}>
                 حذف
@@ -3402,6 +3563,7 @@ function SubTable({ rows, setRows, columns }) {
     ? rows.map((row) => (row && typeof row === 'object' ? row : {}))
     : []
   const safeColumns = Array.isArray(columns) ? columns : []
+  const hasFixedWidths = safeColumns.some((column) => column?.width)
   const update = (i, k, v) => setRows(safeRows.map((row, idx) => idx === i ? { ...row, [k]: v } : row))
   const remove = (i) => setRows(safeRows.filter((_, idx) => idx !== i))
   const addRow = () => setRows([...safeRows, Object.fromEntries(safeColumns.map(c => [c.key, '']))])
@@ -3409,16 +3571,16 @@ function SubTable({ rows, setRows, columns }) {
   return (
     <div>
       {safeRows.length > 0 && (
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <table className="sub-table" style={hasFixedWidths ? { tableLayout: 'fixed' } : undefined}>
           <thead><tr>
-            {safeColumns.map(c => <th key={c.key}>{c.label}</th>)}
+            {safeColumns.map(c => <th key={c.key} style={c.width ? { width: c.width } : undefined}>{c.label}</th>)}
             <th style={{ width: 40 }}></th>
           </tr></thead>
           <tbody>
             {safeRows.map((row, i) => (
               <tr key={i}>
                 {safeColumns.map(c => (
-                  <td key={c.key}>
+                  <td key={c.key} style={c.width ? { width: c.width } : undefined}>
                     {c.yearFrom !== undefined
                       ? <YearPicker value={row[c.key]} onChange={v => update(i, c.key, v)} fromYear={c.yearFrom} />
                       : c.selectOptions
@@ -3546,14 +3708,14 @@ function AddressRowsEditor({ rows, onChange, governorateOptions, locationOnly = 
           }
         : row
     )))
-    closeMapEditor(actualIndex)
+    closeMapEditor(index)
   }
   const removeMapLocation = (index) => {
     const actualIndex = resolveIndex(index)
     commit(normalizedRows.map((row, rowIndex) => (
       rowIndex === actualIndex ? { ...row, location_url: '', lat: null, lng: null } : row
     )))
-    closeMapEditor(actualIndex)
+    closeMapEditor(index)
   }
   const setPrimary = (index) => commit(normalizedRows.map((row, rowIndex) => ({ ...row, is_primary: rowIndex === index })))
   const addRow = () => commit([...normalizedRows, { ...DEFAULT_ADDRESS_ROW, is_primary: false }])
@@ -3911,9 +4073,12 @@ function formatJobPeriod(row) {
 function formatResponsibilityPeriod(row) {
   const start = String(row?.start_date || '').trim()
   const end = String(row?.end_date || '').trim()
+  const isCurrent = row?.is_current === true || row?.is_current === 'true' || row?.is_current === 1 || row?.is_current === '1'
   if (start && end) return `${start} - ${end}`
-  if (start) return `${start} - حاليًّا`
+  if (start && isCurrent) return `${start} - حاليًّا`
+  if (start) return start
   if (end) return end
+  if (isCurrent) return 'حاليًّا'
   return ''
 }
 
@@ -4257,6 +4422,8 @@ function YouthMembershipHistoryView({ rows }) {
 }
 
 function YouthMembershipCompactCard({ row, title, badge, logoUrl, logoAlt }) {
+  const [showLogo, setShowLogo] = useState(Boolean(logoUrl))
+  useEffect(() => { setShowLogo(Boolean(logoUrl)) }, [logoUrl])
   const historyRows = normalizeYouthMembershipHistoryRows(row?.age_group_history)
   const currentAgeGroup = row?.current_age_group || row?.age_group
   const resolvedTitle = normalizeLooseInput(title) || 'الشبيبة'
@@ -4276,13 +4443,11 @@ function YouthMembershipCompactCard({ row, title, badge, logoUrl, logoAlt }) {
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: '1 1 280px' }}>
-          <span style={{ width: 52, height: 52, borderRadius: 16, background: 'white', border: '1px solid rgba(15, 39, 68, 0.08)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 7, flexShrink: 0, boxShadow: '0 6px 14px rgba(15, 39, 68, 0.08)' }}>
-            {logoUrl ? (
-              <img src={logoUrl} alt={logoAlt || resolvedTitle || 'Youth Group'} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
-            ) : (
-              <Users size={18} color="var(--navy)" />
-            )}
-          </span>
+          {showLogo && (
+            <span style={{ width: 52, height: 52, borderRadius: 16, background: 'white', border: '1px solid rgba(15, 39, 68, 0.08)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 7, flexShrink: 0, boxShadow: '0 6px 14px rgba(15, 39, 68, 0.08)' }}>
+              <img src={logoUrl} alt={logoAlt || resolvedTitle || 'Youth Group'} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} onError={() => setShowLogo(false)} />
+            </span>
+          )}
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 800, color: 'var(--navy)', fontSize: '0.98rem', lineHeight: 1.2 }}>{resolvedTitle}</div>
           </div>
@@ -4420,11 +4585,11 @@ function YouthMembershipEditor({ rows, onChange, youthGroupOptions, allowHigherA
   return (
     <div style={{ display: 'grid', gap: 12 }}>
       {normalizedRows.map((row, index) => (
-        <div key={`membership-${index}`} style={{ border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-md)', padding: 12, background: 'var(--gray-50)', display: 'grid', gap: 12 }}>
+        <div key={`membership-${index}`} style={{ ...PROFILE_EDITOR_SURFACE_STYLE, display: 'grid', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 700, color: 'var(--navy)' }}>{row.current_age_group || 'بدون فئة حالية'}</span>
-              <span style={{ background: 'white', border: '1px solid var(--gray-200)', color: 'var(--gray-500)', borderRadius: 999, padding: '4px 10px', fontSize: '0.76rem', fontWeight: 700 }}>{row.status_label}</span>
+              <span style={PROFILE_EDITOR_META_PILL_STYLE}>{row.status_label}</span>
             </div>
             <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => removeMembershipRow(index)}>
               حذف الشبيبة
@@ -4464,7 +4629,7 @@ function YouthMembershipEditor({ rows, onChange, youthGroupOptions, allowHigherA
               ))
 
               return (
-              <div key={`membership-${index}-history-${historyIndex}`} style={{ display: 'grid', gridTemplateColumns: 'minmax(150px, 1fr) minmax(140px, 1fr) minmax(140px, 1fr) auto', gap: 8, alignItems: 'end', padding: 10, borderRadius: 12, background: 'white', border: '1px solid var(--gray-200)' }}>
+              <div key={`membership-${index}-history-${historyIndex}`} style={{ ...PROFILE_EDITOR_INSET_STYLE, display: 'grid', gridTemplateColumns: 'minmax(150px, 1fr) minmax(140px, 1fr) minmax(140px, 1fr) auto', gap: 8, alignItems: 'end' }}>
                 <label style={{ display: 'grid', gap: 6 }}>
                   <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--gray-500)' }}>الفئة العمرية</span>
                   <SelectDropdown value={historyRow.age_group} onChange={(value) => updateHistoryRow(index, historyIndex, 'age_group', value)} options={availableAgeGroupOptions} />
@@ -4492,6 +4657,8 @@ function YouthMembershipEditor({ rows, onChange, youthGroupOptions, allowHigherA
 }
 
 function ResponsibilityGroupCard({ groupName, groupId, items, logoUrl, logoAlt }) {
+  const [showLogo, setShowLogo] = useState(Boolean(logoUrl))
+  useEffect(() => { setShowLogo(Boolean(logoUrl)) }, [logoUrl])
   const safeItems = Array.isArray(items) ? items : []
   const groupedItems = groupResponsibilitiesByYear(safeItems)
 
@@ -4506,13 +4673,11 @@ function ResponsibilityGroupCard({ groupName, groupId, items, logoUrl, logoAlt }
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: '1 1 280px' }}>
-          <span style={{ width: 42, height: 42, borderRadius: 14, background: 'white', border: '1px solid rgba(15, 39, 68, 0.08)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 6, flexShrink: 0, boxShadow: '0 4px 10px rgba(15, 39, 68, 0.06)' }}>
-            {logoUrl ? (
-              <img src={logoUrl} alt={logoAlt || groupName || 'Youth Group'} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
-            ) : (
-              <Shield size={16} color="var(--navy)" />
-            )}
-          </span>
+          {showLogo && (
+            <span style={{ width: 42, height: 42, borderRadius: 14, background: 'white', border: '1px solid rgba(15, 39, 68, 0.08)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 6, flexShrink: 0, boxShadow: '0 4px 10px rgba(15, 39, 68, 0.06)' }}>
+              <img src={logoUrl} alt={logoAlt || groupName || 'Youth Group'} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} onError={() => setShowLogo(false)} />
+            </span>
+          )}
           <div style={{ minWidth: 0 }}>
             <div style={{ fontWeight: 800, color: 'var(--navy)', fontSize: '0.92rem', lineHeight: 1.2 }}>{groupName || 'الشبيبة'}</div>
           </div>
@@ -4627,6 +4792,12 @@ function ProfileAvatar({ personId, initials, photoUrl, onPhotoChange, toast, can
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0]; if (!file) return
+    const validationError = validatePhotoUpload(file)
+    if (validationError) {
+      toast(validationError, 'error')
+      e.target.value = ''
+      return
+    }
     setUploading(true)
     try {
       await api.uploadPhoto(personId, file)
@@ -4669,6 +4840,12 @@ function UnregisteredProfileAvatar({ uid, initials, photoUrl, onPhotoChange, toa
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0]; if (!file) return
+    const validationError = validatePhotoUpload(file)
+    if (validationError) {
+      toast(validationError, 'error')
+      e.target.value = ''
+      return
+    }
     setUploading(true)
     try {
       await api.uploadUnregisteredPhoto(uid, file)
@@ -4765,9 +4942,45 @@ function maxDate(a, b) {
 }
 
 // ── Bubble group-key logic (mirrored from OrgTree) ───────────────────────────
-const AGE_GROUPS   = ['البراعم', 'الإعدادي', 'الثانوي', 'الجامعيّة', 'العاملة']
-const COMMITTEES   = ['اللجنة الإعلاميّة', 'اللجنة الفنيّة', 'اللجنة الاجتماعيّة', 'لجنة الخدمة', 'لجنة العلاقات العامة', 'اللجنة اللوجستية', 'الفرقة الموسيقيّة', 'لجنة التنظيم', 'اللجنة الروحيّة', 'لجنة عمل المحبة', 'لجنة المواضيع', 'لجنة النشاطات', 'لجنة التدريب والتطوير']
+const BARAEM_GROUP_PROFILE = 'البراعم'
+const BARAEM_BIG_GROUP_PROFILE = 'البراعم الكبرى'
+const BARAEM_SMALL_GROUP_PROFILE = 'البراعم الصغرى'
+const BARAEM_ROLE_GROUPS_PROFILE = [BARAEM_GROUP_PROFILE, BARAEM_BIG_GROUP_PROFILE, BARAEM_SMALL_GROUP_PROFILE]
+const AGE_GROUPS   = [BARAEM_GROUP_PROFILE, BARAEM_BIG_GROUP_PROFILE, BARAEM_SMALL_GROUP_PROFILE, 'الإعدادي', 'الثانوي', 'الجامعيّة', 'العاملة']
+const COMMITTEES   = ['اللجنة الإعلاميّة', 'اللجنة الفنيّة', 'اللجنة الاجتماعيّة', 'لجنة الخدمة', 'لجنة العلاقات العامة', 'اللجنة اللوجستية', 'الفرقة الموسيقيّة', 'لجنة التنظيم', 'اللجنة الروحيّة', 'لجنة عمل المحبة', 'لجنة المواضيع', 'لجنة النشاطات', 'لجنة التدريب والتطوير', 'لجنة المساندة العامة', 'اللجنة الترفيهيّة']
 const ACTING_PREFIX = 'قائم بأعمال '
+
+function _extractAgeGroupsFromRole(role) {
+  const text = role || ''
+  const found = []
+  if (text.includes(BARAEM_BIG_GROUP_PROFILE)) found.push(BARAEM_BIG_GROUP_PROFILE)
+  if (text.includes(BARAEM_SMALL_GROUP_PROFILE)) found.push(BARAEM_SMALL_GROUP_PROFILE)
+  if (!found.length && text.includes(BARAEM_GROUP_PROFILE)) found.push(BARAEM_GROUP_PROFILE)
+  AGE_GROUPS
+    .filter(g => !BARAEM_ROLE_GROUPS_PROFILE.includes(g))
+    .forEach(g => {
+      if (text.includes(g)) found.push(g)
+    })
+  return found
+}
+
+function _sortAgeGroupsForLabel(groups) {
+  const set = new Set(Array.isArray(groups) ? groups : [])
+  if (set.has(BARAEM_GROUP_PROFILE)) {
+    set.delete(BARAEM_BIG_GROUP_PROFILE)
+    set.delete(BARAEM_SMALL_GROUP_PROFILE)
+  }
+  return AGE_GROUPS.filter(g => set.has(g))
+}
+
+function _ageGroupsOverlap(aGroups, bGroups) {
+  const aList = Array.isArray(aGroups) ? aGroups : []
+  const bList = Array.isArray(bGroups) ? bGroups : []
+  return aList.some(a => bList.some(b => {
+    if (a === b) return true
+    return BARAEM_ROLE_GROUPS_PROFILE.includes(a) && BARAEM_ROLE_GROUPS_PROFILE.includes(b) && (a === BARAEM_GROUP_PROFILE || b === BARAEM_GROUP_PROFILE)
+  }))
+}
 
 function _isCompositeCommittee(str) {
   if (!str) return false
@@ -4804,7 +5017,7 @@ function _classifyRole(role) {
 }
 
 function _extractGroups(role) {
-  return AGE_GROUPS.filter(g => role.includes(g))
+  return _extractAgeGroupsFromRole(role)
 }
 
 // Mirrors OrgTree's effectiveInGroup — uses node.inGroup if set, else derive from role
@@ -4855,7 +5068,7 @@ function _nodeGroupKeys(node) {
   } else if (c.tier === 'committee_member') {
     keys.push(`committee:${role}`)
   } else if ((c.tier === 'reports_to_gm' && c.councilHead) || c.tier === 'council_head' || c.tier === 'spiritual_guide_agegroup') {
-    const groups = AGE_GROUPS.filter(g => _extractGroups(role).includes(g))
+    const groups = _sortAgeGroupsForLabel(_extractGroups(role))
     if (groups.length) keys.push(`agegroup:${groups.join('|')}`)
   }
 
@@ -4897,8 +5110,9 @@ function orgNodeStableId(node) {
 }
 
 function orgNodeConnectionKey(node) {
-  if (isUnregisteredOrgNode(node) && node?.unregisteredId) return `unreg:${node.unregisteredId}`
-  if (node?.personId) return `pid:${node.personId}`
+  const role = node?.role || ''
+  if (isUnregisteredOrgNode(node) && node?.unregisteredId) return `unreg:${node.unregisteredId}:${role}`
+  if (node?.personId) return `pid:${node.personId}:${role}`
   return `nid:${node?.id}`
 }
 
@@ -4975,7 +5189,7 @@ function buildOrgHistory(personIdOrMatcher, allPeriodTrees) {
         const gi = agKeys[i].slice('agegroup:'.length).split('|')
         for (let j = i + 1; j < agKeys.length; j++) {
           const gj = agKeys[j].slice('agegroup:'.length).split('|')
-          if (gi.some(g => gj.includes(g))) ufUnion(agKeys[i], agKeys[j])
+          if (_ageGroupsOverlap(gi, gj)) ufUnion(agKeys[i], agKeys[j])
         }
       }
       // Build mergedKey: for each raw agegroup key → find all agegroup keys in same component → sort by AGE_GROUPS order
@@ -4986,7 +5200,7 @@ function buildOrgHistory(personIdOrMatcher, allPeriodTrees) {
           // collect all age group names in this component
           const allGroups = new Set()
           agKeys.forEach(k2 => { if (ufFind(k2) === root) k2.slice('agegroup:'.length).split('|').forEach(g => allGroups.add(g)) })
-          const sorted2 = AGE_GROUPS.filter(g => allGroups.has(g))
+          const sorted2 = _sortAgeGroupsForLabel([...allGroups])
           agMergedKey[root] = `agegroup:${sorted2.join('|')}`
         }
         agMergedKey[k] = agMergedKey[root]
@@ -5829,7 +6043,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   const [schoolBranches, setSchoolBranches] = useState({})
   const [schoolLogoEntries, setSchoolLogoEntries] = useState([])
   const [nationalityIsoLookup, setNationalityIsoLookup] = useState(() => new Map())
-  const [confirm, setConfirm]     = useState(null) // { action: 'delete' | 'archive' }
+  const [confirm, setConfirm]     = useState(null) // { action: 'delete' | 'archive' | 'promote' }
   const saveTimeout = useRef(null)
   const loadRequestId = useRef(0)
   const pendingSaveData = useRef(null)
@@ -5838,6 +6052,8 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   const isUnmounted = useRef(false)
   const filtersLoaded = useRef(false)
   const editMetaLoaded = useRef(false)
+  const dataRef = useRef(null)
+  const lastArchivableMemberships = useRef([])
   const isViewerAdmin = currentUser?.role === 'admin'
   const isViewingOwnProfile =
     currentUser
@@ -5850,24 +6066,44 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   useEffect(() => {
     if (filtersLoaded.current) return
     let cancelled = false
-    Promise.all([api.filters(), api.listSchoolLogos(), api.listNationalityIsoCodes()])
-      .then(([filtersResponse, schoolLogosResponse, nationalityIsoResponse]) => {
+    api.filters()
+      .then((filtersResponse) => {
         if (!cancelled) {
           setFilters(filtersResponse || {})
-          setSchoolLogoEntries(Array.isArray(schoolLogosResponse?.entries) ? schoolLogosResponse.entries : [])
-          setNationalityIsoLookup(normalizeNationalityIsoLookup(nationalityIsoResponse?.entries))
-          filtersLoaded.current = true
-          setFiltersResolved(true)
         }
       })
       .catch(() => {
         if (!cancelled) {
           setFilters({})
-          setSchoolLogoEntries([])
-          setNationalityIsoLookup(new Map())
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          filtersLoaded.current = true
           setFiltersResolved(true)
         }
       })
+
+    api.listSchoolLogos()
+      .then((schoolLogosResponse) => {
+        if (!cancelled) {
+          setSchoolLogoEntries(Array.isArray(schoolLogosResponse?.entries) ? schoolLogosResponse.entries : [])
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSchoolLogoEntries([])
+      })
+
+    api.listNationalityIsoCodes()
+      .then((nationalityIsoResponse) => {
+        if (!cancelled) {
+          setNationalityIsoLookup(normalizeNationalityIsoLookup(nationalityIsoResponse?.entries))
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setNationalityIsoLookup(new Map())
+      })
+
     return () => { cancelled = true }
   }, [])
 
@@ -5910,11 +6146,27 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     if (!canEnterEditMode && isEditing) setIsEditing(false)
   }, [canEnterEditMode, isEditing])
 
+  // Reset edit-meta flag whenever the target profile changes so metadata
+  // (personTitles, schoolBranches) reloads correctly for the new person.
+  useEffect(() => {
+    editMetaLoaded.current = false
+  }, [personId, isUnregistered])
+
   useEffect(() => () => {
     isUnmounted.current = true
     clearTimeout(saveTimeout.current)
     pendingSaveData.current = null
   }, [])
+
+  useEffect(() => {
+    dataRef.current = data
+
+    const memberships = normalizeYouthMembershipRows(data?.person_youth_group)
+      .filter((row) => !row?.archived)
+    if (memberships.length) {
+      lastArchivableMemberships.current = memberships
+    }
+  }, [data])
 
   // Helper: get sorted option list for a filter key (count desc, value only)
   const opts = useCallback((key) =>
@@ -5992,6 +6244,8 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     let cancelled = false
     clearTimeout(saveTimeout.current)
     pendingSaveData.current = null
+    dataRef.current = null
+    lastArchivableMemberships.current = []
     setSaving(false)
     setLoading(true)
     setLoadError('')
@@ -6058,7 +6312,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       d.schools = normalizeSchoolRows(d.schools, { graduatedFromSchools: personData.school_graduated })
       d.higher_education = normalizeHigherEducationRows(d.higher_education)
       d.person_youth_group = normalizeYouthMembershipRows(d.person_youth_group)
-      d.responsibilities = normalizeResponsibilityRows(d.responsibilities, { activeJecYear })
+      d.responsibilities = normalizeResponsibilityRows(d.responsibilities, {})
       d.addresses = normalizeAddressEditorRows(d.addresses)
       d.person = personData
       setLoadError('')
@@ -6073,7 +6327,17 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       setLoading(false)
     })
     return () => { cancelled = true }
-  }, [activeJecYear, personId, isUnregistered])
+  }, [personId, isUnregistered])
+
+  // Re-normalize responsibilities in-place when the active JEC year loads,
+  // without refetching the entire profile.
+  useEffect(() => {
+    if (!activeJecYear || !data) return
+    setData(prev => {
+      if (!prev) return prev
+      return { ...prev, responsibilities: normalizeResponsibilityRows(prev.responsibilities, { activeJecYear }) }
+    })
+  }, [activeJecYear])
 
   async function persistProfile(nextData) {
     let payload
@@ -6172,8 +6436,19 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     return true
   }
 
-  const update      = (changes)       => { const nd = { ...data, ...changes }; setData(nd); scheduleAutoSave(nd) }
-  const updateField = (field, value)  => update({ person: { ...data.person, [field]: value } })
+  const update = useCallback((changes) => {
+    setData((prev) => {
+      if (!prev) return prev
+      const resolvedChanges = typeof changes === 'function' ? changes(prev) : changes
+      const nd = { ...prev, ...resolvedChanges }
+      dataRef.current = nd
+      scheduleAutoSave(nd)
+      return nd
+    })
+  }, [])
+  const updateField = useCallback((field, value) => {
+    update((prev) => ({ person: { ...(prev.person || {}), [field]: value } }))
+  }, [update])
   const updateSub   = (key, newRows)  => {
     if (key === 'jobs') {
       const normalizedJobs = normalizeJobRows(newRows)
@@ -6219,25 +6494,32 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     updateField('title', mappedArabic)
   }, [personTitleMappings, updateField])
   const updateBirthDate = (year, day, month) => {
-    update({
+    update((prev) => ({
       person: {
-        ...data.person,
+        ...(prev.person || {}),
         birth_year: year ? parseInt(year, 10) : null,
         birth_day: day ? parseInt(day, 10) : null,
         birth_month: month ? parseInt(month, 10) : null,
       },
-    })
+    }))
   }
 
-  const handlePromote = async () => {
-    if (!window.confirm('هل تريد تحويل هذا الشخص إلى عضو مسجّل؟ سيتم نقل بياناته إلى قائمة الأعضاء.')) return
+  const handlePromote = () => {
+    setConfirm({ action: 'promote' })
+  }
+
+  const handlePromoteConfirm = async () => {
     setPromoting(true)
     try {
       const saveSucceeded = await flushPendingSave()
       if (!saveSucceeded) return
       const res = await api.promoteUnregistered(personId)
+      setConfirm(null)
       onPromoted && onPromoted(res.person_id)
-    } catch (error) { toast(getApiErrorMessage(error, 'خطأ في التسجيل'), 'error') }
+    } catch (error) {
+      toast(getApiErrorMessage(error, 'خطأ في التسجيل'), 'error')
+      setConfirm(null)
+    }
     finally { setPromoting(false) }
   }
 
@@ -6251,43 +6533,55 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
         await api.deletePerson(personId)
       }
       toast('تم الحذف النهائي', 'success')
+      setConfirm(null)
       onBack()
-    } catch (error) { toast(getApiErrorMessage(error, 'خطأ في الحذف'), 'error') }
-    setConfirm(null)
+    } catch (error) {
+      toast(getApiErrorMessage(error, 'خطأ في الحذف'), 'error')
+      setConfirm(null)
+    }
   }
 
   const handleArchiveConfirm = async () => {
-    const memberships = Array.isArray(data?.person_youth_group) ? data.person_youth_group : []
-    const activeMemberships = memberships.filter(row => !row?.archived)
-    const scopedActiveMemberships = shouldScopeToViewerGroups
-      ? activeMemberships.filter(row => viewerCouncilGroupIds.includes(String(row?.youth_group_id || '').trim()))
-      : activeMemberships
-
-    const target = scopedActiveMemberships[0] || activeMemberships[0] || null
-    const youthGroupId = String(target?.youth_group_id || '').trim()
-    if (!youthGroupId) {
-      toast('لا توجد عضوية شبيبة نشطة لأرشفتها', 'error')
-      setConfirm(null)
-      return
-    }
-
     try {
       const saveSucceeded = await flushPendingSave()
       if (!saveSucceeded) return
+
+      const memberships = Array.isArray(dataRef.current?.person_youth_group) ? dataRef.current.person_youth_group : []
+      const activeMemberships = memberships.filter(row => !row?.archived)
+      const fallbackMemberships = lastArchivableMemberships.current
+      const scopedActiveMemberships = shouldScopeToViewerGroups
+        ? activeMemberships.filter(row => viewerCouncilGroupIds.includes(String(row?.youth_group_id || '').trim()))
+        : activeMemberships
+      const scopedFallbackMemberships = shouldScopeToViewerGroups
+        ? fallbackMemberships.filter(row => viewerCouncilGroupIds.includes(String(row?.youth_group_id || '').trim()))
+        : fallbackMemberships
+
+      const target = scopedActiveMemberships[0] || activeMemberships[0] || scopedFallbackMemberships[0] || fallbackMemberships[0] || null
+      const youthGroupId = String(target?.youth_group_id || '').trim()
+      if (!youthGroupId) {
+        toast('لا توجد عضوية شبيبة نشطة لأرشفتها', 'error')
+        setConfirm(null)
+        return
+      }
+
       if (isUnregistered) {
         await api.archiveUnregistered(personId, youthGroupId)
       } else {
         await api.archivePerson(personId, youthGroupId)
       }
       toast('تمت الأرشفة بنجاح', 'success')
+      setConfirm(null)
       onBack()
-    } catch (error) { toast(getApiErrorMessage(error, 'خطأ في الأرشفة'), 'error') }
-    setConfirm(null)
+    } catch (error) {
+      toast(getApiErrorMessage(error, 'خطأ في الأرشفة'), 'error')
+      setConfirm(null)
+    }
   }
 
   const executeConfirm = () => {
     if (confirm?.action === 'delete') return handleDeleteConfirm()
     if (confirm?.action === 'archive') return handleArchiveConfirm()
+    if (confirm?.action === 'promote') return handlePromoteConfirm()
   }
 
   const handleBack = async () => {
@@ -6296,7 +6590,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     onBack()
   }
 
-  if (loading || !filtersResolved) return <div className="loading-center"><div className="spinner" /></div>
+  if (loading || (isEditing && canEnterEditMode && !filtersResolved)) return <div className="loading-center"><div className="spinner" /></div>
   if (!data)   return <div>{loadError || 'لم يُعثر على العضو'}</div>
 
   const { person, nationality, mobile_numbers, emails, social_media, addresses, schools, higher_education, jobs, hobbies_skills, person_health_conditions, person_special_notes, person_youth_group, responsibilities } = data
@@ -6321,14 +6615,12 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
 
   // Leaders can inspect member profiles, but only in their own youth groups.
   const shouldScopeToViewerGroups = isViewerLeader && !isViewingOwnProfile
-  const normalizedPersonYouthGroup = normalizeYouthMembershipRows(person_youth_group || [])
   const visiblePersonYouthGroup = shouldScopeToViewerGroups
-    ? normalizedPersonYouthGroup.filter(row => viewerCouncilGroupIds.includes(String(row?.youth_group_id || '').trim()))
-    : normalizedPersonYouthGroup
-  const normalizedResponsibilities = normalizeResponsibilityRows(responsibilities || [], { activeJecYear })
+    ? (person_youth_group || []).filter(row => viewerCouncilGroupIds.includes(String(row?.youth_group_id || '').trim()))
+    : (person_youth_group || [])
   const visibleResponsibilities = shouldScopeToViewerGroups
-    ? normalizedResponsibilities.filter(row => viewerCouncilGroupIds.includes(String(row?.youth_group_id || '').trim()))
-    : normalizedResponsibilities
+    ? (responsibilities || []).filter(row => viewerCouncilGroupIds.includes(String(row?.youth_group_id || '').trim()))
+    : (responsibilities || [])
   const activeVisibleYouthGroupIds = [...new Set(
     visiblePersonYouthGroup
       .filter((row) => !row?.archived)
@@ -6396,7 +6688,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     { key: 'birth_day', label: 'اليوم', value: formatDateSegment(person?.birth_day), dir: 'ltr' },
   ]
   const initials = firstNameInitial(person?.ar_first_name)
-  const editableYouthRows = normalizeYouthMembershipRows(person_youth_group)
+  const editableYouthRows = person_youth_group
   const primaryAddress = (addresses || []).find(row => row?.is_primary) || addresses?.[0] || null
   const heroLocation = [primaryAddress?.city, primaryAddress?.governorate, primaryAddress?.country]
     .map(value => String(value || '').trim())
@@ -6673,7 +6965,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                   { label: 'التخصّص', value: row?.major },
                   { label: 'الدرجة العلميّة', value: row?.degree },
                   { label: 'الفترة', value: formatHigherEducationPeriod(row) },
-                  { label: 'المعدل التراكمي', value: (row?.state === 'current' || row?.state === 'graduated') ? formatUniversityGpaDisplay(row?.final_gpa) : '' },
+                  { label: 'المعدل التراكمي', value: shouldDisplayHigherEducationGpa(row) ? formatUniversityGpaDisplay(row?.final_gpa) : '' },
                 ],
               })),
             ],
@@ -6684,6 +6976,8 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
             records: jobViewRows.map((row) => ({
               title: jobRowLabel(row),
               badge: jobStateLabel(row?.state),
+              logoUrl: resolveSchoolLogoUrl(schoolLogoEntries, 'company', normalizeLooseInput(row?.company), '') || '',
+              logoAlt: normalizeLooseInput(row?.company),
               fields: [
                 { label: 'الشركة / المؤسسة', value: row?.company },
                 { label: 'الفترة', value: formatJobPeriod(row) },
@@ -6748,36 +7042,38 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     { id: 'gsorg', label: 'الأمانة العامة', icon: GitBranch },
   ]
 
-  // For photo upload in unregistered profile
-  const handlePhotoChange = isUnregistered
-    ? (newUrl) => setPhoto(newUrl)
-    : (newUrl) => setPhoto(newUrl)
-
   const isViewMode = readOnly || !isEditing
-  const isAddressViewMode = readOnly || !isEditing
 
   return (
-    <div className="profile-page">
+    <div className={`profile-page${isEditing ? ' profile-page-editing' : ''}`}>
       <ConfirmDialog
         open={!!confirm}
-        title={confirm?.action === 'delete' ? 'تأكيد الحذف النهائي' : 'تأكيد الأرشفة'}
+        title={
+          confirm?.action === 'delete'
+            ? 'تأكيد الحذف النهائي'
+            : confirm?.action === 'promote'
+              ? 'تأكيد التسجيل الرسمي'
+              : 'تأكيد الأرشفة'
+        }
         message={
           confirm?.action === 'delete'
             ? `هل أنت متأكد من حذف "${data?.person ? [data.person.ar_first_name, data.person.ar_last_name].filter(Boolean).join(' ') : ''}" نهائياً؟ سيتم حذف جميع بياناته بشكل دائم ولا يمكن التراجع عن هذا الإجراء.`
-            : `هل تريد أرشفة هذا السجل؟ سينتقل إلى تبويب الأرشيف في قائمة الأعضاء ويمكن استعادته لاحقاً.`
+            : confirm?.action === 'promote'
+              ? 'هل تريد تحويل هذا الشخص إلى عضو مسجّل؟ سيتم نقل بياناته إلى قائمة الأعضاء الرسمية.'
+              : 'هل تريد أرشفة هذا السجل؟ سينتقل إلى تبويب الأرشيف في قائمة الأعضاء ويمكن استعادته لاحقاً.'
         }
-        confirmLabel={confirm?.action === 'delete' ? 'حذف نهائي' : 'أرشفة'}
-        confirmClass={confirm?.action === 'delete' ? 'btn-danger' : 'btn-primary'}
+        confirmLabel={confirm?.action === 'delete' ? 'حذف نهائي' : confirm?.action === 'promote' ? 'تسجيل كعضو رسمي' : 'أرشفة'}
+        confirmClass={confirm?.action === 'delete' ? 'btn-danger' : confirm?.action === 'promote' ? 'btn-gold' : 'btn-primary'}
         onConfirm={executeConfirm}
         onCancel={() => setConfirm(null)}
       />
 
       {/* Back + saving indicator + action buttons */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+      <div className="profile-toolbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <button className="btn btn-ghost btn-sm" onClick={handleBack}>
           <ArrowRight size={15} /> العودة للقائمة
         </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div className="profile-toolbar-actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button
             className="btn btn-ghost btn-sm"
             onClick={handleDownloadPdf}
@@ -6789,14 +7085,15 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
           </button>
           {canEnterEditMode && (
             <button
-              className={`btn btn-sm ${isEditing ? 'btn-ghost' : 'btn-primary'}`}
+              className={`btn btn-sm profile-edit-toggle ${isEditing ? 'btn-ghost is-active' : 'btn-primary'}`}
               onClick={() => setIsEditing((current) => !current)}
               style={{ display: 'flex', alignItems: 'center', gap: 6 }}
             >
               <Pencil size={14} /> {isEditing ? 'إنهاء التحرير' : 'تعديل الملف'}
             </button>
           )}
-          {isEditing && saving && <span style={{ fontSize: '0.82rem', color: 'var(--gray-400)' }}>جارٍ الحفظ…</span>}
+          {isEditing && <span className="profile-edit-mode-pill"><Pencil size={12} /> وضع التحرير</span>}
+          {isEditing && saving && <span className="profile-saving-indicator" style={{ fontSize: '0.82rem', color: 'var(--gray-400)' }}>جارٍ الحفظ…</span>}
           {canFullyEditProfile && isUnregistered && (
             <button
               className="btn btn-gold btn-sm"
@@ -7122,9 +7419,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                 <div className="profile-name-columns">
                   <div className="profile-name-section">
                     <div className="profile-name-section-title">الاسم بالعربية</div>
-                    {isUnregistered && (
-                      <InlineSelectField label="اللقب" value={person?.title} onChange={updateArabicTitle} options={personTitleOptions(person?.title)} />
-                    )}
+                    <InlineSelectField label="اللقب" value={person?.title} onChange={updateArabicTitle} options={personTitleOptions(person?.title)} />
                     <InlineComboField label="الاسم الأول"   value={person?.ar_first_name}  onChange={v => updateField('ar_first_name', v)}  options={opts('ar_first_name')} />
                     <InlineComboField label="الاسم الثاني"  value={person?.ar_second_name} onChange={v => updateField('ar_second_name', v)} options={opts('ar_second_name')} />
                     <InlineComboField label="الاسم الثالث"  value={person?.ar_third_name}  onChange={v => updateField('ar_third_name', v)}  options={opts('ar_third_name')} />
@@ -7136,9 +7431,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                   </div>
                   <div className="profile-name-section profile-name-section-english">
                     <div className="profile-name-section-title">English Name</div>
-                    {isUnregistered && (
-                      <InlineSelectField label="Title" value={englishTitleForPerson} onChange={updateEnglishTitle} options={personEnglishTitleOptions(person?.title)} dir="ltr" />
-                    )}
+                    <InlineSelectField label="Title" value={englishTitleForPerson} onChange={updateEnglishTitle} options={personEnglishTitleOptions(person?.title)} dir="ltr" />
                     <InlineComboField label="First Name"  value={person?.en_first_name}  onChange={v => updateField('en_first_name', v)} options={opts('en_first_name')} dir="ltr" />
                     <InlineComboField label="Second Name" value={person?.en_second_name} onChange={v => updateField('en_second_name', v)} options={opts('en_second_name')} dir="ltr" />
                     <InlineComboField label="Third Name"  value={person?.en_third_name}  onChange={v => updateField('en_third_name', v)} options={opts('en_third_name')} dir="ltr" />
@@ -7155,7 +7448,6 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                   year={person?.birth_year}
                   day={person?.birth_day}
                   month={person?.birth_month}
-                  legacyValue={person?.birth_date}
                   onChange={updateBirthDate}
                 />
               </div>
@@ -7201,7 +7493,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
           <div className="card">
             <div className="card-header"><span className="card-title"><MapPin size={15} /> العناوين</span></div>
             <div className="card-body">
-              {isAddressViewMode ? (
+              {isViewMode ? (
                 <div style={{ display: 'grid', gap: 10 }}>
                   {addresses.length ? addresses.map((row, index) => {
                     const addressParts = [
@@ -7286,7 +7578,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                 </div>
               ) : (
                 <ResponsibilityRowsEditor
-                  rows={normalizedResponsibilities}
+                  rows={responsibilities}
                   onChange={rows => updateSub('responsibilities', rows)}
                   youthGroupOptions={responsibilityYouthGroupOptions}
                   responsibilityOptions={opts('responsibility')}
@@ -7385,7 +7677,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                     {higherEducationViewRows.length ? higherEducationViewRows.map((row, index) => {
                       const meta = [
                         formatHigherEducationPeriod(row) ? `الفترة: ${formatHigherEducationPeriod(row)}` : '',
-                        (row?.state === 'current' || row?.state === 'graduated') && row?.final_gpa ? `المعدل التراكمي: ${formatUniversityGpaDisplay(row.final_gpa)}` : '',
+                        shouldDisplayHigherEducationGpa(row) && row?.final_gpa ? `المعدل التراكمي: ${formatUniversityGpaDisplay(row.final_gpa)}` : '',
                       ].filter(Boolean)
                       const stateBadge = higherEducationStateLabel(row?.state)
                       const uniLogoUrl = resolveSchoolLogoUrl(schoolLogoEntries, 'university', row?.university_college, '')
@@ -7432,7 +7724,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                       period && !(stateBadge === 'حاليًّا' && period === 'حاليًّا') ? `الفترة: ${period}` : '',
                     ].filter(Boolean)
                     return (
-                      <ViewRecordCard key={`job-${index}`} title={title} badge={stateBadge}>
+                      <ViewRecordCard key={`job-${index}`} title={title} badge={stateBadge} logoUrl={resolveSchoolLogoUrl(schoolLogoEntries, 'company', company, '')} logoAlt={company}>
                         {meta.length ? <ViewChipList values={meta} /> : null}
                         <ViewField label="الشركة / المؤسسة" value={company} />
                       </ViewRecordCard>
@@ -7473,8 +7765,8 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                   rows={healthConditionRows}
                   setRows={rows => updateSub('person_health_conditions', normalizePersonHealthConditionRows(rows))}
                   columns={[
-                    { key: 'type', label: 'النوع', selectOptions: PERSON_HEALTH_TYPE_OPTIONS },
-                    { key: 'details', label: 'التفاصيل' },
+                    { key: 'type', label: 'النوع', selectOptions: PERSON_HEALTH_TYPE_OPTIONS, width: '28%' },
+                    { key: 'details', label: 'التفاصيل', width: '72%' },
                   ]}
                 />
               )}

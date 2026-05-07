@@ -283,15 +283,25 @@ function computeTidyLayout(nodes, edges) {
   // partnerOf[guideId] = partnerId
   const partnerOf = guidePeerOf  // alias for clarity
 
-  // Inject each guide as a virtual EXTRA CHILD of its partner.
+  // Place each guide as a sibling of its partner under the partner's parent,
+  // so guide and partner are laid out side-by-side at the same depth row.
+  // (Injecting the guide as a child of its partner caused them to share the
+  //  same X coordinate and stack on top of each other.)
   const layoutChildrenOf = {}
   nodes.forEach(n => { layoutChildrenOf[n.id] = [...(childrenOf[n.id] || [])] })
 
   Object.entries(partnerOf).forEach(([guideId, partnerId]) => {
-    if (!layoutChildrenOf[partnerId].includes(guideId)) {
-      layoutChildrenOf[partnerId].push(guideId)
+    layoutChildrenOf[guideId] = []  // guide has no layout children
+    // Find the node whose children include the partner and inject the guide
+    // right after it, making them horizontal siblings in the layout tree.
+    for (const n of nodes) {
+      const kids = layoutChildrenOf[n.id]
+      const idx = kids.indexOf(partnerId)
+      if (idx !== -1 && !kids.includes(guideId)) {
+        kids.splice(idx + 1, 0, guideId)
+        break
+      }
     }
-    layoutChildrenOf[guideId] = []
   })
 
   const subtreeW  = {}
@@ -868,14 +878,81 @@ function PeriodBrowserModal({ periods, currentPeriod, selectedGroup, onSelect, o
 
 // ── Role picker ───────────────────────────────────────────────────────────────
 // Age groups ordered youngest → oldest
-const AGE_GROUPS = ['البراعم', 'الإعدادي', 'الثانوي', 'الجامعيّة', 'العاملة']
+const BARAEM_GROUP = 'البراعم'
+const BARAEM_BIG_GROUP = 'البراعم الكبرى'
+const BARAEM_SMALL_GROUP = 'البراعم الصغرى'
+const BARAEM_ROLE_GROUPS = [BARAEM_GROUP, BARAEM_BIG_GROUP, BARAEM_SMALL_GROUP]
+const BARAEM_DETAIL_OPTIONS = [
+  { value: BARAEM_GROUP, label: 'عام' },
+  { value: BARAEM_BIG_GROUP, label: 'الكبرى' },
+  { value: BARAEM_SMALL_GROUP, label: 'الصغرى' },
+]
+const AGE_GROUPS = [BARAEM_GROUP, 'الإعدادي', 'الثانوي', 'الجامعيّة', 'العاملة']
+const ROLE_AGE_GROUPS = [BARAEM_GROUP, BARAEM_BIG_GROUP, BARAEM_SMALL_GROUP, 'الإعدادي', 'الثانوي', 'الجامعيّة', 'العاملة']
 
 // Committees
-const COMMITTEES = ['اللجنة الإعلاميّة', 'اللجنة الفنيّة', 'اللجنة الاجتماعيّة', 'لجنة الخدمة', 'لجنة العلاقات العامة', 'اللجنة اللوجستية', 'الفرقة الموسيقيّة', 'لجنة التنظيم', 'اللجنة الروحيّة', 'لجنة عمل المحبة', 'لجنة المواضيع', 'لجنة النشاطات', 'لجنة التدريب والتطوير']
+const COMMITTEES = ['اللجنة الإعلاميّة', 'اللجنة الفنيّة', 'اللجنة الاجتماعيّة', 'لجنة الخدمة', 'لجنة العلاقات العامة', 'اللجنة اللوجستية', 'الفرقة الموسيقيّة', 'لجنة التنظيم', 'اللجنة الروحيّة', 'لجنة عمل المحبة', 'لجنة المواضيع', 'لجنة النشاطات', 'لجنة التدريب والتطوير', 'لجنة المساندة العامة', 'اللجنة الترفيهيّة']
+
+function hasBaraemSelection(groups) {
+  const list = Array.isArray(groups) ? groups : []
+  return BARAEM_ROLE_GROUPS.some(g => list.includes(g))
+}
+
+function selectedBaraemGroup(groups) {
+  const list = Array.isArray(groups) ? groups : []
+  return BARAEM_ROLE_GROUPS.find(g => list.includes(g)) || ''
+}
+
+function setBaraemGroup(groups, group) {
+  const list = Array.isArray(groups) ? groups : []
+  return [...list.filter(g => !BARAEM_ROLE_GROUPS.includes(g)), group]
+}
+
+function toggleAgeGroupSelection(groups, group) {
+  const list = Array.isArray(groups) ? groups : []
+  if (group === BARAEM_GROUP) {
+    return hasBaraemSelection(list)
+      ? list.filter(g => !BARAEM_ROLE_GROUPS.includes(g))
+      : [...list, BARAEM_GROUP]
+  }
+  return list.includes(group) ? list.filter(x => x !== group) : [...list, group]
+}
+
+function extractAgeGroupsFromRole(role) {
+  const text = role || ''
+  const found = []
+  if (text.includes(BARAEM_BIG_GROUP)) found.push(BARAEM_BIG_GROUP)
+  if (text.includes(BARAEM_SMALL_GROUP)) found.push(BARAEM_SMALL_GROUP)
+  if (!found.length && text.includes(BARAEM_GROUP)) found.push(BARAEM_GROUP)
+  ROLE_AGE_GROUPS
+    .filter(g => !BARAEM_ROLE_GROUPS.includes(g))
+    .forEach(g => {
+      if (text.includes(g)) found.push(g)
+    })
+  return found
+}
+
+function sortAgeGroupsForLabel(groups) {
+  const set = new Set(Array.isArray(groups) ? groups : [])
+  if (set.has(BARAEM_GROUP)) {
+    set.delete(BARAEM_BIG_GROUP)
+    set.delete(BARAEM_SMALL_GROUP)
+  }
+  return ROLE_AGE_GROUPS.filter(g => set.has(g))
+}
+
+function ageGroupsOverlap(aGroups, bGroups) {
+  const aList = Array.isArray(aGroups) ? aGroups : []
+  const bList = Array.isArray(bGroups) ? bGroups : []
+  return aList.some(a => bList.some(b => {
+    if (a === b) return true
+    return BARAEM_ROLE_GROUPS.includes(a) && BARAEM_ROLE_GROUPS.includes(b) && (a === BARAEM_GROUP || b === BARAEM_GROUP)
+  }))
+}
 
 // Build a shared age-group list label (e.g. "فئتيّ الجامعيّة والعاملة")
 function buildGroupsLabel(selectedGroups) {
-  const ordered = AGE_GROUPS.filter(g => selectedGroups.includes(g))
+  const ordered = sortAgeGroupsForLabel(selectedGroups)
   if (!ordered.length) return ''
   const n = ordered.length
   const groupWord = n === 1 ? 'فئة' : n === 2 ? 'فئتيّ' : 'فئات'
@@ -936,7 +1013,7 @@ function parseRoleBase(role) {
   for (const gw of ['فئة', 'فئتيّ', 'فئات']) {
     const prefix = `مرشد روحي ${gw} `
     if (role.startsWith(prefix)) {
-      const found = AGE_GROUPS.filter(g => role.includes(g))
+      const found = extractAgeGroupsFromRole(role)
       if (found.length) return { type: 'spiritual', value: 'مرشد روحي فئة', selectedGroups: found }
     }
   }
@@ -975,7 +1052,7 @@ function parseRoleBase(role) {
       else if (mt === 'عضو مجلس') prefix = `مجلس ${gw} `
       else prefix = `مسؤول مساعد في ${gw} `
       if (role.startsWith(prefix)) {
-        const found = AGE_GROUPS.filter(g => role.includes(g))
+        const found = extractAgeGroupsFromRole(role)
         if (found.length) return { type: 'agegroup', selectedGroups: found, memberType: mt }
       }
     }
@@ -1030,8 +1107,8 @@ function RolePicker({ role, onChange }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, gmValue, spiritualValue, sgGroups, secretaryValue, secretaryAssistant, selectedGroups, ageMemberType, selectedCommittees, committeeMemberType, isActing])
 
-  const toggleGroup = (g) => setSelectedGroups(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g])
-  const toggleSgGroup = (g) => setSgGroups(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g])
+  const toggleGroup = (g) => setSelectedGroups(prev => toggleAgeGroupSelection(prev, g))
+  const toggleSgGroup = (g) => setSgGroups(prev => toggleAgeGroupSelection(prev, g))
 
   const preview = computeRole()
 
@@ -1093,7 +1170,7 @@ function RolePicker({ role, onChange }) {
               <span style={labelStyle}>الفئات العمرية</span>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                 {AGE_GROUPS.map(g => {
-                  const checked = sgGroups.includes(g)
+                  const checked = g === BARAEM_GROUP ? hasBaraemSelection(sgGroups) : sgGroups.includes(g)
                   return (
                     <button key={g} type="button" style={checked ? checkActive : checkInactive} onClick={() => toggleSgGroup(g)}>
                       {checked && <span style={{ fontSize: '0.7rem' }}>✓</span>} {g}
@@ -1101,6 +1178,21 @@ function RolePicker({ role, onChange }) {
                   )
                 })}
               </div>
+              {hasBaraemSelection(sgGroups) && (
+                <div style={{ marginTop: 8 }}>
+                  <span style={labelStyle}>تفصيل البراعم</span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    {BARAEM_DETAIL_OPTIONS.map(opt => {
+                      const checked = selectedBaraemGroup(sgGroups) === opt.value
+                      return (
+                        <button key={opt.value} type="button" style={checked ? checkActive : checkInactive} onClick={() => setSgGroups(prev => setBaraemGroup(prev, opt.value))}>
+                          {checked && <span style={{ fontSize: '0.7rem' }}>✓</span>} {opt.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -1139,7 +1231,7 @@ function RolePicker({ role, onChange }) {
           <span style={labelStyle}>الفئات العمرية</span>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
             {AGE_GROUPS.map(g => {
-              const checked = selectedGroups.includes(g)
+              const checked = g === BARAEM_GROUP ? hasBaraemSelection(selectedGroups) : selectedGroups.includes(g)
               return (
                 <button key={g} type="button" style={checked ? checkActive : checkInactive} onClick={() => toggleGroup(g)}>
                   {checked && <span style={{ fontSize: '0.7rem' }}>✓</span>} {g}
@@ -1147,6 +1239,21 @@ function RolePicker({ role, onChange }) {
               )
             })}
           </div>
+          {hasBaraemSelection(selectedGroups) && (
+            <div style={{ marginTop: 8 }}>
+              <span style={labelStyle}>تفصيل البراعم</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                {BARAEM_DETAIL_OPTIONS.map(opt => {
+                  const checked = selectedBaraemGroup(selectedGroups) === opt.value
+                  return (
+                    <button key={opt.value} type="button" style={checked ? checkActive : checkInactive} onClick={() => setSelectedGroups(prev => setBaraemGroup(prev, opt.value))}>
+                      {checked && <span style={{ fontSize: '0.7rem' }}>✓</span>} {opt.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1823,7 +1930,7 @@ function committeeHeadRoleFor(memberRole) {
 
 // Extract age groups mentioned in a role string
 function extractGroups(role) {
-  return AGE_GROUPS.filter(g => role.includes(g))
+  return extractAgeGroupsFromRole(role)
 }
 
 // Compute the full set of auto-edges from a snapshot of nodes.
@@ -1908,7 +2015,7 @@ function computeAutoEdges(nodes) {
   const findAllOverlappingHeads = (role) => {
     const groups = extractGroups(role)
     return ageGroupHeads.filter(h =>
-      extractGroups(h.role).some(g => groups.includes(g))
+      ageGroupsOverlap(extractGroups(h.role), groups)
     )
   }
 
@@ -1944,7 +2051,7 @@ function computeAutoEdges(nodes) {
       const c = classifyRole(n.role)
       return c?.tier === 'reports_to_gm' && c?.councilHead
     }).forEach(head => {
-      if (extractGroups(head.role).some(g => sgGroups.includes(g))) {
+      if (ageGroupsOverlap(extractGroups(head.role), sgGroups)) {
         push(sg.id, head.id, 'peer')
       }
     })
@@ -2015,7 +2122,7 @@ function nodeGroupKeys(node) {
   }
   // Age-group head, council member, or spiritual guide for age group → single composite key (sorted)
   if ((c.tier === 'reports_to_gm' && c.councilHead) || c.tier === 'council_head' || c.tier === 'spiritual_guide_agegroup') {
-    const groups = AGE_GROUPS.filter(g => extractGroups(role).includes(g))
+    const groups = sortAgeGroupsForLabel(extractGroups(role))
     if (groups.length) return [`agegroup:${groups.join('|')}`]
   }
   return []
@@ -3204,7 +3311,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
                   const gi = agKeys[i].slice('agegroup:'.length).split('|')
                   for (let j = i + 1; j < agKeys.length; j++) {
                     const gj = agKeys[j].slice('agegroup:'.length).split('|')
-                    if (gi.some(g => gj.includes(g))) union(agKeys[i], agKeys[j])
+                    if (ageGroupsOverlap(gi, gj)) union(agKeys[i], agKeys[j])
                   }
                 }
 
@@ -3228,7 +3335,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
                 })
 
                 Object.keys(componentGroups).forEach(root => {
-                  const sortedGroups = AGE_GROUPS.filter(g => componentGroups[root].has(g))
+                  const sortedGroups = sortAgeGroupsForLabel([...componentGroups[root]])
                   const mergedKey = `agegroup:${sortedGroups.join('|')}`
                   if (!keySet.has(mergedKey)) keySet.set(mergedKey, [])
                   componentNodes[root].forEach(n => { if (!keySet.get(mergedKey).includes(n)) keySet.get(mergedKey).push(n) })

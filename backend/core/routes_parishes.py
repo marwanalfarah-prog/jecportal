@@ -456,7 +456,7 @@ def _save_payload(payload: dict):
 def register_churches_routes(app):
     @app.get("/api/churches")
     def list_churches():
-        err = auth_exports["_require_admin"]()
+        err = auth_exports["_require_auth"]()
         if err:
             return err
         payload = _load_payload()

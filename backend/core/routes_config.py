@@ -16,11 +16,13 @@ os.makedirs(MOTTO_LOGOS_DIR, exist_ok=True)
 
 SCHOOL_LOGOS_DIR = os.path.join(S.PHOTOS_ROOT_DIR, "logos", "schools")
 UNIVERSITY_LOGOS_DIR = os.path.join(S.PHOTOS_ROOT_DIR, "logos", "universities")
+COMPANY_LOGOS_DIR = os.path.join(S.PHOTOS_ROOT_DIR, "logos", "companies")
 SCHOOL_LOGO_ID_PREFIXES = {
     "school": "SCLG",
     "university": "UNLG",
+    "company": "COLG",
 }
-SCHOOL_LOGO_ID_RE = re.compile(r"^(SCLG|UNLG)(\d{6})$")
+SCHOOL_LOGO_ID_RE = re.compile(r"^(SCLG|UNLG|COLG)(\d{6})$")
 SCHOOL_LOGO_RECOVERY_ENTRIES = [
     {S.SCHOOL_LOGO_ID_COL: "SCLG000001", S.INSTITUTION_TYPE_COL: "school", S.INSTITUTION_NAME_COL: "البطريركيّة اللاتينيّة", S.INSTITUTION_SECTION_COL: "", "logo_file_name": "SCLG000001.png"},
     {S.SCHOOL_LOGO_ID_COL: "SCLG000002", S.INSTITUTION_TYPE_COL: "school", S.INSTITUTION_NAME_COL: "أكاديميّة كاترينا للأطفال", S.INSTITUTION_SECTION_COL: "", "logo_file_name": "SCLG000002.png"},
@@ -38,6 +40,7 @@ SCHOOL_LOGO_RECOVERY_ENTRIES = [
 ]
 os.makedirs(SCHOOL_LOGOS_DIR, exist_ok=True)
 os.makedirs(UNIVERSITY_LOGOS_DIR, exist_ok=True)
+os.makedirs(COMPANY_LOGOS_DIR, exist_ok=True)
 
 
 def _bible_books_tree_path() -> str:
@@ -770,7 +773,7 @@ def _normalize_school_logo_entries(raw_entries) -> list[dict]:
 
         if not entry_id or entry_id in seen_ids:
             continue
-        if entry_type not in ("school", "university"):
+        if entry_type not in ("school", "university", "company"):
             continue
         if not name:
             continue
@@ -792,7 +795,11 @@ def _normalize_school_logo_entries(raw_entries) -> list[dict]:
 
 
 def _school_logo_dir(entry_type: str) -> str:
-    return UNIVERSITY_LOGOS_DIR if entry_type == "university" else SCHOOL_LOGOS_DIR
+    if entry_type == "university":
+        return UNIVERSITY_LOGOS_DIR
+    if entry_type == "company":
+        return COMPANY_LOGOS_DIR
+    return SCHOOL_LOGOS_DIR
 
 
 def _school_logo_prefix(entry_type: str) -> str:
@@ -836,6 +843,7 @@ def _school_logo_candidate_paths(entry_id: str, logo_file_name: str) -> list[str
         candidates.extend([
             os.path.join(SCHOOL_LOGOS_DIR, file_name),
             os.path.join(UNIVERSITY_LOGOS_DIR, file_name),
+            os.path.join(COMPANY_LOGOS_DIR, file_name),
         ])
 
     if eid:
@@ -844,6 +852,7 @@ def _school_logo_candidate_paths(entry_id: str, logo_file_name: str) -> list[str
             candidates.extend([
                 os.path.join(SCHOOL_LOGOS_DIR, legacy_name),
                 os.path.join(UNIVERSITY_LOGOS_DIR, legacy_name),
+                os.path.join(COMPANY_LOGOS_DIR, legacy_name),
             ])
 
     deduped = []
@@ -1373,8 +1382,8 @@ def register_config_routes(app):
         name = _clean_text(body.get("name"))
         section = _clean_text(body.get("section") or "")
 
-        if entry_type not in ("school", "university"):
-            return jsonify({"error": "type must be 'school' or 'university'"}), 400
+        if entry_type not in ("school", "university", "company"):
+            return jsonify({"error": "type must be 'school', 'university', or 'company'"}), 400
         if not name:
             return jsonify({"error": "name is required"}), 400
 

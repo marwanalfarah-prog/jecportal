@@ -1,0 +1,223 @@
+{
+  "nodes": [
+    {
+      "id": "n1777713675625_21",
+      "inCouncil": true,
+      "inGroup": false,
+      "personId": 3174,
+      "role": "المرشد الروحي",
+      "x": 97.83999999999999,
+      "y": 130
+    },
+    {
+      "id": "n1777713710211_22",
+      "inCouncil": true,
+      "inGroup": false,
+      "personId": 3175,
+      "role": "مساعد المرشد الروحي",
+      "x": 97.83999999999999,
+      "y": 329
+    },
+    {
+      "id": "n1777713733943_23",
+      "inCouncil": true,
+      "inGroup": false,
+      "personId": 1126,
+      "role": "المسؤول العام",
+      "x": 1245.68,
+      "y": 130
+    },
+    {
+      "id": "n1777713745585_24",
+      "inCouncil": true,
+      "inGroup": false,
+      "personId": 127,
+      "role": "نائب المسؤول العام",
+      "x": 335.68000000000006,
+      "y": 329
+    },
+    {
+      "id": "n1777713760589_25",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 145,
+      "role": "مسؤول فئة العاملة",
+      "x": 517.6800000000001,
+      "y": 329
+    },
+    {
+      "id": "n1777713785307_26",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 705,
+      "role": "مسؤول فئة الجامعيّة",
+      "x": 699.6800000000001,
+      "y": 329
+    },
+    {
+      "id": "n1777713793723_27",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 265,
+      "role": "مسؤول فئة الثانوي",
+      "x": 881.6800000000001,
+      "y": 329
+    },
+    {
+      "id": "n1777713805778_28",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 227,
+      "role": "مسؤول فئة الإعدادي",
+      "x": 1063.68,
+      "y": 329
+    },
+    {
+      "id": "n1777713815569_29",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 254,
+      "role": "مسؤول فئة البراعم",
+      "x": 1245.68,
+      "y": 329
+    },
+    {
+      "id": "n1777713841382_30",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 807,
+      "role": "مسؤول لجنة العلاقات العامة",
+      "x": 1427.68,
+      "y": 329
+    },
+    {
+      "id": "n1777713871303_31",
+      "inCouncil": true,
+      "inGroup": false,
+      "personId": 1304,
+      "role": "أمين السر",
+      "x": 1609.68,
+      "y": 329
+    },
+    {
+      "id": "n1777713881214_32",
+      "inCouncil": true,
+      "inGroup": false,
+      "personId": 680,
+      "role": "أمين الصندوق",
+      "x": 1791.68,
+      "y": 329
+    },
+    {
+      "id": "n1777713923081_34",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 3176,
+      "role": "مسؤول اللجنة الإعلاميّة",
+      "x": 1973.68,
+      "y": 329
+    },
+    {
+      "id": "n1777714111546_1",
+      "x": 2155.6800000000003,
+      "y": 329,
+      "role": "مسؤول اللجنة الترفيهيّة و لجنة المساندة العامة",
+      "personId": 863,
+      "inCouncil": true,
+      "inGroup": true
+    }
+  ],
+  "edges": [
+    {
+      "id": "auto_n1777713733943_23_n1777713675625_21_peer",
+      "from": "n1777713733943_23",
+      "to": "n1777713675625_21",
+      "type": "peer",
+      "auto": true
+    },
+    {
+      "id": "auto_n1777713675625_21_n1777713710211_22_hierarchy",
+      "from": "n1777713675625_21",
+      "to": "n1777713710211_22",
+      "type": "hierarchy",
+      "auto": true
+    },
+    {
+      "id": "auto_n1777713733943_23_n1777713745585_24_hierarchy",
+      "from": "n1777713733943_23",
+      "to": "n1777713745585_24",
+      "type": "hierarchy",
+      "auto": true
+    },
+    {
+      "id": "auto_n1777713733943_23_n1777713760589_25_hierarchy",
+      "from": "n1777713733943_23",
+      "to": "n1777713760589_25",
+      "type": "hierarchy",
+      "auto": true
+    },
+    {
+      "id": "auto_n1777713733943_23_n1777713785307_26_hierarchy",
+      "from": "n1777713733943_23",
+      "to": "n1777713785307_26",
+      "type": "hierarchy",
+      "auto": true
+    },
+    {
+      "id": "auto_n1777713733943_23_n1777713793723_27_hierarchy",
+      "from": "n1777713733943_23",
+      "to": "n1777713793723_27",
+      "type": "hierarchy",
+      "auto": true
+    },
+    {
+      "id": "auto_n1777713733943_23_n1777713805778_28_hierarchy",
+      "from": "n1777713733943_23",
+      "to": "n1777713805778_28",
+      "type": "hierarchy",
+      "auto": true
+    },
+    {
+      "id": "auto_n1777713733943_23_n1777713815569_29_hierarchy",
+      "from": "n1777713733943_23",
+      "to": "n1777713815569_29",
+      "type": "hierarchy",
+      "auto": true
+    },
+    {
+      "id": "auto_n1777713733943_23_n1777713841382_30_hierarchy",
+      "from": "n1777713733943_23",
+      "to": "n1777713841382_30",
+      "type": "hierarchy",
+      "auto": true
+    },
+    {
+      "id": "auto_n1777713733943_23_n1777713871303_31_hierarchy",
+      "from": "n1777713733943_23",
+      "to": "n1777713871303_31",
+      "type": "hierarchy",
+      "auto": true
+    },
+    {
+      "id": "auto_n1777713733943_23_n1777713881214_32_hierarchy",
+      "from": "n1777713733943_23",
+      "to": "n1777713881214_32",
+      "type": "hierarchy",
+      "auto": true
+    },
+    {
+      "id": "auto_n1777713733943_23_n1777713923081_34_hierarchy",
+      "from": "n1777713733943_23",
+      "to": "n1777713923081_34",
+      "type": "hierarchy",
+      "auto": true
+    },
+    {
+      "id": "auto_n1777713733943_23_n1777714111546_1_hierarchy",
+      "from": "n1777713733943_23",
+      "to": "n1777714111546_1",
+      "type": "hierarchy",
+      "auto": true
+    }
+  ]
+}

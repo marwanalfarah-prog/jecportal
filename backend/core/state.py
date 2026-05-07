@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import sys
 import threading
 import uuid
 from urllib.parse import unquote, urlparse
@@ -222,10 +223,21 @@ def set_members_index_cache(payload, version):
     _members_index_cache_version = version
 
 
+def _console_print(message):
+    try:
+        print(message)
+    except UnicodeEncodeError:
+        stream = sys.stdout
+        encoding = getattr(stream, "encoding", None) or "utf-8"
+        safe_message = str(message).encode(encoding, errors="replace").decode(encoding, errors="replace")
+        stream.write(safe_message + "\n")
+        stream.flush()
+
+
 def load():
     global store
     store = db.load_excel_sheets(SHEETS)
-    print(f"✅ Loaded {len(store)} sheets from Excel.")
+    _console_print(f"✅ Loaded {len(store)} sheets from Excel.")
 
 
 def safe_youth_group_key(value: str | None) -> str:
@@ -237,10 +249,13 @@ def safe_youth_group_key(value: str | None) -> str:
 def _normalize_text(v) -> str | None:
     if v is None:
         return None
-    text = str(v).strip()
+    text = str(v).replace("\r\n", "\n").replace("\r", "\n").strip()
     if text in ("", "nan", "None", "null"):
         return None
-    return text
+    collapsed = "\n".join(" ".join(line.split()) for line in text.split("\n")).strip()
+    if collapsed in ("", "nan", "None", "null"):
+        return None
+    return collapsed
 
 
 def _first_present(row: dict | None, *keys: str):
@@ -3475,7 +3490,7 @@ def save():
     _coerce_person_id_columns(store)
     db.save_excel_sheets(store)
     invalidate_enriched_cache()
-    print("💾 Saved to Excel.")
+    _console_print("💾 Saved to Excel.")
 
 
 def df_to_json(df: pd.DataFrame):

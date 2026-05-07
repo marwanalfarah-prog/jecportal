@@ -6,10 +6,9 @@ from flask_cors import CORS
 from core import state as S
 from core.routes_auth import register_auth_routes
 from core.routes_org_tree import register_org_tree_routes
+from core.routes_people import register_person_routes
 from core.routes_promotions import register_promotions_routes
 from core.routes_questionnaires_notifications import register_questionnaires_notifications_routes
-from core.routes_registered import register_registered_routes
-from core.routes_unregistered import register_unregistered_routes
 from core.routes_config import register_config_routes
 from core.routes_data_admin import register_data_admin_routes
 from core.routes_youth_groups import register_youth_group_routes
@@ -26,9 +25,8 @@ CORS(app, supports_credentials=True, origins=["http://localhost:5173", "http://1
 
 S.init_state()
 
-register_registered_routes(app)
+register_person_routes(app)
 register_org_tree_routes(app)
-register_unregistered_routes(app)
 register_auth_routes(app)
 register_promotions_routes(app)
 register_questionnaires_notifications_routes(app)

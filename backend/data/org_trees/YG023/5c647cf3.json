@@ -1,45 +1,125 @@
 {
   "nodes": [
     {
-      "id": "n1774331026836_1",
-      "x": 80,
-      "y": 130,
-      "role": "المرشد الروحي",
-      "personId": 3113,
-      "inCouncil": true,
-      "inGroup": false
-    },
-    {
       "id": "n1774331049171_2",
-      "x": 300,
-      "y": 130,
-      "role": "المسؤول العام",
-      "personId": 2537,
       "inCouncil": true,
-      "inGroup": false
+      "inGroup": false,
+      "personId": 2537,
+      "role": "المسؤول العام",
+      "x": 535,
+      "y": 130
     },
     {
-      "id": "n1774331062868_3",
-      "x": 300,
-      "y": 321.5,
-      "role": "مسؤول فئتيّ الجامعيّة والعاملة",
+      "id": "n1777716377822_5",
+      "inCouncil": true,
+      "inGroup": false,
+      "personId": 3177,
+      "role": "المرشد الروحي",
+      "x": 1220.4,
+      "y": 130
+    },
+    {
+      "id": "n1777716396096_6",
+      "inCouncil": true,
+      "inGroup": false,
+      "personId": 3178,
+      "role": "مستشار الشبيبة",
+      "x": 80,
+      "y": 314
+    },
+    {
+      "id": "n1777716418249_8",
+      "inCouncil": true,
+      "inGroup": true,
       "personId": 221,
+      "role": "مسؤول فئة العاملة",
+      "x": 262,
+      "y": 314
+    },
+    {
+      "id": "n1777716445423_10",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 195,
+      "role": "مسؤول فئة العاملة",
+      "x": 444,
+      "y": 314
+    },
+    {
+      "id": "n1777716478032_11",
+      "inCouncil": true,
+      "inGroup": false,
+      "personId": 221,
+      "role": "نائب المسؤول العام",
+      "x": 626,
+      "y": 314
+    },
+    {
+      "id": "n1777716567823_16",
+      "x": 808,
+      "y": 314,
+      "role": "مسؤول فئة الجامعيّة",
+      "personId": 3068,
+      "inCouncil": true,
+      "inGroup": true
+    },
+    {
+      "id": "n1777716584185_17",
+      "x": 990,
+      "y": 314,
+      "role": "مسؤول فئة الجامعيّة",
+      "personId": 1850,
       "inCouncil": true,
       "inGroup": true
     }
   ],
   "edges": [
     {
-      "id": "auto_n1774331049171_2_n1774331026836_1_peer",
+      "id": "auto_n1774331049171_2_n1777716377822_5_peer",
       "from": "n1774331049171_2",
-      "to": "n1774331026836_1",
+      "to": "n1777716377822_5",
       "type": "peer",
       "auto": true
     },
     {
-      "id": "auto_n1774331049171_2_n1774331062868_3_hierarchy",
+      "id": "auto_n1774331049171_2_n1777716396096_6_hierarchy",
       "from": "n1774331049171_2",
-      "to": "n1774331062868_3",
+      "to": "n1777716396096_6",
+      "type": "hierarchy",
+      "auto": true
+    },
+    {
+      "id": "auto_n1774331049171_2_n1777716418249_8_hierarchy",
+      "from": "n1774331049171_2",
+      "to": "n1777716418249_8",
+      "type": "hierarchy",
+      "auto": true
+    },
+    {
+      "id": "auto_n1774331049171_2_n1777716445423_10_hierarchy",
+      "from": "n1774331049171_2",
+      "to": "n1777716445423_10",
+      "type": "hierarchy",
+      "auto": true
+    },
+    {
+      "id": "auto_n1774331049171_2_n1777716478032_11_hierarchy",
+      "from": "n1774331049171_2",
+      "to": "n1777716478032_11",
+      "type": "hierarchy",
+      "auto": true
+    },
+    {
+      "id": "auto_n1774331049171_2_n1777716567823_16_hierarchy",
+      "from": "n1774331049171_2",
+      "to": "n1777716567823_16",
+      "type": "hierarchy",
+      "auto": true
+    },
+    {
+      "id": "auto_n1774331049171_2_n1777716584185_17_hierarchy",
+      "from": "n1774331049171_2",
+      "to": "n1777716584185_17",
       "type": "hierarchy",
       "auto": true
     }

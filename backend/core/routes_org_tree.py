@@ -522,66 +522,6 @@ def register_org_tree_routes(app):
         history = _load_history_trees(group_refs, person_id=person_id, unregistered_id=unregistered_id)
         return jsonify({"items": history})
 
-    @app.patch("/api/unregistered/<uid>/archive")
-    def archive_unregistered(uid):
-        body = request.json or {}
-        youth_group_id = str(body.get("youth_group_id") or "").strip()
-        if not youth_group_id:
-            return jsonify({"error": "youth_group_id is required"}), 400
-
-        with S.unreg_lock:
-            persons_df = S.unreg_store.get("persons", pd.DataFrame())
-            idx = persons_df[persons_df["person_id"].astype(str) == str(uid)].index
-            if idx.empty:
-                return jsonify({"error": "not found"}), 404
-
-            pyg = S.unreg_store.get("person_youth_group", pd.DataFrame())
-            if pyg.empty or "person_id" not in pyg.columns or S.YOUTH_GROUP_ID_COL not in pyg.columns:
-                return jsonify({"error": "membership not found"}), 404
-
-            mask = (
-                (pyg["person_id"].astype(str) == str(uid))
-                & (pyg[S.YOUTH_GROUP_ID_COL].astype(str) == youth_group_id)
-            )
-            if not mask.any():
-                return jsonify({"error": "membership not found"}), 404
-
-            if "archived" not in S.unreg_store["person_youth_group"].columns:
-                S.unreg_store["person_youth_group"]["archived"] = False
-            S.unreg_store["person_youth_group"].loc[mask, "archived"] = True
-            S._save_unreg_store()
-        return jsonify({"ok": True})
-
-    @app.patch("/api/unregistered/<uid>/unarchive")
-    def unarchive_unregistered(uid):
-        body = request.json or {}
-        youth_group_id = str(body.get("youth_group_id") or "").strip()
-        if not youth_group_id:
-            return jsonify({"error": "youth_group_id is required"}), 400
-
-        with S.unreg_lock:
-            persons_df = S.unreg_store.get("persons", pd.DataFrame())
-            idx = persons_df[persons_df["person_id"].astype(str) == str(uid)].index
-            if idx.empty:
-                return jsonify({"error": "not found"}), 404
-
-            pyg = S.unreg_store.get("person_youth_group", pd.DataFrame())
-            if pyg.empty or "person_id" not in pyg.columns or S.YOUTH_GROUP_ID_COL not in pyg.columns:
-                return jsonify({"error": "membership not found"}), 404
-
-            mask = (
-                (pyg["person_id"].astype(str) == str(uid))
-                & (pyg[S.YOUTH_GROUP_ID_COL].astype(str) == youth_group_id)
-            )
-            if not mask.any():
-                return jsonify({"error": "membership not found"}), 404
-
-            if "archived" not in S.unreg_store["person_youth_group"].columns:
-                S.unreg_store["person_youth_group"]["archived"] = False
-            S.unreg_store["person_youth_group"].loc[mask, "archived"] = False
-            S._save_unreg_store()
-        return jsonify({"ok": True})
-
     @app.get("/api/org-tree/<path:group_name>/periods")
     def get_org_tree_periods(group_name):
         periods = _load_index(group_name)

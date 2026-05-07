@@ -1,0 +1,700 @@
+{
+  "nodes": [
+    {
+      "id": "n1777704091865_2",
+      "inCouncil": true,
+      "inGroup": false,
+      "personId": 3168,
+      "role": "المرشد الروحي",
+      "x": 80,
+      "y": 130
+    },
+    {
+      "id": "n1777704296709_3",
+      "inCouncil": true,
+      "inGroup": false,
+      "personId": 239,
+      "role": "المسؤول العام",
+      "x": 3485,
+      "y": 130
+    },
+    {
+      "id": "n1777704312806_4",
+      "inCouncil": true,
+      "inGroup": false,
+      "personId": 3169,
+      "role": "مساعد المرشد الروحي",
+      "x": 80,
+      "y": 321.5
+    },
+    {
+      "id": "n1777704350124_6",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 3170,
+      "role": "مسؤول فئتيّ الجامعيّة والعاملة",
+      "x": 300,
+      "y": 321.5
+    },
+    {
+      "id": "n1777704371256_7",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 966,
+      "role": "مجلس فئتيّ الجامعيّة والعاملة",
+      "x": 300,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704396204_8",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 309,
+      "role": "مسؤول فئة الثانوي",
+      "x": 482,
+      "y": 321.5
+    },
+    {
+      "id": "n1777704407356_9",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 208,
+      "role": "مجلس فئة الثانوي",
+      "x": 482,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704421393_10",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 980,
+      "role": "مسؤول فئة الإعدادي",
+      "x": 755,
+      "y": 321.5
+    },
+    {
+      "id": "n1777704433257_11",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 989,
+      "role": "مسؤول فئة الإعدادي",
+      "x": 1119,
+      "y": 321.5
+    },
+    {
+      "id": "n1777704447108_12",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 1317,
+      "role": "مجلس فئة الإعدادي",
+      "x": 664,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704459573_13",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 1284,
+      "role": "مجلس فئة الإعدادي",
+      "x": 846,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704476933_14",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 978,
+      "role": "مسؤول فئة البراعم",
+      "x": 2120,
+      "y": 321.5
+    },
+    {
+      "id": "n1777704488331_15",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 981,
+      "role": "مسؤول فئة البراعم",
+      "x": 3758,
+      "y": 321.5
+    },
+    {
+      "id": "n1777704504128_16",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 1634,
+      "role": "مجلس فئة البراعم",
+      "x": 1392,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704559833_18",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 3171,
+      "role": "مجلس فئة البراعم",
+      "x": 1574,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704578106_19",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 844,
+      "role": "مجلس فئة البراعم",
+      "x": 1756,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704591073_20",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 1518,
+      "role": "مجلس فئة البراعم",
+      "x": 1938,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704608867_21",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 51,
+      "role": "مجلس فئة البراعم",
+      "x": 2120,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704658605_23",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 3172,
+      "role": "مجلس فئة البراعم",
+      "x": 2302,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704674169_24",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 915,
+      "role": "مجلس فئة البراعم",
+      "x": 2484,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704696462_25",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 1372,
+      "role": "مجلس فئة البراعم",
+      "x": 2666,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704713915_26",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 238,
+      "role": "مجلس فئة البراعم",
+      "x": 2848,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704734680_27",
+      "inCouncil": true,
+      "inGroup": false,
+      "personId": 1276,
+      "role": "أمين السر",
+      "x": 4668,
+      "y": 321.5
+    },
+    {
+      "id": "n1777704752665_28",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 51,
+      "role": "مسؤول لجنة الخدمة",
+      "x": 5032,
+      "y": 321.5
+    },
+    {
+      "id": "n1777704781952_29",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 980,
+      "role": "لجنة الخدمة",
+      "x": 4850,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704798783_30",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 966,
+      "role": "لجنة الخدمة",
+      "x": 5032,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704808913_31",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 309,
+      "role": "لجنة الخدمة",
+      "x": 5214,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704837687_32",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 144,
+      "role": "مسؤول اللجنة الإعلاميّة",
+      "x": 5396,
+      "y": 321.5
+    },
+    {
+      "id": "n1777704848592_33",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 979,
+      "role": "اللجنة الإعلاميّة",
+      "x": 5396,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704871403_34",
+      "inCouncil": true,
+      "inGroup": false,
+      "personId": 79,
+      "role": "أمين الصندوق",
+      "x": 5578,
+      "y": 321.5
+    },
+    {
+      "id": "n1777704889116_35",
+      "inCouncil": true,
+      "inGroup": false,
+      "personId": 1312,
+      "role": "أمين العهدة",
+      "x": 5760,
+      "y": 321.5
+    },
+    {
+      "id": "n1777704901863_36",
+      "inCouncil": false,
+      "inGroup": false,
+      "personId": 1317,
+      "role": "مساعد أمين العهدة",
+      "x": 5760,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704920062_37",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": 836,
+      "role": "مسؤول لجنة التدريب والتطوير",
+      "x": 6306,
+      "y": 321.5
+    },
+    {
+      "id": "n1777704936803_38",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 989,
+      "role": "لجنة التدريب والتطوير",
+      "x": 5942,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704950730_39",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 309,
+      "role": "لجنة التدريب والتطوير",
+      "x": 6124,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704966731_40",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 1312,
+      "role": "لجنة التدريب والتطوير",
+      "x": 6306,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704978354_41",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 981,
+      "role": "لجنة التدريب والتطوير",
+      "x": 6488,
+      "y": 520.5
+    },
+    {
+      "id": "n1777704994749_42",
+      "inCouncil": false,
+      "inGroup": true,
+      "personId": 238,
+      "role": "لجنة التدريب والتطوير",
+      "x": 6670,
+      "y": 520.5
+    },
+    {
+      "id": "n1777705011000_43",
+      "inCouncil": true,
+      "inGroup": true,
+      "personId": null,
+      "role": "مسؤول اللجنة الترفيهيّة",
+      "x": 6852,
+      "y": 321.5
+    }
+  ],
+  "edges": [
+    {
+      "auto": true,
+      "from": "n1777704296709_3",
+      "id": "auto_n1777704296709_3_n1777704091865_2_peer",
+      "to": "n1777704091865_2",
+      "type": "peer"
+    },
+    {
+      "auto": true,
+      "from": "n1777704091865_2",
+      "id": "auto_n1777704091865_2_n1777704312806_4_hierarchy",
+      "to": "n1777704312806_4",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704296709_3",
+      "id": "auto_n1777704296709_3_n1777704350124_6_hierarchy",
+      "to": "n1777704350124_6",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704296709_3",
+      "id": "auto_n1777704296709_3_n1777704396204_8_hierarchy",
+      "to": "n1777704396204_8",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704296709_3",
+      "id": "auto_n1777704296709_3_n1777704421393_10_hierarchy",
+      "to": "n1777704421393_10",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704296709_3",
+      "id": "auto_n1777704296709_3_n1777704433257_11_hierarchy",
+      "to": "n1777704433257_11",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704296709_3",
+      "id": "auto_n1777704296709_3_n1777704476933_14_hierarchy",
+      "to": "n1777704476933_14",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704296709_3",
+      "id": "auto_n1777704296709_3_n1777704488331_15_hierarchy",
+      "to": "n1777704488331_15",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704296709_3",
+      "id": "auto_n1777704296709_3_n1777704734680_27_hierarchy",
+      "to": "n1777704734680_27",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704296709_3",
+      "id": "auto_n1777704296709_3_n1777704752665_28_hierarchy",
+      "to": "n1777704752665_28",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704296709_3",
+      "id": "auto_n1777704296709_3_n1777704837687_32_hierarchy",
+      "to": "n1777704837687_32",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704296709_3",
+      "id": "auto_n1777704296709_3_n1777704871403_34_hierarchy",
+      "to": "n1777704871403_34",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704296709_3",
+      "id": "auto_n1777704296709_3_n1777704889116_35_hierarchy",
+      "to": "n1777704889116_35",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704296709_3",
+      "id": "auto_n1777704296709_3_n1777704920062_37_hierarchy",
+      "to": "n1777704920062_37",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704296709_3",
+      "id": "auto_n1777704296709_3_n1777705011000_43_hierarchy",
+      "to": "n1777705011000_43",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704889116_35",
+      "id": "auto_n1777704889116_35_n1777704901863_36_hierarchy",
+      "to": "n1777704901863_36",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704752665_28",
+      "id": "auto_n1777704752665_28_n1777704781952_29_hierarchy",
+      "to": "n1777704781952_29",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704752665_28",
+      "id": "auto_n1777704752665_28_n1777704798783_30_hierarchy",
+      "to": "n1777704798783_30",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704752665_28",
+      "id": "auto_n1777704752665_28_n1777704808913_31_hierarchy",
+      "to": "n1777704808913_31",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704837687_32",
+      "id": "auto_n1777704837687_32_n1777704848592_33_hierarchy",
+      "to": "n1777704848592_33",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704920062_37",
+      "id": "auto_n1777704920062_37_n1777704936803_38_hierarchy",
+      "to": "n1777704936803_38",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704920062_37",
+      "id": "auto_n1777704920062_37_n1777704950730_39_hierarchy",
+      "to": "n1777704950730_39",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704920062_37",
+      "id": "auto_n1777704920062_37_n1777704966731_40_hierarchy",
+      "to": "n1777704966731_40",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704920062_37",
+      "id": "auto_n1777704920062_37_n1777704978354_41_hierarchy",
+      "to": "n1777704978354_41",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704920062_37",
+      "id": "auto_n1777704920062_37_n1777704994749_42_hierarchy",
+      "to": "n1777704994749_42",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704350124_6",
+      "id": "auto_n1777704350124_6_n1777704371256_7_hierarchy",
+      "to": "n1777704371256_7",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704396204_8",
+      "id": "auto_n1777704396204_8_n1777704407356_9_hierarchy",
+      "to": "n1777704407356_9",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704421393_10",
+      "id": "auto_n1777704421393_10_n1777704447108_12_hierarchy",
+      "to": "n1777704447108_12",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704433257_11",
+      "id": "auto_n1777704433257_11_n1777704447108_12_hierarchy",
+      "to": "n1777704447108_12",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704421393_10",
+      "id": "auto_n1777704421393_10_n1777704459573_13_hierarchy",
+      "to": "n1777704459573_13",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704433257_11",
+      "id": "auto_n1777704433257_11_n1777704459573_13_hierarchy",
+      "to": "n1777704459573_13",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704476933_14",
+      "id": "auto_n1777704476933_14_n1777704504128_16_hierarchy",
+      "to": "n1777704504128_16",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704488331_15",
+      "id": "auto_n1777704488331_15_n1777704504128_16_hierarchy",
+      "to": "n1777704504128_16",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704476933_14",
+      "id": "auto_n1777704476933_14_n1777704559833_18_hierarchy",
+      "to": "n1777704559833_18",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704488331_15",
+      "id": "auto_n1777704488331_15_n1777704559833_18_hierarchy",
+      "to": "n1777704559833_18",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704476933_14",
+      "id": "auto_n1777704476933_14_n1777704578106_19_hierarchy",
+      "to": "n1777704578106_19",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704488331_15",
+      "id": "auto_n1777704488331_15_n1777704578106_19_hierarchy",
+      "to": "n1777704578106_19",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704476933_14",
+      "id": "auto_n1777704476933_14_n1777704591073_20_hierarchy",
+      "to": "n1777704591073_20",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704488331_15",
+      "id": "auto_n1777704488331_15_n1777704591073_20_hierarchy",
+      "to": "n1777704591073_20",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704476933_14",
+      "id": "auto_n1777704476933_14_n1777704608867_21_hierarchy",
+      "to": "n1777704608867_21",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704488331_15",
+      "id": "auto_n1777704488331_15_n1777704608867_21_hierarchy",
+      "to": "n1777704608867_21",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704476933_14",
+      "id": "auto_n1777704476933_14_n1777704658605_23_hierarchy",
+      "to": "n1777704658605_23",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704488331_15",
+      "id": "auto_n1777704488331_15_n1777704658605_23_hierarchy",
+      "to": "n1777704658605_23",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704476933_14",
+      "id": "auto_n1777704476933_14_n1777704674169_24_hierarchy",
+      "to": "n1777704674169_24",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704488331_15",
+      "id": "auto_n1777704488331_15_n1777704674169_24_hierarchy",
+      "to": "n1777704674169_24",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704476933_14",
+      "id": "auto_n1777704476933_14_n1777704696462_25_hierarchy",
+      "to": "n1777704696462_25",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704488331_15",
+      "id": "auto_n1777704488331_15_n1777704696462_25_hierarchy",
+      "to": "n1777704696462_25",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704476933_14",
+      "id": "auto_n1777704476933_14_n1777704713915_26_hierarchy",
+      "to": "n1777704713915_26",
+      "type": "hierarchy"
+    },
+    {
+      "auto": true,
+      "from": "n1777704488331_15",
+      "id": "auto_n1777704488331_15_n1777704713915_26_hierarchy",
+      "to": "n1777704713915_26",
+      "type": "hierarchy"
+    }
+  ]
+}

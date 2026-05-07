@@ -8,12 +8,21 @@ import {
 import { api } from '../api.js'
 
 // ─── Constants — mirror OrgTree exactly ───────────────────────────────────────
-const AGE_GROUPS = ['البراعم', 'الإعدادي', 'الثانوي', 'الجامعيّة', 'العاملة']
+const BARAEM_GROUP = 'البراعم'
+const BARAEM_BIG_GROUP = 'البراعم الكبرى'
+const BARAEM_SMALL_GROUP = 'البراعم الصغرى'
+const BARAEM_ROLE_GROUPS = [BARAEM_GROUP, BARAEM_BIG_GROUP, BARAEM_SMALL_GROUP]
+const BARAEM_DETAIL_OPTIONS = [
+  { value: BARAEM_GROUP, label: 'عام' },
+  { value: BARAEM_BIG_GROUP, label: 'الكبرى' },
+  { value: BARAEM_SMALL_GROUP, label: 'الصغرى' },
+]
+const AGE_GROUPS = [BARAEM_GROUP, 'الإعدادي', 'الثانوي', 'الجامعيّة', 'العاملة']
 const COMMITTEES = [
   'اللجنة الإعلاميّة', 'اللجنة الفنيّة', 'اللجنة الاجتماعيّة', 'لجنة الخدمة',
   'لجنة العلاقات العامة', 'اللجنة اللوجستية', 'الفرقة الموسيقيّة', 'لجنة التنظيم',
   'اللجنة الروحيّة', 'لجنة عمل المحبة', 'لجنة المواضيع', 'لجنة النشاطات',
-  'لجنة التدريب والتطوير',
+  'لجنة التدريب والتطوير', 'لجنة المساندة العامة', 'اللجنة الترفيهيّة',
 ]
 const ROLE_TABS = [
   { id: 'gm',          label: 'مسؤول عام / نائب' },
@@ -22,6 +31,31 @@ const ROLE_TABS = [
   { id: 'agegroup',    label: 'مسؤول فئة' },
   { id: 'committee',   label: 'لجنة' },
 ]
+
+function hasBaraemSelection(groups) {
+  const list = Array.isArray(groups) ? groups : []
+  return BARAEM_ROLE_GROUPS.some(g => list.includes(g))
+}
+
+function selectedBaraemGroup(groups) {
+  const list = Array.isArray(groups) ? groups : []
+  return BARAEM_ROLE_GROUPS.find(g => list.includes(g)) || ''
+}
+
+function setBaraemGroup(groups, group) {
+  const list = Array.isArray(groups) ? groups : []
+  return [...list.filter(g => !BARAEM_ROLE_GROUPS.includes(g)), group]
+}
+
+function toggleAgeGroupSelection(groups, group) {
+  const list = Array.isArray(groups) ? groups : []
+  if (group === BARAEM_GROUP) {
+    return hasBaraemSelection(list)
+      ? list.filter(g => !BARAEM_ROLE_GROUPS.includes(g))
+      : [...list, BARAEM_GROUP]
+  }
+  return list.includes(group) ? list.filter(x => x !== group) : [...list, group]
+}
 // Google Forms-equivalent question types
 const QUESTION_TYPES = [
   { id: 'short_text',  label: 'إجابة قصيرة',     icon: '▬' },
@@ -100,8 +134,8 @@ function RolePicker({ value, onChange }) {
   const isActing           = v.isActing          ?? false
 
   const set        = (patch) => onChange({ ...v, ...patch })
-  const toggleGrp  = (g) => set({ selectedGroups:     selectedGroups.includes(g)     ? selectedGroups.filter(x=>x!==g)     : [...selectedGroups, g] })
-  const toggleSg   = (g) => set({ sgGroups:            sgGroups.includes(g)           ? sgGroups.filter(x=>x!==g)           : [...sgGroups, g] })
+  const toggleGrp  = (g) => set({ selectedGroups: toggleAgeGroupSelection(selectedGroups, g) })
+  const toggleSg   = (g) => set({ sgGroups: toggleAgeGroupSelection(sgGroups, g) })
   const toggleCom  = (c) => set({ selectedCommittees: selectedCommittees.includes(c) ? selectedCommittees.filter(x=>x!==c) : [...selectedCommittees, c] })
 
   const secSty = { padding: '12px 14px', background: '#f8f9fd', borderRadius: 8, border: '1px solid #e2e6ef', marginTop: 8 }
@@ -158,11 +192,23 @@ function RolePicker({ value, onChange }) {
               <span style={lblSty}>الفئات العمرية</span>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
                 {AGE_GROUPS.map(g => (
-                  <button key={g} type="button" style={chkBtnSty(sgGroups.includes(g))} onClick={() => toggleSg(g)}>
-                    {checkBox(sgGroups.includes(g))} {g}
+                  <button key={g} type="button" style={chkBtnSty(g === BARAEM_GROUP ? hasBaraemSelection(sgGroups) : sgGroups.includes(g))} onClick={() => toggleSg(g)}>
+                    {checkBox(g === BARAEM_GROUP ? hasBaraemSelection(sgGroups) : sgGroups.includes(g))} {g}
                   </button>
                 ))}
               </div>
+              {hasBaraemSelection(sgGroups) && (
+                <div style={{ marginTop: 8 }}>
+                  <span style={lblSty}>تفصيل البراعم</span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                    {BARAEM_DETAIL_OPTIONS.map(opt => (
+                      <button key={opt.value} type="button" style={chkBtnSty(selectedBaraemGroup(sgGroups) === opt.value)} onClick={() => set({ sgGroups: setBaraemGroup(sgGroups, opt.value) })}>
+                        {checkBox(selectedBaraemGroup(sgGroups) === opt.value)} {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -200,11 +246,23 @@ function RolePicker({ value, onChange }) {
           <span style={lblSty}>الفئات العمرية</span>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
             {AGE_GROUPS.map(g => (
-              <button key={g} type="button" style={chkBtnSty(selectedGroups.includes(g))} onClick={() => toggleGrp(g)}>
-                {checkBox(selectedGroups.includes(g))} {g}
+              <button key={g} type="button" style={chkBtnSty(g === BARAEM_GROUP ? hasBaraemSelection(selectedGroups) : selectedGroups.includes(g))} onClick={() => toggleGrp(g)}>
+                {checkBox(g === BARAEM_GROUP ? hasBaraemSelection(selectedGroups) : selectedGroups.includes(g))} {g}
               </button>
             ))}
           </div>
+          {hasBaraemSelection(selectedGroups) && (
+            <div style={{ marginTop: 8 }}>
+              <span style={lblSty}>تفصيل البراعم</span>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                {BARAEM_DETAIL_OPTIONS.map(opt => (
+                  <button key={opt.value} type="button" style={chkBtnSty(selectedBaraemGroup(selectedGroups) === opt.value)} onClick={() => set({ selectedGroups: setBaraemGroup(selectedGroups, opt.value) })}>
+                    {checkBox(selectedBaraemGroup(selectedGroups) === opt.value)} {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

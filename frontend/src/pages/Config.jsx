@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Trash2, Save, RotateCcw, ImagePlus, Pencil, X, Search, ChevronDown, Award, Users, Building2, Languages, CalendarRange, Target, BookOpen, GraduationCap } from 'lucide-react'
+import { Plus, Trash2, Save, RotateCcw, ImagePlus, Pencil, X, Search, ChevronDown, Award, Users, Building2, Languages, CalendarRange, Target, BookOpen, GraduationCap, MapPin } from 'lucide-react'
 import { api } from '../api.js'
+import ChurchesAdmin from './ChurchesAdmin.jsx'
 
 function cleanText(value) {
   const text = String(value ?? '').replace(/\s+/g, ' ').trim()
@@ -363,6 +364,7 @@ export default function Config({ toast }) {
   const [schoolLogos, setSchoolLogos] = useState([])
   const [schoolLogosLoading, setSchoolLogosLoading] = useState(true)
   const [universityOptions, setUniversityOptions] = useState([])
+  const [companyOptions, setCompanyOptions] = useState([])
   const [logoEntryType, setLogoEntryType] = useState('school')
   const [logoEntryName, setLogoEntryName] = useState('')
   const [logoEntrySection, setLogoEntrySection] = useState('')
@@ -504,11 +506,19 @@ export default function Config({ toast }) {
     },
     {
       id: 'schoolLogos',
-      label: 'شعارات المدارس والجامعات',
+      label: 'شعارات المدارس والجامعات والشركات',
       summary: `${schoolLogos.length} شعار`,
-      description: 'رفع شعارات المدارس (على مستوى المدرسة أو الفرع) والجامعات.',
+      description: 'رفع شعارات المدارس (على مستوى المدرسة أو الفرع) والجامعات وجهات العمل.',
       icon: GraduationCap,
-      tips: ['اختر النوع (مدرسة / جامعة)', 'حدد الاسم والفرع إن وجد', 'ارفع الصورة ثم احفظ'],
+      tips: ['اختر النوع (مدرسة / جامعة / شركة)', 'حدد الاسم والفرع إن وجد', 'ارفع الصورة ثم احفظ'],
+    },
+    {
+      id: 'churches',
+      label: 'الكنائس والرعايا',
+      summary: 'إدارة الكنائس والرعايا',
+      description: 'إضافة وتعديل وحذف الكنائس والرعايا، وإدارة مواقعها وصفحاتها.',
+      icon: MapPin,
+      tips: ['أضف الكنيسة مع تحديد الرعية المرتبطة بها', 'حدّد الإحداثيات لإظهار الكنيسة على الخريطة', 'ارفع شعار الرعية لعرضه في الخريطة وملفات الأعضاء'],
     },
   ]
   const schoolOptionsMerged = useMemo(() => {
@@ -544,6 +554,7 @@ export default function Config({ toast }) {
       setSchoolBranches(normalizeSchoolBranches(response?.config?.school_branches || {}))
       setSchoolOptions((filtersResponse?.school || []).map((item) => cleanText(item?.value)).filter(Boolean))
       setUniversityOptions((filtersResponse?.university || []).map((item) => cleanText(item?.value)).filter(Boolean))
+      setCompanyOptions((filtersResponse?.company || []).map((item) => cleanText(item?.value)).filter(Boolean))
       setTitleArabic('')
       setTitleEnglish('')
       setSelectedSchoolName('')
@@ -1713,11 +1724,16 @@ export default function Config({ toast }) {
       </div>
       ) : null}
 
+      {activeTab === 'churches' ? (
+        <ChurchesAdmin toast={toast} />
+      ) : null}
+
       {activeTab === 'schoolLogos' ? (
       <SchoolLogosTab
         schoolBranches={schoolBranches}
         schoolOptions={schoolOptionsMerged}
         universityOptions={universityOptions}
+        companyOptions={companyOptions}
         schoolLogos={schoolLogos}
         logoEntryType={logoEntryType}
         setLogoEntryType={setLogoEntryType}
@@ -1741,6 +1757,7 @@ function SchoolLogosTab({
   schoolBranches,
   schoolOptions,
   universityOptions,
+  companyOptions,
   schoolLogos,
   logoEntryType,
   setLogoEntryType,
@@ -1825,30 +1842,32 @@ function SchoolLogosTab({
 
   const schoolLogosCount = schoolLogos.filter((e) => e.type === 'school').length
   const universityLogosCount = schoolLogos.filter((e) => e.type === 'university').length
+  const companyLogosCount = schoolLogos.filter((e) => e.type === 'company').length
 
   return (
     <div className="card">
       <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span className="card-title">شعارات المدارس والجامعات</span>
+        <span className="card-title">شعارات المدارس والجامعات والشركات</span>
         <span style={{ fontSize: '0.78rem', color: '#9ba5bc' }}>{schoolLogos.length} شعار</span>
       </div>
 
       <div className="card-body" style={{ display: 'grid', gap: 14 }}>
         <SectionPanel
           icon={GraduationCap}
-          title="إدارة شعارات المدارس والجامعات"
-          hint="يمكنك رفع شعار لكل مدرسة ككل أو لكل فرع على حدة، وكذلك شعار لكل جامعة. الشعار المرفوع على مستوى المدرسة يُطبّق تلقائياً على كل فروعها ما لم يوجد شعار خاص بالفرع."
+          title="إدارة الشعارات"
+          hint="يمكنك رفع شعار لكل مدرسة ككل أو لكل فرع على حدة، وكذلك شعار لكل جامعة أو شركة. الشعار المرفوع على مستوى المدرسة يُطبّق تلقائياً على كل فروعها ما لم يوجد شعار خاص بالفرع."
         >
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 }}>
             <OverviewStatCard label="شعارات المدارس" value={schoolLogosCount} note="شعارات مدارس (كل المدرسة أو فرع)" />
             <OverviewStatCard label="شعارات الجامعات" value={universityLogosCount} note="شعارات جامعات وكليات" />
+            <OverviewStatCard label="شعارات الشركات" value={companyLogosCount} note="شعارات جهات العمل" />
           </div>
         </SectionPanel>
 
         <SectionPanel
           icon={ImagePlus}
           title="إضافة مدخل جديد"
-          hint="اختر النوع، ثم اسم المدرسة أو الجامعة. إذا أردت شعاراً خاصاً بفرع معين اختر الفرع، وإلا اتركه فارغاً ليُطبَّق على المدرسة بأكملها."
+          hint="اختر النوع، ثم اسم المؤسسة. إذا أردت شعاراً خاصاً بفرع مدرسي معين اختر الفرع، وإلا اتركه فارغاً ليُطبَّق على المدرسة بأكملها."
         >
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 8, alignItems: 'end' }}>
             <div>
@@ -1860,6 +1879,7 @@ function SchoolLogosTab({
               >
                 <option value="school">مدرسة</option>
                 <option value="university">جامعة / كلية</option>
+                <option value="company">شركة / جهة عمل</option>
               </select>
             </div>
 
@@ -1877,7 +1897,7 @@ function SchoolLogosTab({
                   ))}
                 </select>
               </div>
-            ) : (
+            ) : logoEntryType === 'university' ? (
               <div>
                 <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4a5568', marginBottom: 5, display: 'block' }}>الجامعة / الكلية</label>
                 <select
@@ -1888,6 +1908,20 @@ function SchoolLogosTab({
                   <option value="">اختر جامعة</option>
                   {universityOptions.map((u) => (
                     <option key={u} value={u}>{u}</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4a5568', marginBottom: 5, display: 'block' }}>الشركة / جهة العمل</label>
+                <select
+                  value={logoEntryName}
+                  onChange={(e) => setLogoEntryName(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="">اختر شركة</option>
+                  {companyOptions.map((c) => (
+                    <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
               </div>
@@ -1941,7 +1975,7 @@ function SchoolLogosTab({
                   return (
                     <tr key={entryId || `sl-${index}`} style={{ borderBottom: index < schoolLogos.length - 1 ? '1px solid #f1f4f9' : 'none' }}>
                       <td style={{ padding: 10, color: '#2d3748' }}>
-                        {entry.type === 'university' ? 'جامعة' : 'مدرسة'}
+                        {entry.type === 'university' ? 'جامعة' : entry.type === 'company' ? 'شركة' : 'مدرسة'}
                       </td>
                       <td style={{ padding: 10, fontWeight: 700, color: '#1a2a3a' }}>{entry.name || '—'}</td>
                       <td style={{ padding: 10, color: '#718096' }}>
@@ -1997,7 +2031,7 @@ function SchoolLogosTab({
         ) : (
           <EmptyStatePanel
             title="لا توجد شعارات مضافة بعد"
-            description="أضف مدخلاً جديداً من النموذج أعلاه ثم ارفع الصورة المناسبة."
+            description="أضف مدخلاً جديداً (مدرسة أو جامعة أو شركة) من النموذج أعلاه ثم ارفع الصورة المناسبة."
           />
         )}
       </div>

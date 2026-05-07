@@ -15,7 +15,6 @@ import Questionnaire from './pages/Questionnaire.jsx'
 import MyQuestions from './pages/MyQuestions.jsx'
 import Config from './pages/Config.jsx'
 import YouthGroupAdmin from './pages/YouthGroupAdmin.jsx'
-import ChurchesAdmin from './pages/ChurchesAdmin.jsx'
 import ChurchesMap from './pages/ChurchesMap.jsx'
 import PeopleLocationsMap from './pages/PeopleLocationsMap.jsx'
 import BibleReader from './pages/BibleReader.jsx'
@@ -462,7 +461,6 @@ const PAGE_TITLES = {
   general_secretariat: 'الأمانة العامة للشبيبة المسيحيّة',
   config:              'الإعدادات والتهيئة',
   youth_groups:        'ملف فرق الشبيبة',
-  churches:            'الكنائس',
   churches_map:        'خريطة الكنائس',
   people_locations_map:'خريطة مواقع الأشخاص',
   data_workbook:       'بيانات JECJordanData',
@@ -729,7 +727,6 @@ export default function App() {
     { id: 'users',               label: 'إدارة المستخدمين',            icon: ShieldCheck },
     { id: 'questionnaires',       label: 'إدارة الاستبيانات',           icon: ClipboardList },
     { id: 'youth_groups',         label: 'ملف فرق الشبيبة',              icon: Building2 },
-    { id: 'churches',             label: 'الكنائس',                       icon: MapPin },
     { id: 'churches_map',         label: 'خريطة الكنائس',                 icon: MapPin },
     { id: 'people_locations_map', label: 'خريطة مواقع الأشخاص',           icon: Map },
     { id: 'data_workbook',        label: 'بيانات JECJordanData',          icon: Database },
@@ -739,6 +736,7 @@ export default function App() {
     { id: 'profile',         label: 'ملفي الشخصي',       icon: UserIcon },
     { id: 'orgtree',         label: 'الهيكل التنظيمي',   icon: GitBranch },
     ...(isCouncil ? [{ id: 'council_members', label: 'أعضاء فئتي', icon: Users }] : []),
+    { id: 'churches_map', label: 'خريطة الكنائس', icon: MapPin },
     { id: 'bible_reader', label: 'قارئ الكتاب المقدس', icon: BookOpenText },
     { id: 'my_questions', label: 'استبياناتي', icon: ClipboardList },
   ]
@@ -780,8 +778,8 @@ export default function App() {
 
   const navigate = (p) => {
     const allowed = isAdmin
-      ? ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches', 'churches_map', 'people_locations_map', 'data_workbook', 'bible_reader', 'config']
-      : ['profile', 'orgtree', 'council_members', 'bible_reader', 'my_questions']
+      ? ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches_map', 'people_locations_map', 'data_workbook', 'bible_reader', 'config']
+      : ['profile', 'orgtree', 'council_members', 'churches_map', 'bible_reader', 'my_questions']
     if (!allowed.includes(p)) return
     setPage(p)
     if (p !== 'profile') { setSelected(null); setOrgContext(null); setIsUnreg(false) }
@@ -1143,11 +1141,7 @@ export default function App() {
             <YouthGroupAdmin toast={toast} />
           )}
 
-          {isAdmin && page === 'churches' && (
-            <ChurchesAdmin toast={toast} />
-          )}
-
-          {isAdmin && page === 'churches_map' && (
+          {page === 'churches_map' && (
             <ChurchesMap toast={toast} />
           )}
 
