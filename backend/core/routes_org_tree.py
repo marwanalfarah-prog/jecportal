@@ -515,8 +515,20 @@ def register_org_tree_routes(app):
     def get_org_tree_history():
         person_id = request.args.get("person_id")
         unregistered_id = request.args.get("unregistered_id")
-        if not person_id and not unregistered_id:
+        has_person_id = bool(person_id and str(person_id).strip())
+        has_unregistered_id = bool(unregistered_id and str(unregistered_id).strip())
+        if not has_person_id and not has_unregistered_id:
             return jsonify({"error": "person_id or unregistered_id is required"}), 400
+        if has_person_id and has_unregistered_id:
+            return jsonify({"error": "provide either person_id or unregistered_id"}), 400
+
+        from core.routes_people import require_profile_view_access
+
+        target_type = "unregistered" if has_unregistered_id else "registered"
+        target_id = unregistered_id if has_unregistered_id else person_id
+        err = require_profile_view_access(target_type, target_id)
+        if err:
+            return err
 
         group_refs = _parse_group_refs(request.args.get("group_ids"))
         history = _load_history_trees(group_refs, person_id=person_id, unregistered_id=unregistered_id)

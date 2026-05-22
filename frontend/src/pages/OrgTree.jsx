@@ -2403,7 +2403,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
       return linkedNodes
     }
     try {
-      const res = await api.syncUnregistered({ nodes: newNodes })
+      const res = await api.syncUnregistered({ nodes: newNodes, youth_group_id: group })
       const created = res.created || {}
       if (Object.keys(created).length) {
         linkedNodes = linkedNodes.map(n => {

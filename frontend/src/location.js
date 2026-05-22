@@ -41,10 +41,6 @@ function extractCoordinatePair(text) {
   return { lat: null, lng: null }
 }
 
-export function normalizeGoogleMapsUrl(value) {
-  return normalizeUrlText(value)
-}
-
 export function sanitizeStoredCoordinate(value, axis) {
   return axis === 'lat'
     ? toFiniteCoordinate(value, -90, 90)
@@ -112,15 +108,6 @@ export function parseGoogleMapsUrl(value) {
     lng,
     isGoogleMapsUrl,
     hasCoordinates: lat != null && lng != null,
-  }
-}
-
-export function applyGoogleMapsUrlToAddress(addressRow, value) {
-  const parsed = parseGoogleMapsUrl(value)
-  return {
-    ...addressRow,
-    lat: parsed.lat,
-    lng: parsed.lng,
   }
 }
 

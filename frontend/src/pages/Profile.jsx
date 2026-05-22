@@ -3609,8 +3609,9 @@ function SubTable({ rows, setRows, columns }) {
   )
 }
 
-function normalizeAddressEditorRows(rows) {
-  const source = Array.isArray(rows) && rows.length ? rows : [{ ...DEFAULT_ADDRESS_ROW }]
+function normalizeAddressEditorRows(rows, { ensureRow = true } = {}) {
+  const sourceRows = Array.isArray(rows) ? rows : []
+  const source = sourceRows.length ? sourceRows : (ensureRow ? [{ ...DEFAULT_ADDRESS_ROW }] : [])
   const normalized = source.map((row, index) => ({
     country: normalizeCountryValue(row?.country),
     governorate: preserveLooseInput(row?.governorate),
@@ -3621,13 +3622,14 @@ function normalizeAddressEditorRows(rows) {
     lng: sanitizeStoredCoordinate(row?.lng, 'lng'),
     is_primary: Boolean(row?.is_primary),
   }))
+  if (!normalized.length) return []
   const primaryIndex = normalized.findIndex(row => row.is_primary)
   normalized.forEach((row, index) => { row.is_primary = index === (primaryIndex >= 0 ? primaryIndex : 0) })
   return normalized
 }
 
 function sanitizeAddressRows(rows) {
-  const source = normalizeAddressEditorRows(rows)
+  const source = normalizeAddressEditorRows(rows, { ensureRow: false })
   return source.map((row) => ({
     ...row,
     governorate: normalizeLooseInput(row.governorate),
@@ -3638,6 +3640,28 @@ function sanitizeAddressRows(rows) {
     lat: sanitizeStoredCoordinate(row.lat, 'lat'),
     lng: sanitizeStoredCoordinate(row.lng, 'lng'),
   }))
+}
+
+function collectArchivableYouthGroupIds({ memberships, fallbackMemberships = [], shouldScopeToViewerGroups = false, viewerCouncilGroupIds = [] }) {
+  const allowedGroupIds = new Set(
+    (Array.isArray(viewerCouncilGroupIds) ? viewerCouncilGroupIds : [])
+      .map((groupId) => String(groupId || '').trim())
+      .filter(Boolean)
+  )
+  const collectGroupIds = (rows) => {
+    const seen = new Set()
+    return (Array.isArray(rows) ? rows : [])
+      .map((row) => String(row?.youth_group_id || '').trim())
+      .filter((groupId) => {
+        if (!groupId || seen.has(groupId)) return false
+        if (shouldScopeToViewerGroups && !allowedGroupIds.has(groupId)) return false
+        seen.add(groupId)
+        return true
+      })
+  }
+
+  const activeGroupIds = collectGroupIds((Array.isArray(memberships) ? memberships : []).filter((row) => !row?.archived))
+  return activeGroupIds.length ? activeGroupIds : collectGroupIds(fallbackMemberships)
 }
 
 function AddressRowsEditor({ rows, onChange, governorateOptions, locationOnly = false }) {
@@ -6273,6 +6297,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       if (!d.person_special_notes) d.person_special_notes = []
       if (!d.person_youth_group) d.person_youth_group = []
       if (!d.responsibilities)   d.responsibilities = []
+      if (!d.timestamps)         d.timestamps = []
       const personData = d.person || {}
       const normalizedDay = toDatePart(personData.birth_day, 1, 31)
       const normalizedMonth = toDatePart(personData.birth_month, 1, 12)
@@ -6296,7 +6321,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
               lng: personData.lng ?? null,
               is_primary: true,
             }]
-          : [{ ...DEFAULT_ADDRESS_ROW }]
+          : []
       }
       d.jobs = normalizeJobRows(d.jobs)
       d.mobile_numbers = normalizeMobileNumberRows(d.mobile_numbers, { validJobIds: d.jobs.map((row) => row.job_id) })
@@ -6313,7 +6338,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       d.higher_education = normalizeHigherEducationRows(d.higher_education)
       d.person_youth_group = normalizeYouthMembershipRows(d.person_youth_group)
       d.responsibilities = normalizeResponsibilityRows(d.responsibilities, {})
-      d.addresses = normalizeAddressEditorRows(d.addresses)
+      d.addresses = normalizeAddressEditorRows(d.addresses, { ensureRow: false })
       d.person = personData
       setLoadError('')
       setData(d)
@@ -6546,28 +6571,22 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       const saveSucceeded = await flushPendingSave()
       if (!saveSucceeded) return
 
-      const memberships = Array.isArray(dataRef.current?.person_youth_group) ? dataRef.current.person_youth_group : []
-      const activeMemberships = memberships.filter(row => !row?.archived)
-      const fallbackMemberships = lastArchivableMemberships.current
-      const scopedActiveMemberships = shouldScopeToViewerGroups
-        ? activeMemberships.filter(row => viewerCouncilGroupIds.includes(String(row?.youth_group_id || '').trim()))
-        : activeMemberships
-      const scopedFallbackMemberships = shouldScopeToViewerGroups
-        ? fallbackMemberships.filter(row => viewerCouncilGroupIds.includes(String(row?.youth_group_id || '').trim()))
-        : fallbackMemberships
-
-      const target = scopedActiveMemberships[0] || activeMemberships[0] || scopedFallbackMemberships[0] || fallbackMemberships[0] || null
-      const youthGroupId = String(target?.youth_group_id || '').trim()
-      if (!youthGroupId) {
+      const youthGroupIds = collectArchivableYouthGroupIds({
+        memberships: dataRef.current?.person_youth_group,
+        fallbackMemberships: lastArchivableMemberships.current,
+        shouldScopeToViewerGroups,
+        viewerCouncilGroupIds,
+      })
+      if (!youthGroupIds.length) {
         toast('لا توجد عضوية شبيبة نشطة لأرشفتها', 'error')
         setConfirm(null)
         return
       }
 
       if (isUnregistered) {
-        await api.archiveUnregistered(personId, youthGroupId)
+        await api.archiveUnregistered(personId, youthGroupIds)
       } else {
-        await api.archivePerson(personId, youthGroupId)
+        await api.archivePerson(personId, youthGroupIds)
       }
       toast('تمت الأرشفة بنجاح', 'success')
       setConfirm(null)
@@ -6800,7 +6819,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
         })
       const filledAtLabel = dedupedFilledAtEntries
         .map((entry) => `${entry.label}: ${entry.timestamp}`)
-        .join('\n') || '—'
+        .join('\n') || 'لا توجد طوابع زمنية محفوظة لهذا السجل حتى الآن'
       const youthGroupLogos = activeVisibleYouthGroupIds
         .map((groupId) => {
           const normalizedGroupId = String(groupId || '').trim()
@@ -7060,7 +7079,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
             ? `هل أنت متأكد من حذف "${data?.person ? [data.person.ar_first_name, data.person.ar_last_name].filter(Boolean).join(' ') : ''}" نهائياً؟ سيتم حذف جميع بياناته بشكل دائم ولا يمكن التراجع عن هذا الإجراء.`
             : confirm?.action === 'promote'
               ? 'هل تريد تحويل هذا الشخص إلى عضو مسجّل؟ سيتم نقل بياناته إلى قائمة الأعضاء الرسمية.'
-              : 'هل تريد أرشفة هذا السجل؟ سينتقل إلى تبويب الأرشيف في قائمة الأعضاء ويمكن استعادته لاحقاً.'
+              : 'هل تريد أرشفة هذا السجل؟ سيتم أرشفة جميع عضويات الشبيبة النشطة المرتبطة به، ثم سينتقل إلى تبويب الأرشيف في قائمة الأعضاء ويمكن استعادته لاحقاً.'
         }
         confirmLabel={confirm?.action === 'delete' ? 'حذف نهائي' : confirm?.action === 'promote' ? 'تسجيل كعضو رسمي' : 'أرشفة'}
         confirmClass={confirm?.action === 'delete' ? 'btn-danger' : confirm?.action === 'promote' ? 'btn-gold' : 'btn-primary'}

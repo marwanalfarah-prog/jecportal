@@ -235,25 +235,6 @@ def _now_str() -> str:
     return _dt.datetime.utcnow().isoformat()[:19] + 'Z'
 
 
-def _get_birth_year(person_type: str, pid):
-    try:
-        if person_type == 'registered':
-            reg_persons = S._registered_persons_df()
-            row = reg_persons[reg_persons['person_id'] == int(pid)]
-            if not row.empty:
-                val = row.iloc[0].get('birth_year')
-                return int(val) if val and str(val) not in ('nan', 'None', '') else None
-        elif person_type == 'unregistered':
-            df = S.unreg_store.get('persons', pd.DataFrame())
-            row = df[df['person_id'].astype(str) == str(pid)]
-            if not row.empty:
-                val = row.iloc[0].get('birth_year')
-                return int(val) if val and str(val) not in ('nan', 'None', '') else None
-    except Exception:
-        pass
-    return None
-
-
 def register_promotions_routes(app):
     @app.get("/api/promotions")
     def list_promotions():

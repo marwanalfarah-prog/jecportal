@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Plus, Trash2, Save, RotateCcw, ImagePlus, Pencil, X, Search, ChevronDown, Award, Users, Building2, Languages, CalendarRange, Target, BookOpen, GraduationCap, MapPin } from 'lucide-react'
 import { api } from '../api.js'
+import { formatMottoSource } from '../mottoBibleReference.js'
 import ChurchesAdmin from './ChurchesAdmin.jsx'
 
 function cleanText(value) {
@@ -136,14 +137,6 @@ function normalizeSchoolBranches(raw) {
   }
 
   return out
-}
-
-function formatMottoSource(ref) {
-  if (!ref || typeof ref !== 'object') return ''
-  const abbr = String(ref?.book?.book_abbr || ref?.book?.abbr || ref?.book?.book_name || '').trim()
-  const verseRaw = verseTextFromData(ref?.verse).replace(/:\s*/g, ': ')
-  if (!abbr || !verseRaw) return ''
-  return `(${abbr} ${verseRaw})`
 }
 
 function formatMottoText(item) {

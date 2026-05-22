@@ -64,6 +64,16 @@ function formatYouthGroupLabel(raw) {
   return `شبيبة ${text}`
 }
 
+function buildArchiveMembershipBody(youthGroupId) {
+  if (Array.isArray(youthGroupId)) {
+    const youthGroupIds = youthGroupId
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+    return { youth_group_ids: youthGroupIds }
+  }
+  return { youth_group_id: youthGroupId }
+}
+
 async function req(path, opts = {}) {
   const res = await fetch(BASE + path, {
     headers: { 'Content-Type': 'application/json' },
@@ -114,8 +124,8 @@ export const api = {
   addPerson:       (body)       => req('/person', { method: 'POST', body }),
   resolveGoogleMapsLocation: (url) => req('/location/resolve-google-maps', { method: 'POST', body: { url } }),
   deletePerson:    (id)         => req(`/person/${id}`, { method: 'DELETE' }),
-  archivePerson:   (id, youthGroupId)         => req(`/person/${id}/archive`, { method: 'PATCH', body: { youth_group_id: youthGroupId } }),
-  unarchivePerson: (id, youthGroupId)         => req(`/person/${id}/unarchive`, { method: 'PATCH', body: { youth_group_id: youthGroupId } }),
+  archivePerson:   (id, youthGroupId)         => req(`/person/${id}/archive`, { method: 'PATCH', body: buildArchiveMembershipBody(youthGroupId) }),
+  unarchivePerson: (id, youthGroupId)         => req(`/person/${id}/unarchive`, { method: 'PATCH', body: buildArchiveMembershipBody(youthGroupId) }),
 
   getTable:        (sheet)      => req(`/table/${sheet}`),
   putTable:        (sheet, rows)=> req(`/table/${sheet}`, { method: 'PUT', body: rows }),
@@ -174,8 +184,8 @@ export const api = {
   addUnregistered:       (body)       => req('/unregistered', { method: 'POST', body }),
   updateUnregistered:    (id, body)   => req(`/unregistered/${id}`, { method: 'PUT', body }),
   deleteUnregistered:    (id)         => req(`/unregistered/${id}`, { method: 'DELETE' }),
-  archiveUnregistered:   (id, youthGroupId)         => req(`/unregistered/${id}/archive`, { method: 'PATCH', body: { youth_group_id: youthGroupId } }),
-  unarchiveUnregistered: (id, youthGroupId)         => req(`/unregistered/${id}/unarchive`, { method: 'PATCH', body: { youth_group_id: youthGroupId } }),
+  archiveUnregistered:   (id, youthGroupId)         => req(`/unregistered/${id}/archive`, { method: 'PATCH', body: buildArchiveMembershipBody(youthGroupId) }),
+  unarchiveUnregistered: (id, youthGroupId)         => req(`/unregistered/${id}/unarchive`, { method: 'PATCH', body: buildArchiveMembershipBody(youthGroupId) }),
   syncUnregistered:      (body)       => req('/unregistered/sync', { method: 'POST', body }),
   promoteUnregistered:   (id)         => req(`/unregistered/${id}/promote`, { method: 'POST' }),
 

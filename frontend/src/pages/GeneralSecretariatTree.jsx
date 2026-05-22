@@ -1868,7 +1868,7 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
       return linkedNodes
     }
     try {
-      const res = await api.syncUnregistered({ nodes: newNodes })
+      const res = await api.syncUnregistered({ nodes: newNodes, youth_group_id: GS_GROUP_KEY })
       const created = res.created || {}
       if (Object.keys(created).length) {
         linkedNodes = linkedNodes.map(n => {
