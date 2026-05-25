@@ -1,3 +1,4 @@
+import json
 import os
 import math
 import uuid
@@ -18,9 +19,11 @@ PARISH_LOGOS_DIR = os.path.join(S.PHOTOS_ROOT_DIR, "logos", "parishes")
 os.makedirs(YOUTH_GROUP_LOGOS_DIR, exist_ok=True)
 os.makedirs(YOUTH_GROUP_SPECIAL_LOGOS_DIR, exist_ok=True)
 LEGACY_SPECIAL_LOGOS_META_FILE = "youth_group_special_logos.json"
-SOCIAL_MEDIA_META_FILE = "youth_group_social_media.json"
 ALLOWED_SOCIAL_PLATFORMS = {"facebook", "instagram", "linkedin"}
 ALL_AGE_GROUPS = ['البراعم', 'الإعدادي', 'الثانوي', 'الجامعيّة', 'العاملة']
+ALL_AGE_GROUPS_SET = set(ALL_AGE_GROUPS)
+YOUTH_GROUP_SOCIAL_MEDIA_ID_PREFIX = "YGSM"
+YOUTH_GROUP_SOCIAL_MEDIA_ID_WIDTH = 6
 
 YOUTH_AGE_GROUPS_REQUIRE_SCHOOL = {'البراعم', 'الإعدادي', 'الثانوي'}
 
@@ -32,6 +35,14 @@ def _normalize_text(value) -> str | None:
     if text in ("", "nan", "None", "null"):
         return None
     return text
+
+
+def _first_present(row: dict | None, *keys: str):
+    payload = row if isinstance(row, dict) else {}
+    for key in keys:
+        if key in payload:
+            return payload.get(key)
+    return None
 
 
 def _pid_key(value) -> str | None:
@@ -114,26 +125,11 @@ def _special_logos_meta_path() -> str:
     return os.path.join(S.db.data_dir, LEGACY_SPECIAL_LOGOS_META_FILE)
 
 
-def _social_media_meta_path() -> str:
-    return os.path.join(S.db.data_dir, SOCIAL_MEDIA_META_FILE)
-
-
 def _load_special_logos_meta() -> dict:
     raw = S.db.load_json_file(_special_logos_meta_path(), {})
     if not isinstance(raw, dict):
         return {}
     return raw
-
-
-def _load_social_media_meta() -> dict:
-    raw = S.db.load_json_file(_social_media_meta_path(), {})
-    if not isinstance(raw, dict):
-        return {}
-    return raw
-
-
-def _save_social_media_meta(payload: dict):
-    S.db.save_json_file(_social_media_meta_path(), payload)
 
 
 def _normalize_url(value) -> str | None:
@@ -147,8 +143,23 @@ def _normalize_url(value) -> str | None:
 
 def _normalize_age_groups(value) -> list[str]:
     if isinstance(value, str):
-        values = [value]
-    elif isinstance(value, list):
+        text = _normalize_text(value)
+        if not text:
+            values = []
+        else:
+            try:
+                parsed = json.loads(text)
+            except (TypeError, ValueError, json.JSONDecodeError):
+                parsed = text
+            if isinstance(parsed, list):
+                values = parsed
+            elif isinstance(parsed, tuple):
+                values = list(parsed)
+            elif parsed is None:
+                values = []
+            else:
+                values = [parsed]
+    elif isinstance(value, (list, tuple)):
         values = value
     else:
         values = []
@@ -161,12 +172,69 @@ def _normalize_age_groups(value) -> list[str]:
             continue
         seen.add(text)
         out.append(text)
+    if len(out) == len(ALL_AGE_GROUPS_SET):
+        return []
     return out
+
+
+def _social_media_id_sequence(value) -> int | None:
+    text = _normalize_text(value)
+    if not text:
+        return None
+    upper = text.upper()
+    if not upper.startswith(YOUTH_GROUP_SOCIAL_MEDIA_ID_PREFIX):
+        return None
+    digits = upper[len(YOUTH_GROUP_SOCIAL_MEDIA_ID_PREFIX):]
+    if len(digits) != YOUTH_GROUP_SOCIAL_MEDIA_ID_WIDTH or not digits.isdigit():
+        return None
+    return int(digits)
+
+
+def _format_social_media_id(sequence: int) -> str:
+    return f"{YOUTH_GROUP_SOCIAL_MEDIA_ID_PREFIX}{sequence:0{YOUTH_GROUP_SOCIAL_MEDIA_ID_WIDTH}d}"
+
+
+def _normalize_social_media_id(value) -> str | None:
+    sequence = _social_media_id_sequence(value)
+    if sequence is None:
+        return None
+    return _format_social_media_id(sequence)
+
+
+def _next_social_media_id_sequence(rows: list[dict] | None = None) -> int:
+    candidates = rows if isinstance(rows, list) else []
+    if not candidates:
+        df = S.store.get(S.YOUTH_GROUP_SOCIAL_MEDIA_SHEET, pd.DataFrame()).copy()
+        if not df.empty:
+            candidates = df.replace({pd.NA: None}).to_dict(orient="records")
+
+    max_sequence = 0
+    for row in candidates:
+        sequence = _social_media_id_sequence(
+            _first_present(row, S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL, "id")
+        )
+        if sequence is not None and sequence > max_sequence:
+            max_sequence = sequence
+    return max_sequence + 1
+
+
+def _raw_social_media_sheet_rows() -> list[dict]:
+    df = S.store.get(S.YOUTH_GROUP_SOCIAL_MEDIA_SHEET, pd.DataFrame()).copy()
+    if df.empty:
+        return []
+    return df.where(pd.notna(df), None).to_dict(orient="records")
+
+
+def _raw_social_media_age_group_sheet_rows() -> list[dict]:
+    df = S.store.get(S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_SHEET, pd.DataFrame()).copy()
+    if df.empty:
+        return []
+    return df.where(pd.notna(df), None).to_dict(orient="records")
 
 
 def _normalize_social_media_entry(entry: dict) -> dict | None:
     row = entry if isinstance(entry, dict) else {}
-    item_id = _normalize_text(row.get("id")) or uuid.uuid4().hex[:12]
+    item_id = _normalize_social_media_id(_first_present(row, S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL, "id"))
     platform = (_normalize_text(row.get("platform")) or "").lower() or None
     url = _normalize_url(row.get("url"))
     age_groups = _normalize_age_groups(row.get("age_groups"))
@@ -175,22 +243,203 @@ def _normalize_social_media_entry(entry: dict) -> dict | None:
         return None
 
     return {
-        "id": item_id,
+        S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL: item_id,
         "platform": platform,
         "url": url,
         "age_groups": age_groups,
     }
 
 
-def _group_social_media(group_id: str) -> list[dict]:
-    payload = _load_social_media_meta()
-    rows = payload.get(group_id) if isinstance(payload, dict) else []
-    if not isinstance(rows, list):
-        return []
+def _social_media_sheet_row(group_id: str | None, entry: dict, *, item_id: str | None = None) -> dict | None:
+    gid = _normalize_text(group_id)
+    norm = _normalize_social_media_entry(entry)
+    if not gid or norm is None:
+        return None
 
+    social_media_id = _normalize_social_media_id(item_id or norm.get(S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL))
+    if not social_media_id:
+        return None
+
+    return {
+        "youth_group_id": gid,
+        S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL: social_media_id,
+        "platform": norm["platform"],
+        "url": norm["url"],
+    }
+
+
+def _social_media_age_group_row(item_id: str | None, age_group: str | None) -> dict | None:
+    social_media_id = _normalize_social_media_id(item_id)
+    normalized_age_group = _normalize_text(age_group)
+    if not social_media_id or normalized_age_group not in ALL_AGE_GROUPS_SET:
+        return None
+    return {
+        S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL: social_media_id,
+        "age_group": normalized_age_group,
+    }
+
+
+def _social_media_age_group_rows(item_id: str | None, age_groups: list[str] | None) -> list[dict]:
+    rows = []
+    for age_group in _normalize_age_groups(age_groups):
+        row = _social_media_age_group_row(item_id, age_group)
+        if row is not None:
+            rows.append(row)
+    return rows
+
+
+def _social_media_age_group_lookup() -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    seen: set[tuple[str, str]] = set()
+    for row in _raw_social_media_age_group_sheet_rows():
+        normalized = _social_media_age_group_row(
+            _first_present(row, S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL, "id"),
+            row.get("age_group"),
+        )
+        if normalized is None:
+            continue
+        social_media_id = normalized[S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL]
+        age_group = normalized["age_group"]
+        dedupe_key = (social_media_id, age_group)
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        out.setdefault(social_media_id, []).append(age_group)
+
+    for social_media_id, age_groups in out.items():
+        out[social_media_id] = [age for age in ALL_AGE_GROUPS if age in set(age_groups)]
+    return out
+
+
+def _canonical_social_media_sheet_rows() -> list[dict]:
+    rows = []
+    for row in _raw_social_media_sheet_rows():
+        normalized = _social_media_sheet_row(
+            row.get("youth_group_id"),
+            row,
+            item_id=_first_present(row, S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL, "id"),
+        )
+        if normalized is None:
+            continue
+        rows.append(normalized)
+    return rows
+
+
+def _canonical_social_media_age_group_sheet_rows() -> list[dict]:
+    rows = []
+    seen: set[tuple[str, str]] = set()
+    for row in _raw_social_media_age_group_sheet_rows():
+        normalized = _social_media_age_group_row(
+            _first_present(row, S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL, "id"),
+            row.get("age_group"),
+        )
+        if normalized is None:
+            continue
+        dedupe_key = (normalized[S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL], normalized["age_group"])
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        rows.append(normalized)
+
+    rows.sort(key=lambda row: (
+        row[S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL],
+        ALL_AGE_GROUPS.index(row["age_group"]) if row["age_group"] in ALL_AGE_GROUPS else len(ALL_AGE_GROUPS),
+    ))
+    return rows
+
+
+def _ensure_youth_group_social_media_storage() -> bool:
+    main_rows = _raw_social_media_sheet_rows()
+    age_rows = _raw_social_media_age_group_sheet_rows()
+
+    existing_inline_age_groups: dict[str, list[str]] = {}
+    existing_sheet_age_groups: dict[str, list[str]] = {}
+
+    for row in age_rows:
+        raw_id = _normalize_text(_first_present(row, S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL, "id"))
+        normalized_age_group = _normalize_text(row.get("age_group"))
+        if not raw_id or normalized_age_group not in ALL_AGE_GROUPS_SET:
+            continue
+        existing_sheet_age_groups.setdefault(raw_id, []).append(normalized_age_group)
+
+    used_ids: set[str] = set()
+    next_sequence = _next_social_media_id_sequence(main_rows)
+    migrated_main_rows: list[dict] = []
+    migrated_age_rows: list[dict] = []
+
+    for row in main_rows:
+        if not isinstance(row, dict):
+            continue
+
+        raw_id = _normalize_text(_first_present(row, S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL, "id"))
+        inline_age_groups = _normalize_age_groups(row.get("age_groups"))
+        if raw_id and inline_age_groups:
+            existing_inline_age_groups[raw_id] = inline_age_groups
+
+        social_media_id = _normalize_social_media_id(raw_id)
+        if not social_media_id or social_media_id in used_ids:
+            while True:
+                candidate = _format_social_media_id(next_sequence)
+                next_sequence += 1
+                if candidate not in used_ids:
+                    social_media_id = candidate
+                    break
+        used_ids.add(social_media_id)
+
+        normalized_main_row = _social_media_sheet_row(row.get("youth_group_id"), row, item_id=social_media_id)
+        if normalized_main_row is None:
+            continue
+        migrated_main_rows.append(normalized_main_row)
+
+        raw_age_groups = existing_sheet_age_groups.get(raw_id or "", []) or existing_inline_age_groups.get(raw_id or "", [])
+        normalized_age_groups = _normalize_age_groups(raw_age_groups)
+        migrated_age_rows.extend(_social_media_age_group_rows(social_media_id, normalized_age_groups))
+
+    current_main_rows = _canonical_social_media_sheet_rows()
+    current_age_rows = _canonical_social_media_age_group_sheet_rows()
+
+    has_legacy_columns = False
+    main_df = S.store.get(S.YOUTH_GROUP_SOCIAL_MEDIA_SHEET, pd.DataFrame()).copy()
+    if not main_df.empty:
+        has_legacy_columns = any(
+            col not in S.YOUTH_GROUP_SOCIAL_MEDIA_COLUMNS and col != "id"
+            for col in main_df.columns
+        )
+
+    age_df = S.store.get(S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_SHEET, pd.DataFrame()).copy()
+    has_age_sheet_schema_mismatch = age_df.empty and S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_SHEET not in S.store
+    if not age_df.empty:
+        has_age_sheet_schema_mismatch = any(col not in S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_COLUMNS for col in age_df.columns)
+
+    changed = (
+        has_legacy_columns
+        or has_age_sheet_schema_mismatch
+        or migrated_main_rows != current_main_rows
+        or migrated_age_rows != current_age_rows
+    )
+
+    S.store[S.YOUTH_GROUP_SOCIAL_MEDIA_SHEET] = pd.DataFrame(
+        migrated_main_rows,
+        columns=S.YOUTH_GROUP_SOCIAL_MEDIA_COLUMNS,
+    )
+    S.store[S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_SHEET] = pd.DataFrame(
+        migrated_age_rows,
+        columns=S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_COLUMNS,
+    )
+    return changed
+
+def _group_social_media(group_id: str) -> list[dict]:
+    _ensure_youth_group_social_media_storage()
+
+    age_group_lookup = _social_media_age_group_lookup()
     out = []
-    for row in rows:
-        norm = _normalize_social_media_entry(row)
+    for row in _canonical_social_media_sheet_rows():
+        if _normalize_text(row.get("youth_group_id")) != str(group_id):
+            continue
+        norm = _normalize_social_media_entry({
+            **row,
+            "age_groups": age_group_lookup.get(row.get(S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL), []),
+        })
         if norm is None:
             continue
         out.append(norm)
@@ -198,20 +447,56 @@ def _group_social_media(group_id: str) -> list[dict]:
 
 
 def _save_group_social_media(group_id: str, rows: list[dict]):
-    payload = _load_social_media_meta()
+    _ensure_youth_group_social_media_storage()
+
+    current_rows = _canonical_social_media_sheet_rows()
+    current_group_ids = {
+        row[S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL]
+        for row in current_rows
+        if _normalize_text(row.get("youth_group_id")) == str(group_id)
+    }
+    retained_rows = [
+        row for row in current_rows
+        if _normalize_text(row.get("youth_group_id")) != str(group_id)
+    ]
+    retained_age_rows = [
+        row for row in _canonical_social_media_age_group_sheet_rows()
+        if row[S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL] not in current_group_ids
+    ]
+
     clean = []
+    clean_age_rows = []
+    used_ids = {row[S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL] for row in retained_rows}
+    next_sequence = _next_social_media_id_sequence(current_rows)
     for row in rows:
-        norm = _normalize_social_media_entry(row)
-        if norm is None:
+        normalized_entry = _normalize_social_media_entry(row)
+        if normalized_entry is None:
             continue
-        clean.append(norm)
+        social_media_id = _normalize_social_media_id(normalized_entry.get(S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL))
+        if not social_media_id or social_media_id in used_ids:
+            while True:
+                candidate = _format_social_media_id(next_sequence)
+                next_sequence += 1
+                if candidate not in used_ids:
+                    social_media_id = candidate
+                    break
+        used_ids.add(social_media_id)
 
-    if clean:
-        payload[group_id] = clean
-    elif group_id in payload:
-        del payload[group_id]
+        normalized_main_row = _social_media_sheet_row(group_id, normalized_entry, item_id=social_media_id)
+        if normalized_main_row is None:
+            continue
 
-    _save_social_media_meta(payload)
+        clean.append(normalized_main_row)
+        clean_age_rows.extend(_social_media_age_group_rows(social_media_id, normalized_entry.get("age_groups")))
+
+    S.store[S.YOUTH_GROUP_SOCIAL_MEDIA_SHEET] = pd.DataFrame(
+        retained_rows + clean,
+        columns=S.YOUTH_GROUP_SOCIAL_MEDIA_COLUMNS,
+    )
+    S.store[S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_SHEET] = pd.DataFrame(
+        retained_age_rows + clean_age_rows,
+        columns=S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_COLUMNS,
+    )
 
 
 def _parish_social_media_entries(parish: dict | None) -> list[dict]:
@@ -222,7 +507,7 @@ def _parish_social_media_entries(parish: dict | None) -> list[dict]:
     facebook = _normalize_url(row.get("facebook_url"))
     if facebook:
         entries.append({
-            "id": f"parish-{parish_id}-facebook",
+            S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL: None,
             "platform": "facebook",
             "url": facebook,
             "age_groups": [],
@@ -232,7 +517,7 @@ def _parish_social_media_entries(parish: dict | None) -> list[dict]:
     instagram = _normalize_url(row.get("instagram_url"))
     if instagram:
         entries.append({
-            "id": f"parish-{parish_id}-instagram",
+            S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL: None,
             "platform": "instagram",
             "url": instagram,
             "age_groups": [],
@@ -242,7 +527,7 @@ def _parish_social_media_entries(parish: dict | None) -> list[dict]:
     linkedin = _normalize_url(row.get("linkedin_url"))
     if linkedin:
         entries.append({
-            "id": f"parish-{parish_id}-linkedin",
+            S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL: None,
             "platform": "linkedin",
             "url": linkedin,
             "age_groups": [],
@@ -778,6 +1063,9 @@ def _member_problem_issues(member: dict, person_row: dict | None, schools: list[
 
 
 def register_youth_group_routes(app):
+    if _ensure_youth_group_social_media_storage():
+        S.db.save_excel_sheets(S.store)
+
     @app.get("/api/youth-groups")
     def list_youth_group_profiles():
         err = auth_exports["_require_admin"]()

@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useMemo, useDeferredValue } from 'react'
 import { Search, ChevronRight, ChevronLeft, UserPlus, ArrowUpAZ, ArrowDownAZ, ChevronDown, X, Trash2, Archive, ArchiveRestore, Download } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { api } from '../api.js'
+import { ErrorState, LoadingState } from '../pageStates.jsx'
 
 // ── Arabic normalization ──────────────────────────────────────────────────────
 function normalizeWord(word) {
@@ -1107,8 +1108,11 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
   const [unregistered, setUnreg]          = useState([])
   const [loading, setLoading]             = useState(true)
   const [unregLoading, setUnregLoading]   = useState(true)
+  const [registeredLoadError, setRegisteredLoadError] = useState('')
+  const [unregisteredLoadError, setUnregisteredLoadError] = useState('')
   const [confirm, setConfirm]             = useState(null) // { type, id, name, action }
   const [archivePrompt, setArchivePrompt] = useState(null) // { type, id, name, options, selectedId }
+  const [reloadKey, setReloadKey]         = useState(0)
 
   // Registered state
   const [q, setQ]                         = useState('')
@@ -1134,11 +1138,21 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
 
   useEffect(() => {
     let canceled = false
+    setLoading(true)
+    setUnregLoading(true)
+    setRegisteredLoadError('')
+    setUnregisteredLoadError('')
 
     ;(async () => {
       try {
         const enriched = await api.membersIndex()
         if (!canceled) setAllPersons(enriched)
+      } catch {
+        if (!canceled) {
+          setAllPersons([])
+          setRegisteredLoadError('تعذر تحميل الأعضاء المسجّلين حالياً. حاول مرة أخرى.')
+          toast?.('تعذر تحميل الأعضاء المسجّلين', 'error')
+        }
       } finally {
         if (!canceled) setLoading(false)
       }
@@ -1148,6 +1162,12 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
       try {
         const unreg = await api.getUnregistered()
         if (!canceled) setUnreg(unreg)
+      } catch {
+        if (!canceled) {
+          setUnreg([])
+          setUnregisteredLoadError('تعذر تحميل غير المسجّلين حالياً. حاول مرة أخرى.')
+          toast?.('تعذر تحميل غير المسجّلين', 'error')
+        }
       } finally {
         if (!canceled) setUnregLoading(false)
       }
@@ -1163,7 +1183,7 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
     })()
 
     return () => { canceled = true }
-  }, [])
+  }, [reloadKey, toast])
 
   // Split active vs archived
   const activePersons   = useMemo(() => allPersons.filter(p => !p.archived), [allPersons])
@@ -1459,7 +1479,18 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
     }
   }
 
-  if (loading) return <div className="loading-center"><div className="spinner" /></div>
+  const retryLoad = () => setReloadKey((value) => value + 1)
+  const archivedLoadError = registeredLoadError || unregisteredLoadError
+
+  if (loading) {
+    return (
+      <LoadingState
+        title="جارٍ تحميل الأعضاء"
+        description="يتم تجهيز سجلات الأعضاء والبيانات المرتبطة بها الآن."
+        minHeight={320}
+      />
+    )
+  }
 
   return (
     <div>
@@ -1569,7 +1600,14 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
 
           {/* List */}
           <div className="card" style={{ overflow: 'hidden' }}>
-            {pageRows.length === 0 ? (
+            {registeredLoadError ? (
+              <ErrorState
+                title="تعذر تحميل الأعضاء المسجّلين"
+                description={registeredLoadError}
+                onRetry={retryLoad}
+                minHeight={240}
+              />
+            ) : pageRows.length === 0 ? (
               <div className="empty-state"><Search size={48} /><p>لا توجد نتائج مطابقة</p></div>
             ) : pageRows.map(p => {
               const name = getDisplayName(p)
@@ -1657,6 +1695,13 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
           <div className="card" style={{ overflow: 'hidden' }}>
             {unregLoading ? (
               <div className="loading-center" style={{ minHeight: 180 }}><div className="spinner" /></div>
+            ) : unregisteredLoadError ? (
+              <ErrorState
+                title="تعذر تحميل غير المسجّلين"
+                description={unregisteredLoadError}
+                onRetry={retryLoad}
+                minHeight={240}
+              />
             ) : uPageRows.length === 0 ? (
               <div className="empty-state"><Search size={48} /><p>لا توجد نتائج مطابقة</p></div>
             ) : uPageRows.map(r => {
@@ -1738,7 +1783,16 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
             </select>
           </div>
 
-          {visibleArchived.length === 0 ? (
+          {archivedLoadError ? (
+            <div className="card">
+              <ErrorState
+                title="تعذر تحميل بيانات الأرشيف"
+                description="تعذر تحميل بعض البيانات اللازمة لعرض الأرشيف. حاول إعادة المحاولة."
+                onRetry={retryLoad}
+                minHeight={240}
+              />
+            </div>
+          ) : visibleArchived.length === 0 ? (
             <div className="card">
               <div className="empty-state"><Archive size={48} /><p>لا توجد سجلات مؤرشفة</p></div>
             </div>

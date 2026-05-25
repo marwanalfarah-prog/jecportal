@@ -1,26 +1,120 @@
-import { Component, useState, useEffect } from 'react'
+import { Component, Suspense, lazy, startTransition, useEffect, useState } from 'react'
 import { LayoutDashboard, Users, GitBranch, UserPlus, LogOut, ShieldCheck, User as UserIcon, Eye, X, Search, ClipboardList, Settings, Building2, ImageOff, Key, MapPin, Map, BookOpenText, Database, Menu } from 'lucide-react'
-import Dashboard from './pages/Dashboard.jsx'
-import Members from './pages/Members.jsx'
-import Profile from './pages/Profile.jsx'
-import AddMemberModal from './pages/AddMember.jsx'
-import OrgTree from './pages/OrgTree.jsx'
-import GeneralSecretariatTree from './pages/GeneralSecretariatTree.jsx'
-import UserManagement from './pages/UserManagement.jsx'
 import Login from './pages/Login.jsx'
-import CouncilMembers from './pages/CouncilMembers.jsx'
 import { useToast, ToastContainer } from './useToast.jsx'
 import NotificationBell from './NotificationBell.jsx'
-import Questionnaire from './pages/Questionnaire.jsx'
-import MyQuestions from './pages/MyQuestions.jsx'
-import Config from './pages/Config.jsx'
-import YouthGroupAdmin from './pages/YouthGroupAdmin.jsx'
-import ChurchesMap from './pages/ChurchesMap.jsx'
-import PeopleLocationsMap from './pages/PeopleLocationsMap.jsx'
-import BibleReader from './pages/BibleReader.jsx'
-import DataWorkbookAdmin from './pages/DataWorkbookAdmin.jsx'
 import { api } from './api.js'
+import { LoadingState } from './pageStates.jsx'
 import { buildMottoBibleReaderTarget, formatMottoTextWithSource } from './mottoBibleReference.js'
+
+const Dashboard = lazy(() => import('./pages/Dashboard.jsx'))
+const Members = lazy(() => import('./pages/Members.jsx'))
+const Profile = lazy(() => import('./pages/Profile.jsx'))
+const AddMemberModal = lazy(() => import('./pages/AddMember.jsx'))
+const OrgTree = lazy(() => import('./pages/OrgTree.jsx'))
+const GeneralSecretariatTree = lazy(() => import('./pages/GeneralSecretariatTree.jsx'))
+const UserManagement = lazy(() => import('./pages/UserManagement.jsx'))
+const CouncilMembers = lazy(() => import('./pages/CouncilMembers.jsx'))
+const Questionnaire = lazy(() => import('./pages/Questionnaire.jsx'))
+const MyQuestions = lazy(() => import('./pages/MyQuestions.jsx'))
+const Config = lazy(() => import('./pages/Config.jsx'))
+const YouthGroupAdmin = lazy(() => import('./pages/YouthGroupAdmin.jsx'))
+const ChurchesMap = lazy(() => import('./pages/ChurchesMap.jsx'))
+const PeopleLocationsMap = lazy(() => import('./pages/PeopleLocationsMap.jsx'))
+const BibleReader = lazy(() => import('./pages/BibleReader.jsx'))
+const DataWorkbookAdmin = lazy(() => import('./pages/DataWorkbookAdmin.jsx'))
+
+const ROUTE_PRELOADERS = {
+  dashboard: () => import('./pages/Dashboard.jsx'),
+  members: () => import('./pages/Members.jsx'),
+  profile: () => import('./pages/Profile.jsx'),
+  add_member: () => import('./pages/AddMember.jsx'),
+  orgtree: () => import('./pages/OrgTree.jsx'),
+  general_secretariat: () => import('./pages/GeneralSecretariatTree.jsx'),
+  users: () => import('./pages/UserManagement.jsx'),
+  council_members: () => import('./pages/CouncilMembers.jsx'),
+  questionnaires: () => import('./pages/Questionnaire.jsx'),
+  my_questions: () => import('./pages/MyQuestions.jsx'),
+  config: () => import('./pages/Config.jsx'),
+  youth_groups: () => import('./pages/YouthGroupAdmin.jsx'),
+  churches_map: () => import('./pages/ChurchesMap.jsx'),
+  people_locations_map: () => import('./pages/PeopleLocationsMap.jsx'),
+  bible_reader: () => import('./pages/BibleReader.jsx'),
+  data_workbook: () => import('./pages/DataWorkbookAdmin.jsx'),
+}
+
+const preloadedRoutes = new Set()
+
+function preloadRoute(routeId) {
+  const load = ROUTE_PRELOADERS[routeId]
+  if (!load || preloadedRoutes.has(routeId)) return
+  preloadedRoutes.add(routeId)
+  load().catch(() => {
+    preloadedRoutes.delete(routeId)
+  })
+}
+
+const ROUTE_LOADING_TITLES = {
+  dashboard: 'جارٍ تحميل لوحة المعلومات',
+  members: 'جارٍ تحميل الأعضاء',
+  profile: 'جارٍ تحميل الملف الشخصي',
+  orgtree: 'جارٍ تحميل الهيكل التنظيمي',
+  general_secretariat: 'جارٍ تحميل الأمانة العامة',
+  users: 'جارٍ تحميل المستخدمين',
+  questionnaires: 'جارٍ تحميل الاستبيانات',
+  youth_groups: 'جارٍ تحميل ملف فرق الشبيبة',
+  churches_map: 'جارٍ تحميل خريطة الكنائس',
+  people_locations_map: 'جارٍ تحميل خريطة المواقع',
+  data_workbook: 'جارٍ تحميل بيانات المصنف',
+  bible_reader: 'جارٍ تحميل قارئ الكتاب المقدس',
+  config: 'جارٍ تحميل الإعدادات',
+  my_questions: 'جارٍ تحميل استبياناتي',
+  council_members: 'جارٍ تحميل أعضاء الفئة',
+  add_member: 'جارٍ تحميل نموذج الإضافة',
+}
+
+function RouteLoader({ page, minHeight = 320, description = 'يتم تجهيز مكونات الصفحة الآن.' }) {
+  return (
+    <LoadingState
+      title={ROUTE_LOADING_TITLES[page] || 'جارٍ تحميل الصفحة'}
+      description={description}
+      minHeight={minHeight}
+    />
+  )
+}
+
+function ModalLoader({ title = 'جارٍ تحميل النموذج' }) {
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.45)',
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 20,
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 520,
+          overflow: 'hidden',
+          borderRadius: 16,
+          background: 'white',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.2)',
+        }}
+      >
+        <div style={{ background: '#0f2744', padding: '14px 20px', color: 'white', fontWeight: 700, fontSize: '0.95rem' }}>
+          {title}
+        </div>
+        <RouteLoader page="add_member" minHeight={220} description="يتم تجهيز نموذج الإضافة الآن." />
+      </div>
+    </div>
+  )
+}
 
 class ProfileRouteErrorBoundary extends Component {
   constructor(props) {
@@ -541,12 +635,18 @@ export default function App() {
     setAuthUser(user)
     setViewAsUser(null)
     if (user.role === 'member') {
-      setSelected(user.person_id)
-      setIsUnreg(user.person_type === 'unregistered')
-      setPage('profile')
-      setProfileReturnPage('orgtree')
+      preloadRoute('profile')
+      startTransition(() => {
+        setSelected(user.person_id)
+        setIsUnreg(user.person_type === 'unregistered')
+        setPage('profile')
+        setProfileReturnPage('orgtree')
+      })
     } else {
-      setPage('dashboard')
+      preloadRoute('dashboard')
+      startTransition(() => {
+        setPage('dashboard')
+      })
     }
   }
 
@@ -758,22 +858,27 @@ export default function App() {
     const normalizedReturnPage = returnPage === 'profile'
       ? (profileReturnPage === 'profile' ? 'members' : profileReturnPage)
       : returnPage
-    setSelected(pid)
-    setOrgContext(ctx)
-    setIsUnreg(unreg)
-    setProfileReturnPage(normalizedReturnPage)
-    setPage('profile')
+    preloadRoute('profile')
+    startTransition(() => {
+      setSelected(pid)
+      setOrgContext(ctx)
+      setIsUnreg(unreg)
+      setProfileReturnPage(normalizedReturnPage)
+      setPage('profile')
+    })
   }
 
   const goBack = () => {
-    setSelected(null)
-    setOrgContext(null)
-    setIsUnreg(false)
-    if (isMember) {
-      setPage(profileReturnPage === 'council_members' ? 'council_members' : 'orgtree')
-    } else {
-      setPage(profileReturnPage)
-    }
+    const targetPage = isMember
+      ? (profileReturnPage === 'council_members' ? 'council_members' : 'orgtree')
+      : profileReturnPage
+    preloadRoute(targetPage)
+    startTransition(() => {
+      setSelected(null)
+      setOrgContext(null)
+      setIsUnreg(false)
+      setPage(targetPage)
+    })
   }
 
   const navigate = (p) => {
@@ -781,8 +886,15 @@ export default function App() {
       ? ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches_map', 'people_locations_map', 'data_workbook', 'bible_reader', 'config']
       : ['profile', 'orgtree', 'council_members', 'churches_map', 'bible_reader', 'my_questions']
     if (!allowed.includes(p)) return
-    setPage(p)
-    if (p !== 'profile') { setSelected(null); setOrgContext(null); setIsUnreg(false) }
+    preloadRoute(p)
+    startTransition(() => {
+      setPage(p)
+      if (p !== 'profile') {
+        setSelected(null)
+        setOrgContext(null)
+        setIsUnreg(false)
+      }
+    })
     closeSidebarOnMobile()
   }
 
@@ -798,10 +910,7 @@ export default function App() {
 
   const handleNavClick = (id) => {
     if (isMember && id === 'profile') {
-      setSelected(effectiveUser.person_id)
-      setIsUnreg(effectiveUser.person_type === 'unregistered')
-      setPage('profile')
-      setProfileReturnPage('orgtree')
+      goProfile(effectiveUser.person_id, null, effectiveUser.person_type === 'unregistered', 'orgtree')
       closeSidebarOnMobile()
     } else {
       navigate(id)
@@ -813,22 +922,29 @@ export default function App() {
     if (viewAsUser) {
       // Enter impersonation: go to what the member would see first
       if (viewAsUser.role === 'member') {
-        setSelected(viewAsUser.person_id)
-        setIsUnreg(viewAsUser.person_type === 'unregistered')
-        setPage('profile')
-        setProfileReturnPage('orgtree')
+        preloadRoute('profile')
+        startTransition(() => {
+          setSelected(viewAsUser.person_id)
+          setIsUnreg(viewAsUser.person_type === 'unregistered')
+          setPage('profile')
+          setProfileReturnPage('orgtree')
+        })
       }
     } else if (authUser?.role === 'admin') {
       // Exit impersonation: go back to admin dashboard
-      setPage('dashboard')
-      setSelected(null)
-      setIsUnreg(false)
-      setOrgContext(null)
+      preloadRoute('dashboard')
+      startTransition(() => {
+        setPage('dashboard')
+        setSelected(null)
+        setIsUnreg(false)
+        setOrgContext(null)
+      })
     }
   }, [viewAsUser])
 
   const handleRegisterPerson = (name) => {
     if (!isAdmin) return
+    preloadRoute('add_member')
     setPrefill(name || '')
     setShowAdd(true)
   }
@@ -888,7 +1004,15 @@ export default function App() {
               || (page === 'profile' && n.id === 'profile')
               || (page === 'profile' && profileReturnPage === n.id && n.id !== 'profile' && !isMember)
             return (
-              <button key={n.id} className={`nav-item${isActive ? ' active' : ''}`} onClick={() => handleNavClick(n.id)} title={n.label} aria-label={n.label}>
+              <button
+                key={n.id}
+                className={`nav-item${isActive ? ' active' : ''}`}
+                onClick={() => handleNavClick(n.id)}
+                onMouseEnter={() => preloadRoute(n.id)}
+                onFocus={() => preloadRoute(n.id)}
+                title={n.label}
+                aria-label={n.label}
+              >
                 <n.icon size={18} className="icon"/>
                 <span className="nav-item-label">{n.label}</span>
               </button>
@@ -898,7 +1022,14 @@ export default function App() {
           {isAdmin && (
             <>
               <div className="nav-section-label" style={{ marginTop: 16 }}>إجراءات</div>
-              <button className="nav-item" onClick={() => { navigate('members'); setShowAdd(true) }} title="إضافة عضو جديد" aria-label="إضافة عضو جديد">
+              <button
+                className="nav-item"
+                onClick={() => { preloadRoute('add_member'); navigate('members'); setShowAdd(true) }}
+                onMouseEnter={() => { preloadRoute('members'); preloadRoute('add_member') }}
+                onFocus={() => { preloadRoute('members'); preloadRoute('add_member') }}
+                title="إضافة عضو جديد"
+                aria-label="إضافة عضو جديد"
+              >
                 <UserPlus size={18} className="icon"/>
                 <span className="nav-item-label">إضافة عضو جديد</span>
               </button>
@@ -1067,116 +1198,120 @@ export default function App() {
         )}
 
         <main className="page-body">
-          {isAdmin && page === 'dashboard' && <Dashboard onOpenBibleReference={openBibleReaderReference} />}
+          <Suspense fallback={<RouteLoader page={page} />}>
+            {isAdmin && page === 'dashboard' && <Dashboard onOpenBibleReference={openBibleReaderReference} />}
 
-          {isAdmin && page === 'members' && (
-            <Members
-              onSelectPerson={pid => goProfile(pid, null, false, 'members')}
-              onSelectUnregistered={uid => goProfile(uid, null, true, 'members')}
-              onAdd={() => setShowAdd(true)}
-              toast={toast}
-            />
-          )}
-
-          {page === 'profile' && (
-            <ProfileRouteErrorBoundary resetKey={`${selectedPid}-${isUnregistered ? 'unreg' : 'reg'}`} onBack={goBack}>
-              <Profile
-                personId={selectedPid}
-                isUnregistered={isUnregistered}
-                onBack={goBack}
+            {isAdmin && page === 'members' && (
+              <Members
+                onSelectPerson={pid => goProfile(pid, null, false, 'members')}
+                onSelectUnregistered={uid => goProfile(uid, null, true, 'members')}
+                onAdd={() => setShowAdd(true)}
                 toast={toast}
-                orgContext={orgContext}
-                onViewProfile={(pid, unreg) => goProfile(pid, null, !!unreg, page)}
-                onPromoted={handlePromoted}
-                currentUser={effectiveUser}
-                // Council members or impersonating admin viewing others → read-only
-                readOnly={!!(viewAsUser) || (isMember && String(selectedPid) !== String(effectiveUser?.person_id))}
               />
-            </ProfileRouteErrorBoundary>
-          )}
+            )}
 
-          {page === 'orgtree' && (
-            <OrgTree
-              toast={toast}
-              onRegisterPerson={isAdmin ? handleRegisterPerson : undefined}
-              onViewProfile={(pid, ctx) => handleViewProfile(pid, ctx)}
-              onViewUnregisteredProfile={uid => {
-                if (isMember && !canViewProfile(uid, true)) return
-                goProfile(uid, null, true, 'orgtree')
-              }}
-              viewOnly={isMember}
-              allowedGroups={isMember ? memberYouthGroups : null}
-            />
-          )}
+            {page === 'profile' && (
+              <ProfileRouteErrorBoundary resetKey={`${selectedPid}-${isUnregistered ? 'unreg' : 'reg'}`} onBack={goBack}>
+                <Profile
+                  personId={selectedPid}
+                  isUnregistered={isUnregistered}
+                  onBack={goBack}
+                  toast={toast}
+                  orgContext={orgContext}
+                  onViewProfile={(pid, unreg) => goProfile(pid, null, !!unreg, page)}
+                  onPromoted={handlePromoted}
+                  currentUser={effectiveUser}
+                  // Council members or impersonating admin viewing others → read-only
+                  readOnly={!!(viewAsUser) || (isMember && String(selectedPid) !== String(effectiveUser?.person_id))}
+                />
+              </ProfileRouteErrorBoundary>
+            )}
 
-          {isCouncil && page === 'council_members' && (
-            <CouncilMembers
-              councilAccess={councilAccess}
-              currentUser={effectiveUser}
-              onSelectPerson={pid => goProfile(pid, null, false, 'council_members')}
-              onSelectUnregistered={uid => goProfile(uid, null, true, 'council_members')}
-              toast={toast}
-            />
-          )}
+            {page === 'orgtree' && (
+              <OrgTree
+                toast={toast}
+                onRegisterPerson={isAdmin ? handleRegisterPerson : undefined}
+                onViewProfile={(pid, ctx) => handleViewProfile(pid, ctx)}
+                onViewUnregisteredProfile={uid => {
+                  if (isMember && !canViewProfile(uid, true)) return
+                  goProfile(uid, null, true, 'orgtree')
+                }}
+                viewOnly={isMember}
+                allowedGroups={isMember ? memberYouthGroups : null}
+              />
+            )}
 
-          {isAdmin && page === 'general_secretariat' && (
-            <GeneralSecretariatTree
-              toast={toast}
-              onRegisterPerson={isAdmin ? handleRegisterPerson : undefined}
-              onViewProfile={(pid, ctx) => goProfile(pid, ctx, false, 'general_secretariat')}
-              onViewUnregisteredProfile={uid => {
-                goProfile(uid, null, true, 'general_secretariat')
-              }}
-              viewOnly={false}
-            />
-          )}
+            {isCouncil && page === 'council_members' && (
+              <CouncilMembers
+                councilAccess={councilAccess}
+                currentUser={effectiveUser}
+                onSelectPerson={pid => goProfile(pid, null, false, 'council_members')}
+                onSelectUnregistered={uid => goProfile(uid, null, true, 'council_members')}
+                toast={toast}
+              />
+            )}
 
-          {isAdmin && page === 'users' && <UserManagement toast={toast}/>}
+            {isAdmin && page === 'general_secretariat' && (
+              <GeneralSecretariatTree
+                toast={toast}
+                onRegisterPerson={isAdmin ? handleRegisterPerson : undefined}
+                onViewProfile={(pid, ctx) => goProfile(pid, ctx, false, 'general_secretariat')}
+                onViewUnregisteredProfile={uid => {
+                  goProfile(uid, null, true, 'general_secretariat')
+                }}
+                viewOnly={false}
+              />
+            )}
 
-          {isAdmin && page === 'questionnaires' && (
-            <Questionnaire toast={toast} />
-          )}
+            {isAdmin && page === 'users' && <UserManagement toast={toast}/>}
 
-          {isAdmin && page === 'youth_groups' && (
-            <YouthGroupAdmin toast={toast} />
-          )}
+            {isAdmin && page === 'questionnaires' && (
+              <Questionnaire toast={toast} />
+            )}
 
-          {page === 'churches_map' && (
-            <ChurchesMap toast={toast} />
-          )}
+            {isAdmin && page === 'youth_groups' && (
+              <YouthGroupAdmin toast={toast} />
+            )}
 
-          {isAdmin && page === 'people_locations_map' && (
-            <PeopleLocationsMap toast={toast} />
-          )}
+            {page === 'churches_map' && (
+              <ChurchesMap toast={toast} />
+            )}
 
-          {isAdmin && page === 'data_workbook' && (
-            <DataWorkbookAdmin toast={toast} />
-          )}
+            {isAdmin && page === 'people_locations_map' && (
+              <PeopleLocationsMap toast={toast} />
+            )}
 
-          {page === 'bible_reader' && (
-            <BibleReader toast={toast} externalTarget={bibleReaderTarget} />
-          )}
+            {isAdmin && page === 'data_workbook' && (
+              <DataWorkbookAdmin toast={toast} />
+            )}
 
-          {isAdmin && page === 'config' && (
-            <Config toast={toast} />
-          )}
+            {page === 'bible_reader' && (
+              <BibleReader toast={toast} externalTarget={bibleReaderTarget} />
+            )}
 
-          {isMember && page === 'my_questions' && (
-            <MyQuestions
-              toast={toast}
-              onNavigate={(p) => navigate(p)}
-            />
-          )}
+            {isAdmin && page === 'config' && (
+              <Config toast={toast} />
+            )}
+
+            {isMember && page === 'my_questions' && (
+              <MyQuestions
+                toast={toast}
+                onNavigate={(p) => navigate(p)}
+              />
+            )}
+          </Suspense>
         </main>
       </div>
 
       {authUser?.role === 'admin' && showAdd && (
-        <AddMemberModal
-          onClose={() => { setShowAdd(false); setPrefill('') }}
-          onAdded={(pid) => { setShowAdd(false); setPrefill(''); goProfile(pid, null, false, 'members') }}
-          toast={toast}
-          prefillName={prefillName}
-        />
+        <Suspense fallback={<ModalLoader />}>
+          <AddMemberModal
+            onClose={() => { setShowAdd(false); setPrefill('') }}
+            onAdded={(pid) => { setShowAdd(false); setPrefill(''); goProfile(pid, null, false, 'members') }}
+            toast={toast}
+            prefillName={prefillName}
+          />
+        </Suspense>
       )}
 
       {/* ── View As Picker Modal ── */}

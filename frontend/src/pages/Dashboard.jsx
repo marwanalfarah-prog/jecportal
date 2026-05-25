@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { Users, Building2, GraduationCap, Briefcase, Globe, MapPin } from 'lucide-react'
 import { api } from '../api.js'
 import { buildMottoBibleReaderTarget, formatMottoTextWithSource } from '../mottoBibleReference.js'
+import { ErrorState, LoadingState } from '../pageStates.jsx'
 
 const COLORS = ['#0f2744','#1a3a5c','#2d5986','#c9963c','#e8b55a','#4a7fb5','#3d6a99','#9ba5bc','#6b778f','#4a5568']
 
@@ -67,20 +68,60 @@ export default function Dashboard({ onOpenBibleReference }) {
   const [ageData, setAge]       = useState([])
   const [mottoData, setMottoData] = useState([])
   const [loading, setLoading]   = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [animateCharts, setAnimateCharts] = useState(false)
 
-  useEffect(() => {
-    Promise.all([
-      api.stats(), api.chartGov(), api.chartGender(), api.chartYG(), api.chartAge(), api.listActiveMottos({ includeJecJordan: true })
-    ]).then(([s, g, ge, y, a, m]) => {
-      setStats(s); setGovData(g); setGender(ge); setYg(y); setAge(a)
+  const loadDashboard = useCallback(async () => {
+    setLoading(true)
+    setLoadError('')
+    setAnimateCharts(false)
+    try {
+      const [s, g, ge, y, a, m] = await Promise.all([
+        api.stats(),
+        api.chartGov(),
+        api.chartGender(),
+        api.chartYG(),
+        api.chartAge(),
+        api.listActiveMottos({ includeJecJordan: true }),
+      ])
+      setStats(s)
+      setGovData(g)
+      setGender(ge)
+      setYg(y)
+      setAge(a)
       setMottoData(Array.isArray(m?.mottos) ? m.mottos : [])
-      setLoading(false)
       requestAnimationFrame(() => setAnimateCharts(true))
-    })
+    } catch {
+      setLoadError('تعذر تحميل لوحة المعلومات حالياً. حاول مرة أخرى.')
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
-  if (loading) return <div className="loading-center"><div className="spinner" /></div>
+  useEffect(() => {
+    loadDashboard()
+  }, [loadDashboard])
+
+  if (loading) {
+    return (
+      <LoadingState
+        title="جارٍ تحميل لوحة المعلومات"
+        description="يتم جمع الإحصاءات والرسوم البيانية الآن."
+        minHeight={320}
+      />
+    )
+  }
+
+  if (loadError) {
+    return (
+      <ErrorState
+        title="تعذر تحميل لوحة المعلومات"
+        description={loadError}
+        onRetry={loadDashboard}
+        minHeight={320}
+      />
+    )
+  }
 
   return (
     <div>

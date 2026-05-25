@@ -57,7 +57,7 @@ def _normalize_chapters(chapters: list) -> list[dict]:
 
 
 def _bible_books_tree_path() -> str:
-    return os.path.join(S.db.data_dir, "bible_books.json")
+    return os.path.join(S.db.data_dir, "bible_books", "bible_books.json")
 
 
 def _bible_books_root_dir() -> str:

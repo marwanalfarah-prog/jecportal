@@ -1,6 +1,7 @@
-import { useDeferredValue, useEffect, useMemo, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { Users, Plus, Trash2, RefreshCw, X, Search, ShieldCheck, User, Download, Copy, Check, Pencil } from 'lucide-react'
 import { api } from '../api.js'
+import { EmptyState, ErrorState, LoadingState } from '../pageStates.jsx'
 
 function Badge({ children, color = 'navy' }) {
   const colors = {
@@ -162,6 +163,7 @@ function nameMatches(parts, queryWordGroups) {
 export default function UserManagement({ toast }) {
   const [users,   setUsers]   = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [search,  setSearch]  = useState('')
   const deferredSearch = useDeferredValue(search)
   const [showAdd, setShowAdd] = useState(false)
@@ -180,16 +182,23 @@ export default function UserManagement({ toast }) {
   const [newPw, setNewPw] = useState('')
   const [confirmPw, setConfirmPw] = useState('')
 
-  const load = () => {
+  const loadUsers = useCallback(async () => {
     setLoading(true)
-    api.listUsersBasic().then(d => { setUsers(d.users || []); setLoading(false) })
-      .catch(() => setLoading(false))
-  }
+    setLoadError('')
+    try {
+      const response = await api.listUsersBasic()
+      setUsers(response.users || [])
+    } catch {
+      setLoadError('تعذر تحميل قائمة المستخدمين حالياً. حاول مرة أخرى.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   const nameAliasLookup = useMemo(() => buildNameAliasLookup(nameVariations), [nameVariations])
 
   useEffect(() => {
-    load()
+    loadUsers()
     let canceled = false
     ;(async () => {
       try {
@@ -200,7 +209,7 @@ export default function UserManagement({ toast }) {
       }
     })()
     return () => { canceled = true }
-  }, [])
+  }, [loadUsers])
 
   const filtered = useMemo(() => {
     const q = normalizeArabic(deferredSearch)
@@ -238,7 +247,7 @@ export default function UserManagement({ toast }) {
       setShowAdd(false)
       setForm({ username: '', password: '', role: 'member', person_type: 'registered', person_id: '' })
       setFormErr('')
-      load()
+      loadUsers()
     } catch (e) {
       const msg = e.message?.includes('409') ? 'اسم المستخدم موجود مسبقاً' : 'حدث خطأ'
       setFormErr(msg)
@@ -247,9 +256,13 @@ export default function UserManagement({ toast }) {
 
   const handleDelete = async (username) => {
     if (!confirm(`حذف المستخدم "${username}"؟`)) return
-    await api.deleteUser(username)
-    toast('تم حذف المستخدم', 'success')
-    load()
+    try {
+      await api.deleteUser(username)
+      toast('تم حذف المستخدم', 'success')
+      loadUsers()
+    } catch {
+      toast('تعذر حذف المستخدم', 'error')
+    }
   }
 
   const openCredentialsModal = (username) => {
@@ -288,7 +301,7 @@ export default function UserManagement({ toast }) {
       setShowCreds(null)
       setNewPw('')
       setConfirmPw('')
-      load()
+      loadUsers()
     } catch (e) {
       if ((e.message || '').includes('409')) toast('اسم المستخدم موجود مسبقاً', 'error')
       else toast('تعذر تحديث بيانات الدخول', 'error')
@@ -297,10 +310,14 @@ export default function UserManagement({ toast }) {
 
   const handleGenerateAll = async () => {
     if (!confirm('إنشاء حسابات تلقائية لجميع الأعضاء الذين ليس لديهم حسابات؟')) return
-    const res = await api.generateAll()
-    setGenResult(res)
-    load()
-    toast(`تم إنشاء ${res.created} حساب جديد`, 'success')
+    try {
+      const res = await api.generateAll()
+      setGenResult(res)
+      loadUsers()
+      toast(`تم إنشاء ${res.created} حساب جديد`, 'success')
+    } catch {
+      toast('تعذر إنشاء الحسابات التلقائية', 'error')
+    }
   }
 
   const handleDownloadAllUsersExcel = async () => {
@@ -350,6 +367,27 @@ export default function UserManagement({ toast }) {
     URL.revokeObjectURL(url)
   }
 
+  if (loading) {
+    return (
+      <LoadingState
+        title="جارٍ تحميل المستخدمين"
+        description="يتم تجهيز حسابات المستخدمين وصلاحياتهم الآن."
+        minHeight={320}
+      />
+    )
+  }
+
+  if (loadError) {
+    return (
+      <ErrorState
+        title="تعذر تحميل المستخدمين"
+        description={loadError}
+        onRetry={loadUsers}
+        minHeight={320}
+      />
+    )
+  }
+
   return (
     <div>
       {/* Header row */}
@@ -397,8 +435,13 @@ export default function UserManagement({ toast }) {
 
       {/* Table */}
       <div className="card">
-        {loading ? (
-          <div style={{ padding: 40, textAlign: 'center' }}><div className="spinner"/></div>
+        {!filtered.length ? (
+          <EmptyState
+            title={search.trim() ? 'لا توجد نتائج' : 'لا يوجد مستخدمون بعد'}
+            description={search.trim() ? 'جرّب تعديل كلمات البحث للوصول إلى المستخدم المطلوب.' : 'أنشئ أول مستخدم ليظهر هنا.'}
+            icon={Users}
+            minHeight={220}
+          />
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.87rem' }}>
             <thead>
@@ -446,9 +489,6 @@ export default function UserManagement({ toast }) {
                   </td>
                 </tr>
               ))}
-              {!filtered.length && (
-                <tr><td colSpan={6} style={{ padding: 32, textAlign: 'center', color: '#9ba5bc' }}>لا توجد نتائج</td></tr>
-              )}
             </tbody>
           </table>
         )}

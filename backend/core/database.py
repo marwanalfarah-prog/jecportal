@@ -67,6 +67,9 @@ WORKBOOK_COLUMN_RENAMES: dict[str, dict[str, str]] = {
     "churches": {
         "id": "church_id",
     },
+    "youth_group_social_media": {
+        "id": "youth_group_social_media_id",
+    },
     "youth_group_special_logos": {
         "id": "special_logo_id",
         "file_name": "logo_file_name",
@@ -82,7 +85,7 @@ class Database:
     def __init__(self, backend_file: str):
         self.backend_dir = os.path.dirname(backend_file)
         self.workspace_dir = os.path.abspath(os.path.join(self.backend_dir, ".."))
-        self.data_dir = os.path.join(self.backend_dir, "data")
+        self.data_dir = os.path.join(self.workspace_dir, "data")
 
         self.secret_key_path = os.path.join(self.data_dir, ".secret_key")
         self.excel_path = os.path.join(self.data_dir, "JECJordanData.xlsx")
@@ -95,7 +98,6 @@ class Database:
         self.auth_sheet = "auth_users"
         self.auth_columns = ["person_id", "username", "password_hash", "role"]
         self.legacy_auth_path = os.path.join(self.data_dir, "auth_users.json")
-        self.auth_backup_path = os.path.join(self.data_dir, "auth_users_backup.json")
         self.promotions_path = os.path.join(self.data_dir, "promotions.json")
         self.questionnaires_path = os.path.join(self.data_dir, "questionnaires.json")
         self.notifications_path = os.path.join(self.data_dir, "notifications.json")
@@ -300,6 +302,10 @@ class Database:
                         df = xf.parse(sheet, dtype={"id": str, "parish_id": str, "patron_saint": str, "area": str, "lpj_url": str, "facebook_url": str, "instagram_url": str, "linkedin_url": str, "region": str, "governorate": str})
                     elif sheet == "churches":
                         df = xf.parse(sheet, dtype={"id": str, "church_id": str, "parish_id": str, "patron_saint": str, "area": str, "lat": float, "lng": float})
+                    elif sheet == "youth_group_social_media":
+                        df = xf.parse(sheet, dtype={"youth_group_id": str, "id": str, "youth_group_social_media_id": str, "platform": str, "url": str, "age_groups": str})
+                    elif sheet == "youth_group_social_media_ages":
+                        df = xf.parse(sheet, dtype={"id": str, "youth_group_social_media_id": str, "age_group": str})
                     elif sheet == "youth_group_special_logos":
                         df = xf.parse(sheet, dtype={"youth_group_id": str, "id": str, "special_logo_id": str, "occasion": str, "start_date": str, "end_date": str, "file_name": str, "logo_file_name": str})
                     elif sheet == "jobs":
@@ -400,9 +406,6 @@ class Database:
             })
         return users
 
-    def _save_auth_backup(self, users: list[dict]):
-        self.save_json_file(self.auth_backup_path, {"users": users})
-
     def load_auth(self) -> dict:
         users: list[dict] = []
         workbook_error: zipfile.BadZipFile | None = None
@@ -420,26 +423,12 @@ class Database:
                 workbook_error = exc
 
         if users:
-            self._save_auth_backup(users)
             return {"users": users}
 
-        fallback_paths = [self.auth_backup_path, self.legacy_auth_path]
-        source_path = None
-        for path in fallback_paths:
-            if not os.path.exists(path):
-                continue
-            fallback_users = self._load_auth_json_users(path)
-            if not fallback_users:
-                continue
-            users = fallback_users
-            source_path = path
-            break
+        if os.path.exists(self.legacy_auth_path):
+            users = self._load_auth_json_users(self.legacy_auth_path)
 
         if users:
-            if source_path == self.auth_backup_path:
-                return {"users": users}
-
-            self._save_auth_backup(users)
             if workbook_error is None:
                 self.save_auth({"users": users})
                 try:
@@ -471,7 +460,6 @@ class Database:
 
         df = pd.DataFrame(users, columns=self.auth_columns)
         self._write_sheets_atomically({self.auth_sheet: df})
-        self._save_auth_backup(users)
 
     def load_promotions(self) -> dict:
         return self.load_json_file(self.promotions_path, {"promotions": []})

@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { CheckCircle, ChevronLeft, ChevronRight, Send, ExternalLink, FileText, Star } from 'lucide-react'
 import { api } from '../api.js'
+import { EmptyState, ErrorState, LoadingState } from '../pageStates.jsx'
 
 const S = {
   input: {
@@ -326,22 +327,59 @@ function QuestionnaireTaker({ questionnaire, onDone, onNavigate, toast }) {
 export default function MyQuestions({ toast, onNavigate }) {
   const [questionnaires, setQs] = useState([])
   const [loading, setLoading]   = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [active, setActive]     = useState(null)
 
+  const loadQuestionnaires = useCallback(async ({ silent = false } = {}) => {
+    setLoading(true)
+    setLoadError('')
+    try {
+      const response = await api.listMyQuestionnaires()
+      setQs(response.questionnaires || [])
+    } catch {
+      setLoadError('تعذر تحميل الاستبيانات الموجّهة إليك حالياً. حاول مرة أخرى.')
+      if (!silent) toast?.('تعذر تحميل الاستبيانات', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }, [toast])
+
   useEffect(() => {
-    api.listMyQuestionnaires()
-      .then(d => { setQs(d.questionnaires || []); setLoading(false) })
-      .catch(() => setLoading(false))
-  }, [])
+    loadQuestionnaires({ silent: true })
+  }, [loadQuestionnaires])
 
   if (active) return (
     <QuestionnaireTaker
       questionnaire={active}
-      onDone={() => { setActive(null); api.listMyQuestionnaires().then(d => setQs(d.questionnaires||[])) }}
+      onDone={() => {
+        setActive(null)
+        loadQuestionnaires({ silent: true })
+      }}
       onNavigate={onNavigate}
       toast={toast}
     />
   )
+
+  if (loading) {
+    return (
+      <LoadingState
+        title="جارٍ تحميل الاستبيانات"
+        description="يتم تجهيز الاستبيانات الموجّهة إليك الآن."
+        minHeight={320}
+      />
+    )
+  }
+
+  if (loadError) {
+    return (
+      <ErrorState
+        title="تعذر تحميل الاستبيانات"
+        description={loadError}
+        onRetry={() => loadQuestionnaires()}
+        minHeight={320}
+      />
+    )
+  }
 
   return (
     <div>
@@ -350,14 +388,13 @@ export default function MyQuestions({ toast, onNavigate }) {
         <p style={{ color: '#9ba5bc', fontSize: '0.82rem', margin: '4px 0 0' }}>الاستبيانات الموجّهة إليك من الإدارة</p>
       </div>
 
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 60 }}><div className="spinner" /></div>
-      ) : questionnaires.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px', background: 'white', borderRadius: 12, border: '1px solid #e2e6ef', color: '#9ba5bc' }}>
-          <FileText size={40} style={{ marginBottom: 12, opacity: 0.4 }} />
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>لا توجد استبيانات الآن</div>
-          <div style={{ fontSize: '0.85rem' }}>ستظهر هنا الاستبيانات الموجّهة إليك</div>
-        </div>
+      {questionnaires.length === 0 ? (
+        <EmptyState
+          title="لا توجد استبيانات الآن"
+          description="ستظهر هنا الاستبيانات الموجّهة إليك عند توفرها."
+          icon={FileText}
+          minHeight={260}
+        />
       ) : questionnaires.map(q => (
         <div key={q.id}
           style={{ background: 'white', borderRadius: 12, border: '1.5px solid #e2e6ef', marginBottom: 12, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16, cursor: 'pointer', transition: '0.15s' }}

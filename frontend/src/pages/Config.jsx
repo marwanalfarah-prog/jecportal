@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Plus, Trash2, Save, RotateCcw, ImagePlus, Pencil, X, Search, ChevronDown, Award, Users, Building2, Languages, CalendarRange, Target, BookOpen, GraduationCap, MapPin } from 'lucide-react'
 import { api } from '../api.js'
 import { formatMottoSource } from '../mottoBibleReference.js'
+import { ErrorState, LoadingState } from '../pageStates.jsx'
 import ChurchesAdmin from './ChurchesAdmin.jsx'
 
 function cleanText(value) {
@@ -9,25 +10,56 @@ function cleanText(value) {
   return text
 }
 
-const VERSE_SEGMENT_RE = /^\s*(\d+)\s*:\s*(\d+)\s*(?:-\s*(?:(\d+)\s*:\s*)?(\d+))?\s*$/
+function convertArabicDigitsToLatin(value) {
+  return String(value ?? '').replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+}
+
+function normalizeVerseId(value) {
+  return convertArabicDigitsToLatin(String(value ?? ''))
+    .replace(/\s+/g, '')
+    .trim()
+}
+
+function parseVerseId(value) {
+  const verseId = normalizeVerseId(value)
+  const match = verseId.match(/^(\d+)(.*)$/)
+  if (!match) return null
+
+  const number = Number(match[1])
+  if (!number) return null
+
+  return {
+    value: verseId,
+    number,
+    suffix: match[2] || '',
+  }
+}
+
+function compareVerseIds(left, right) {
+  if (!left || !right) return null
+  if (left.number !== right.number) return left.number - right.number
+  return left.suffix.localeCompare(right.suffix, 'ar')
+}
+
+const VERSE_SEGMENT_RE = /^\s*(\d+)\s*:\s*([^\s,:-]+)\s*(?:-\s*(?:(\d+)\s*:\s*)?([^\s,:-]+))?\s*$/
 
 function parseVerseSegment(segmentText) {
-  const text = cleanText(segmentText)
+  const text = convertArabicDigitsToLatin(cleanText(segmentText))
   if (!text) return null
   const match = text.match(VERSE_SEGMENT_RE)
   if (!match) return null
 
   const startChapter = Number(match[1])
-  const startVerse = Number(match[2])
+  const startVerse = parseVerseId(match[2])
   const endChapter = Number(match[3] || match[1])
-  const endVerse = Number(match[4] || match[2])
+  const endVerse = parseVerseId(match[4] || match[2])
   if (!startChapter || !startVerse || !endChapter || !endVerse) return null
   if (endChapter < startChapter) return null
-  if (endChapter === startChapter && endVerse < startVerse) return null
+  if (endChapter === startChapter && compareVerseIds(startVerse, endVerse) > 0) return null
 
   return {
-    start: { chapter: startChapter, verse: startVerse },
-    end: { chapter: endChapter, verse: endVerse },
+    start: { chapter: startChapter, verse: startVerse.value },
+    end: { chapter: endChapter, verse: endVerse.value },
   }
 }
 
@@ -35,13 +67,13 @@ function renderVerseSegment(segment) {
   const start = segment?.start || {}
   const end = segment?.end || {}
   const sc = Number(start?.chapter)
-  const sv = Number(start?.verse)
+  const sv = parseVerseId(start?.verse)
   const ec = Number(end?.chapter)
-  const ev = Number(end?.verse)
+  const ev = parseVerseId(end?.verse)
   if (!sc || !sv || !ec || !ev) return ''
-  if (sc === ec && sv === ev) return `${sc}: ${sv}`
-  if (sc === ec) return `${sc}: ${sv}-${ev}`
-  return `${sc}: ${sv}-${ec}: ${ev}`
+  if (sc === ec && sv.value === ev.value) return `${sc}: ${sv.value}`
+  if (sc === ec) return `${sc}: ${sv.value}-${ev.value}`
+  return `${sc}: ${sv.value}-${ec}: ${ev.value}`
 }
 
 function verseTextFromData(verse) {
@@ -60,7 +92,7 @@ function validateVersesInput(value) {
   if (!parts.length) return { valid: false, message: 'يرجى إدخال أرقام الآيات' }
   for (const part of parts) {
     if (!parseVerseSegment(part)) {
-      return { valid: false, message: 'صيغة الآيات غير صحيحة. مثال: 3:15 أو 3:15-16 أو 3:15-4:2' }
+      return { valid: false, message: 'صيغة الآيات غير صحيحة. مثال: 1:1ب أو 3:15-16 أو 3:15-4:2' }
     }
   }
   return { valid: true, message: '' }
@@ -348,6 +380,7 @@ export default function Config({ toast }) {
   const [saving, setSaving] = useState(false)
   const [activeTab, setActiveTab] = useState('general')
   const [activeJecYear, setActiveJecYear] = useState('')
+  const [loadError, setLoadError] = useState('')
   const [rows, setRows] = useState([])
   const [personTitles, setPersonTitles] = useState([])
   const [schoolBranches, setSchoolBranches] = useState({})
@@ -534,6 +567,7 @@ export default function Config({ toast }) {
 
   const loadConfig = async () => {
     setLoading(true)
+    setLoadError('')
     try {
       const [response, filtersResponse] = await Promise.all([api.getConfig(), api.filters()])
       const nameVariations = normalizeMap(response?.config?.name_variations || {})
@@ -553,6 +587,7 @@ export default function Config({ toast }) {
       setSelectedSchoolName('')
       setSchoolBranchInput('')
     } catch {
+      setLoadError('تعذر تحميل الإعدادات الأساسية حالياً. حاول مرة أخرى.')
       toast?.('تعذر تحميل الإعدادات', 'error')
     } finally {
       setLoading(false)
@@ -572,8 +607,14 @@ export default function Config({ toast }) {
     }
   }
 
+  const reloadPageData = () => {
+    loadConfig()
+    loadMottosData()
+    loadSchoolLogos()
+  }
+
   useEffect(() => {
-    Promise.all([loadConfig(), loadMottosData(), loadSchoolLogos()])
+    reloadPageData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -1007,7 +1048,26 @@ export default function Config({ toast }) {
     }
   }
 
-  if (loading || mottosLoading || schoolLogosLoading) return <div className="loading-center"><div className="spinner" /></div>
+  if (loading || mottosLoading || schoolLogosLoading) {
+    return (
+      <LoadingState
+        title="جارٍ تحميل الإعدادات"
+        description="يتم تجهيز الإعدادات الأساسية والشعارات والبيانات المساندة الآن."
+        minHeight={320}
+      />
+    )
+  }
+
+  if (loadError) {
+    return (
+      <ErrorState
+        title="تعذر تحميل الإعدادات"
+        description={loadError}
+        onRetry={reloadPageData}
+        minHeight={320}
+      />
+    )
+  }
 
   const activeTabMeta = configTabs.find((tab) => tab.id === activeTab) || configTabs[0]
   const ActiveTabIcon = activeTabMeta.icon

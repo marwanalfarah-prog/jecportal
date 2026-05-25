@@ -92,10 +92,6 @@ def _load_auth() -> dict:
             if _auth_cache_data is not None:
                 cached_payload = deepcopy(_auth_cache_data)
         if cached_payload is not None:
-            try:
-                S.db.save_json_file(S.db.auth_backup_path, cached_payload)
-            except Exception:
-                pass
             return cached_payload
         raise
     reg_person_ids: set[str] = set()

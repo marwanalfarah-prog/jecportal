@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { Search, Users, UserCheck, ArrowUpCircle, CheckCircle, XCircle, RefreshCw, Clock, ChevronLeft, ChevronRight, Trash2, Archive } from 'lucide-react'
 import { api } from '../api.js'
+import { ErrorState, LoadingState } from '../pageStates.jsx'
 
 // ── Arabic helpers ────────────────────────────────────────────────────────────
 function normalizeWord(w) {
@@ -510,6 +511,7 @@ export default function CouncilMembers({ councilAccess, currentUser, onSelectPer
   const [allUnreg,     setUnreg]      = useState([])
   const [promotions,   setPromotions] = useState([])
   const [loading,      setLoading]    = useState(true)
+  const [loadError,    setLoadError]  = useState('')
   const [promoLoading, setPromoLoad]  = useState(false)
   const [scanning,     setScanning]   = useState(false)
   const [groupLabels,  setGroupLabels]= useState({})
@@ -527,6 +529,7 @@ export default function CouncilMembers({ councilAccess, currentUser, onSelectPer
 
   const load = useCallback(() => {
     setLoading(true)
+    setLoadError('')
     Promise.all([api.personsEnriched(), api.getUnregistered(), api.listPromotions(), api.filters(), api.getConfig()])
       .then(([enriched, unreg, pd, fd, cfg]) => {
         setEnriched(enriched)
@@ -540,7 +543,10 @@ export default function CouncilMembers({ councilAccess, currentUser, onSelectPer
         setGroupLabels(labels)
         setLoading(false)
       })
-      .catch(() => setLoading(false))
+      .catch(() => {
+        setLoadError('تعذر تحميل بيانات مجلس الفرقة حالياً. حاول مرة أخرى.')
+        setLoading(false)
+      })
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -721,7 +727,26 @@ export default function CouncilMembers({ councilAccess, currentUser, onSelectPer
     }
   }
 
-  if (loading) return <div className="loading-center"><div className="spinner"/></div>
+  if (loading) {
+    return (
+      <LoadingState
+        title="جارٍ تحميل بيانات المجلس"
+        description="يتم تجهيز الأعضاء والترفيعات الخاصة بالمجلس الآن."
+        minHeight={320}
+      />
+    )
+  }
+
+  if (loadError) {
+    return (
+      <ErrorState
+        title="تعذر تحميل بيانات المجلس"
+        description={loadError}
+        onRetry={load}
+        minHeight={320}
+      />
+    )
+  }
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (

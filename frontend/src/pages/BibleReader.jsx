@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search, BookOpen, Hash } from 'lucide-react'
 import { api } from '../api.js'
+import { EmptyState, ErrorState, LoadingState } from '../pageStates.jsx'
 import './BibleReader.css'
 
 const AR_DIGITS = '٠١٢٣٤٥٦٧٨٩'
@@ -113,82 +114,212 @@ function getChapterByNumber(book, chapterNumber) {
   return book.chapters.find((ch) => Number(ch?.n) === Number(chapterNumber)) || null
 }
 
-function chapterVerseExists(book, chapterNumber, verseNumber) {
-  const chapter = getChapterByNumber(book, chapterNumber)
-  if (!chapter || !Array.isArray(chapter.s)) return false
+function getBookName(bookLike, fallback = '') {
+  const name = String(bookLike?.name || bookLike?.bookName || '').trim()
+  if (name) return name
 
-  for (const section of chapter.s) {
-    if (!section || typeof section !== 'object') continue
-    const verses = section.v && typeof section.v === 'object' ? section.v : {}
-    if (Object.prototype.hasOwnProperty.call(verses, String(verseNumber))) return true
-  }
-  return false
+  const bookId = String(bookLike?.book_id || bookLike?.id || fallback || '').trim()
+  return bookId
 }
 
-function collectCrossChapterRange(book, c1, v1, c2, v2) {
-  const out = []
-  if (!book || !Array.isArray(book.chapters)) return out
+function getBookAbbr(bookLike) {
+  return String(bookLike?.abbr || '').trim()
+}
 
-  for (const chapter of book.chapters) {
-    const chapterNum = Number(chapter?.n)
-    if (!Number.isFinite(chapterNum)) continue
-    if (chapterNum < c1 || chapterNum > c2) continue
+function formatBookLabel(bookLike, fallback = '—') {
+  const name = getBookName(bookLike, fallback)
+  const abbr = getBookAbbr(bookLike)
+  if (name && abbr) return `${name} (${abbr})`
+  return name || abbr || fallback
+}
 
-    const verses = []
-    for (const section of (Array.isArray(chapter.s) ? chapter.s : [])) {
-      const row = section?.v && typeof section.v === 'object' ? section.v : {}
-      for (const key of Object.keys(row)) {
-        const verseNum = Number(key)
-        if (Number.isFinite(verseNum)) verses.push(verseNum)
+function buildQuickGuide(tree) {
+  if (!Array.isArray(tree)) return []
+
+  return tree
+    .map((testament, testamentIndex) => {
+      const rows = []
+
+      const visitSection = (section, path = []) => {
+        if (!section || typeof section !== 'object') return
+
+        const sectionName = String(section?.name || '').trim()
+        const nextPath = sectionName ? [...path, sectionName] : path
+        const books = (Array.isArray(section?.books) ? section.books : [])
+          .map((book, index) => {
+            const bookId = String(book?.book_id || book?.id || `${testamentIndex}-${index}`).trim()
+            const name = getBookName(book, bookId)
+            const abbr = getBookAbbr(book)
+            if (!name && !abbr) return null
+            return {
+              id: bookId || `${testamentIndex}-${index}`,
+              name: name || bookId,
+              abbr,
+            }
+          })
+          .filter(Boolean)
+
+        if (books.length) {
+          rows.push({
+            key: `${String(testament?.id || testamentIndex)}-${nextPath.join('|') || 'root'}`,
+            path: nextPath,
+            books,
+          })
+        }
+
+        for (const subsection of Array.isArray(section?.subsections) ? section.subsections : []) {
+          visitSection(subsection, nextPath)
+        }
       }
-    }
 
-    verses.sort((a, b) => a - b)
-    for (const verseNum of verses) {
-      if (chapterNum === c1 && verseNum < v1) continue
-      if (chapterNum === c2 && verseNum > v2) continue
-      out.push({ chapter: chapterNum, verse: verseNum })
+      for (const section of Array.isArray(testament?.sections) ? testament.sections : []) {
+        visitSection(section)
+      }
+
+      return {
+        id: String(testament?.id || testamentIndex),
+        name: String(testament?.name || '—'),
+        rows,
+      }
+    })
+    .filter((testament) => testament.rows.length)
+}
+
+function normalizeVerseId(value) {
+  return convertArabicDigitsToLatin(String(value || ''))
+    .replace(/\s+/g, '')
+    .trim()
+}
+
+function getChapterVerseIds(chapter) {
+  const out = []
+  const seen = new Set()
+
+  for (const section of (Array.isArray(chapter?.s) ? chapter.s : [])) {
+    const verses = section?.v && typeof section.v === 'object' ? section.v : {}
+    for (const rawVerseId of Object.keys(verses)) {
+      const verseId = normalizeVerseId(rawVerseId)
+      if (!verseId || seen.has(verseId)) continue
+      seen.add(verseId)
+      out.push(verseId)
     }
   }
 
   return out
 }
 
+function collectChapterRange(book, chapterNumber, startVerseId, endVerseId) {
+  const chapter = getChapterByNumber(book, chapterNumber)
+  if (!chapter) return null
+
+  const verseIds = getChapterVerseIds(chapter)
+  const startId = normalizeVerseId(startVerseId)
+  const endId = normalizeVerseId(endVerseId)
+  if (!startId || !endId) return null
+
+  const startIndex = verseIds.indexOf(startId)
+  const endIndex = verseIds.indexOf(endId)
+  if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) return null
+
+  return verseIds.slice(startIndex, endIndex + 1).map((verse) => ({
+    chapter: chapterNumber,
+    verse,
+  }))
+}
+
+function chapterVerseExists(book, chapterNumber, verseNumber) {
+  const chapter = getChapterByNumber(book, chapterNumber)
+  const verseId = normalizeVerseId(verseNumber)
+  if (!chapter || !verseId) return false
+  return getChapterVerseIds(chapter).includes(verseId)
+}
+
+function collectCrossChapterRange(book, c1, v1, c2, v2) {
+  if (!book || !Array.isArray(book.chapters)) return null
+
+  if (c2 < c1) return null
+  if (c1 === c2) {
+    return collectChapterRange(book, c1, v1, v2)
+  }
+
+  const out = []
+  const startVerseId = normalizeVerseId(v1)
+  const endVerseId = normalizeVerseId(v2)
+  if (!startVerseId || !endVerseId) return null
+
+  for (const chapter of book.chapters) {
+    const chapterNum = Number(chapter?.n)
+    if (!Number.isFinite(chapterNum)) continue
+    if (chapterNum < c1 || chapterNum > c2) continue
+
+    const verseIds = getChapterVerseIds(chapter)
+    if (!verseIds.length) continue
+
+    if (chapterNum === c1) {
+      const startIndex = verseIds.indexOf(startVerseId)
+      if (startIndex === -1) return null
+      out.push(...verseIds.slice(startIndex).map((verse) => ({ chapter: chapterNum, verse })))
+      continue
+    }
+
+    if (chapterNum === c2) {
+      const endIndex = verseIds.indexOf(endVerseId)
+      if (endIndex === -1) return null
+      out.push(...verseIds.slice(0, endIndex + 1).map((verse) => ({ chapter: chapterNum, verse })))
+      continue
+    }
+
+    out.push(...verseIds.map((verse) => ({ chapter: chapterNum, verse })))
+  }
+
+  return out.length ? out : null
+}
+
 function parseReferenceExpression(book, expression) {
-  const parts = String(expression || '').split(',').map((part) => part.trim()).filter(Boolean)
+  const normalizedExpression = convertArabicDigitsToLatin(expression)
+  const parts = String(normalizedExpression || '')
+    .split(/[،,؛;]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
   if (!parts.length) return null
 
   const refs = []
   let lastChapter = null
 
   for (const part of parts) {
-    const cross = part.match(/^(\d+):(\d+)-(\d+):(\d+)$/)
+    const cross = part.match(/^(\d+)\s*:\s*([^\s,:-]+)\s*-\s*(\d+)\s*:\s*([^\s,:-]+)$/)
     if (cross) {
       const c1 = Number(cross[1])
-      const v1 = Number(cross[2])
+      const v1 = normalizeVerseId(cross[2])
       const c2 = Number(cross[3])
-      const v2 = Number(cross[4])
-      refs.push(...collectCrossChapterRange(book, c1, v1, c2, v2))
+      const v2 = normalizeVerseId(cross[4])
+      const range = collectCrossChapterRange(book, c1, v1, c2, v2)
+      if (!range?.length) return null
+      refs.push(...range)
       lastChapter = c2
       continue
     }
 
-    const sameChapter = part.match(/^(\d+):(\d+)(?:-(\d+))?$/)
+    const sameChapter = part.match(/^(\d+)\s*:\s*([^\s,:-]+)(?:\s*-\s*([^\s,:-]+))?$/)
     if (sameChapter) {
       const chapter = Number(sameChapter[1])
-      const v1 = Number(sameChapter[2])
-      const v2 = Number(sameChapter[3] || sameChapter[2])
-      for (let v = v1; v <= v2; v += 1) refs.push({ chapter, verse: v })
+      const v1 = normalizeVerseId(sameChapter[2])
+      const v2 = normalizeVerseId(sameChapter[3] || sameChapter[2])
+      const range = collectChapterRange(book, chapter, v1, v2)
+      if (!range?.length) return null
+      refs.push(...range)
       lastChapter = chapter
       continue
     }
 
     if (lastChapter !== null) {
-      const onlyVerses = part.match(/^(\d+)(?:-(\d+))?$/)
+      const onlyVerses = part.match(/^([^\s,:-]+)(?:\s*-\s*([^\s,:-]+))?$/)
       if (onlyVerses) {
-        const v1 = Number(onlyVerses[1])
-        const v2 = Number(onlyVerses[2] || onlyVerses[1])
-        for (let v = v1; v <= v2; v += 1) refs.push({ chapter: lastChapter, verse: v })
+        const v1 = normalizeVerseId(onlyVerses[1])
+        const v2 = normalizeVerseId(onlyVerses[2] || onlyVerses[1])
+        const range = collectChapterRange(book, lastChapter, v1, v2)
+        if (!range?.length) return null
+        refs.push(...range)
         continue
       }
     }
@@ -199,9 +330,33 @@ function parseReferenceExpression(book, expression) {
   return refs
 }
 
+function resolveReferenceQuery(raw, aliases) {
+  const normalizedDigits = convertArabicDigitsToLatin(raw)
+  const compact = String(normalizedDigits || '').replace(/\s+/g, ' ').trim()
+  if (!compact) return null
+
+  const tokens = compact.split(' ')
+  for (let splitIndex = tokens.length - 1; splitIndex >= 1; splitIndex -= 1) {
+    const bookLabel = tokens.slice(0, splitIndex).join(' ').trim()
+    const expression = tokens.slice(splitIndex).join(' ').trim()
+    if (!bookLabel || !expression) continue
+
+    const normalizedBookLabel = normalizeArabic(bookLabel)
+    if (!normalizedBookLabel) continue
+
+    const bookId = aliases[normalizedBookLabel] || aliases[normalizedBookLabel.replace(/\s+/g, '')]
+    if (bookId) {
+      return { bookId, expression }
+    }
+  }
+
+  return null
+}
+
 export default function BibleReader({ toast, externalTarget }) {
   const [booksMeta, setBooksMeta] = useState([])
   const [booksTree, setBooksTree] = useState([])
+  const [mainTab, setMainTab] = useState('reader')
   const [activeBookId, setActiveBookId] = useState('')
   const [activeChapterIndex, setActiveChapterIndex] = useState(0)
   const [highlightVerses, setHighlightVerses] = useState([])
@@ -209,8 +364,10 @@ export default function BibleReader({ toast, externalTarget }) {
   const [searchResult, setSearchResult] = useState(null)
   const [referenceText, setReferenceText] = useState('')
   const [loadingBooks, setLoadingBooks] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [viewMode, setViewMode] = useState('chapter')
   const [multiChapterView, setMultiChapterView] = useState(null)
+  const [reloadKey, setReloadKey] = useState(0)
 
   const booksCacheRef = useRef({})
 
@@ -228,6 +385,8 @@ export default function BibleReader({ toast, externalTarget }) {
     () => booksMeta.filter((book) => !!book?.has_content),
     [booksMeta],
   )
+
+  const quickGuide = useMemo(() => buildQuickGuide(booksTree), [booksTree])
 
   const aliases = useMemo(() => {
     const map = {}
@@ -276,27 +435,24 @@ export default function BibleReader({ toast, externalTarget }) {
   useEffect(() => {
     let cancelled = false
     setLoadingBooks(true)
+    setLoadError('')
+    setActiveBookId('')
+    setActiveChapterIndex(0)
+    setHighlightVerses([])
+    setSearchResult(null)
+    setMultiChapterView(null)
 
     api.listBibleReaderBooks()
-      .then(async (res) => {
+      .then((res) => {
         if (cancelled) return
         const rows = Array.isArray(res?.books) ? res.books : []
         const tree = Array.isArray(res?.tree) ? res.tree : []
         setBooksMeta(rows)
         setBooksTree(tree)
-        if (!rows.length) return
-
-        const firstAvailableBook = rows.find((book) => !!book?.has_content)
-        const firstBookId = String(firstAvailableBook?.book_id || '')
-        if (!firstBookId) return
-
-        await ensureBookLoaded(firstBookId)
-        if (cancelled) return
-        setActiveBookId(firstBookId)
-        setActiveChapterIndex(0)
       })
       .catch(() => {
         if (cancelled) return
+        setLoadError('تعذر تحميل بيانات الكتاب المقدس حالياً. حاول مرة أخرى.')
         toast?.('تعذر تحميل بيانات الكتاب المقدس', 'error')
       })
       .finally(() => {
@@ -306,7 +462,7 @@ export default function BibleReader({ toast, externalTarget }) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [reloadKey, toast])
 
   useEffect(() => {
     const query = searchText.trim()
@@ -341,6 +497,7 @@ export default function BibleReader({ toast, externalTarget }) {
         const bookId = String(row?.book_id || '')
         const book = booksCacheRef.current[bookId]
         if (!book || !Array.isArray(book.chapters)) continue
+        const bookLabel = formatBookLabel(row || book, bookId)
 
         for (let ci = 0; ci < book.chapters.length; ci += 1) {
           const chapter = book.chapters[ci]
@@ -356,7 +513,7 @@ export default function BibleReader({ toast, externalTarget }) {
               const key = `${bookId}|${primaryHeading}`
               if (!seenTitles.has(key)) {
                 seenTitles.add(key)
-                titleHits.push({ bookId, chapterIndex: ci, chapterNum, heading: primaryHeading, bookName: row?.name || book?.name || bookId })
+                titleHits.push({ bookId, chapterIndex: ci, chapterNum, heading: primaryHeading, bookName: bookLabel })
               }
             }
 
@@ -365,20 +522,22 @@ export default function BibleReader({ toast, externalTarget }) {
               const key = `${bookId}|${chapterNum}|${sectionTitle}`
               if (!seenSections.has(key)) {
                 seenSections.add(key)
-                sectionHits.push({ bookId, chapterIndex: ci, chapterNum, sectionTitle, bookName: row?.name || book?.name || bookId })
+                sectionHits.push({ bookId, chapterIndex: ci, chapterNum, sectionTitle, bookName: bookLabel })
               }
             }
 
             const verses = section?.v && typeof section.v === 'object' ? section.v : {}
             for (const [verseNumber, verseText] of Object.entries(verses)) {
               if (!normalizeArabic(verseText).includes(nQuery)) continue
+              const verseId = normalizeVerseId(verseNumber)
+              if (!verseId) continue
               verseHits.push({
                 bookId,
                 chapterIndex: ci,
                 chapterNum,
-                verseNum: Number(verseNumber),
+                verseId,
                 verseText: String(verseText || ''),
-                bookName: row?.name || book?.name || bookId,
+                bookName: bookLabel,
               })
             }
           }
@@ -402,6 +561,7 @@ export default function BibleReader({ toast, externalTarget }) {
   const goToChapter = async (bookId, chapterIndex, verseNumbers = []) => {
     if (!booksMetaById[bookId]?.has_content) return
     await ensureBookLoaded(bookId)
+    setMainTab('reader')
     setActiveBookId(bookId)
     setActiveChapterIndex(chapterIndex)
     setHighlightVerses(verseNumbers)
@@ -449,10 +609,10 @@ export default function BibleReader({ toast, externalTarget }) {
     const byChapter = {}
     for (const ref of resolvedRefs) {
       const chapter = Number(ref?.chapter)
-      const verse = Number(ref?.verse)
+      const verse = normalizeVerseId(ref?.verse)
       if (!chapter || !verse) continue
       if (!byChapter[chapter]) byChapter[chapter] = []
-      byChapter[chapter].push(verse)
+      if (!byChapter[chapter].includes(verse)) byChapter[chapter].push(verse)
     }
 
     const chapterNumbers = Object.keys(byChapter).map(Number).sort((a, b) => a - b)
@@ -466,6 +626,7 @@ export default function BibleReader({ toast, externalTarget }) {
       const chapterIndex = book.chapters.findIndex((ch) => Number(ch?.n) === onlyChapter)
       await goToChapter(bookId, chapterIndex, byChapter[onlyChapter])
     } else {
+      setMainTab('reader')
       setActiveBookId(bookId)
       setViewMode('chapter')
       setHighlightVerses([])
@@ -483,20 +644,13 @@ export default function BibleReader({ toast, externalTarget }) {
     const raw = String(referenceText || '').trim()
     if (!raw) return
 
-    const normalizedDigits = convertArabicDigitsToLatin(raw)
-    const match = normalizedDigits.match(/^([^\s]+)\s+(.+)$/)
-    if (!match) {
+    const resolvedQuery = resolveReferenceQuery(raw, aliases)
+    if (!resolvedQuery) {
       toast?.('صيغة المرجع غير صحيحة', 'error')
       return
     }
 
-    const token = normalizeArabic(match[1])
-    const expression = match[2]
-    const bookId = aliases[token] || aliases[token.replace(/\s+/g, '')]
-    if (!bookId) {
-      toast?.('اسم السفر غير معروف', 'error')
-      return
-    }
+    const { bookId, expression } = resolvedQuery
 
     if (!booksMetaById[bookId]?.has_content) {
       toast?.('هذا السفر ظاهر في الفهرس لكنه غير متوفر بعد', 'error')
@@ -536,52 +690,123 @@ export default function BibleReader({ toast, externalTarget }) {
 
   if (loadingBooks) {
     return (
-      <div style={{ minHeight: 320, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div className="spinner" />
-      </div>
+      <LoadingState
+        title="جارٍ تحميل الكتاب المقدس"
+        description="يتم تجهيز الأسفار والبحث الآن."
+        minHeight={320}
+      />
     )
   }
 
-  const renderSectionNode = (section, depth = 0) => {
+  if (loadError) {
+    return (
+      <ErrorState
+        title="تعذر تحميل الكتاب المقدس"
+        description={loadError}
+        onRetry={() => setReloadKey((value) => value + 1)}
+        minHeight={320}
+      />
+    )
+  }
+
+  if (!availableBooksMeta.length) {
+    return (
+      <EmptyState
+        title="لا توجد أسفار متاحة حالياً"
+        description="لم يتم العثور على أسفار متاحة للقراءة في الوقت الحالي."
+        icon={BookOpen}
+        actionLabel="إعادة المحاولة"
+        onAction={() => setReloadKey((value) => value + 1)}
+        minHeight={320}
+      />
+    )
+  }
+
+  const renderSectionNode = (section, depth = 0, keyPrefix = '') => {
     const sectionId = String(section?.id || `section-${depth}`)
+    const nodeKey = keyPrefix ? `${keyPrefix}-${sectionId}` : sectionId
     const sectionName = String(section?.name || '—')
     const books = Array.isArray(section?.books) ? section.books : []
     const subsections = Array.isArray(section?.subsections) ? section.subsections : []
 
     return (
-      <details key={sectionId} className={`bible-tree-section depth-${depth}`} defaultOpen={depth === 0}>
+      <details key={nodeKey} className={`bible-tree-section depth-${depth}`} defaultOpen={depth === 0}>
         <summary className="bible-tree-summary">{sectionName}</summary>
         <div className="bible-tree-content">
           {books.map((book) => {
             const bid = String(book?.book_id || book?.id || '')
             const hasContent = !!book?.has_content
             const isActive = hasContent && bid === activeBookId
-            const label = String(book?.name || bid || '—')
+            const name = getBookName(book, bid || '—')
+            const abbr = getBookAbbr(book)
+            const fullLabel = formatBookLabel(book, bid || '—')
             return (
               <button
-                key={`${sectionId}-${bid}`}
+                key={`${nodeKey}-${bid}`}
                 type="button"
                 className={`bible-book-btn tree${isActive ? ' active' : ''}${!hasContent ? ' disabled' : ''}`}
                 disabled={!hasContent}
-                title={!hasContent ? 'غير متوفر بعد' : label}
+                title={!hasContent ? `${fullLabel} • غير متوفر بعد` : fullLabel}
                 onClick={async () => {
                   if (!hasContent) return
                   await goToChapter(bid, 0, [])
                 }}
               >
-                <span>{label}</span>
+                <span className="bible-book-label">
+                  <span className="bible-book-name">{name}</span>
+                  {abbr ? <span className="bible-book-abbr">{abbr}</span> : null}
+                </span>
                 {!hasContent ? <span className="bible-book-disabled-label">غير متوفر</span> : null}
               </button>
             )
           })}
-          {subsections.map((subsection) => renderSectionNode(subsection, depth + 1))}
+          {subsections.map((subsection) => renderSectionNode(subsection, depth + 1, nodeKey))}
         </div>
       </details>
     )
   }
 
+  const renderGuidePanel = (testament) => {
+    const sections = Array.isArray(testament?.rows) ? testament.rows : []
+    if (!sections.length) return null
+
+    return (
+      <section key={testament.id} className="bible-guide-panel">
+        <div className="bible-guide-panel-heading">{testament.name}</div>
+        <div className={`bible-guide-panel-body ${testament.id === 'old_testament' ? 'old' : 'new'}`}>
+          {sections.map((row) => {
+            const trail = Array.isArray(row?.path) ? row.path.filter(Boolean) : []
+            const title = trail[trail.length - 1] || '—'
+            const parentPath = trail.length > 1 ? trail.slice(0, -1).join(' / ') : ''
+            const books = Array.isArray(row?.books) ? row.books : []
+
+            return (
+              <article key={row.key} className="bible-guide-section-card">
+                {parentPath ? <div className="bible-guide-section-parent">{parentPath}</div> : null}
+                <div className="bible-guide-section-title">{title}</div>
+                <div className="bible-guide-book-table">
+                  {books.map((book) => (
+                    <div key={book.id} className="bible-guide-book-row">
+                      <span className="bible-guide-book-row-name">{book.name}</span>
+                      <span className="bible-guide-book-row-abbr">{book.abbr || '—'}</span>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            )
+          })}
+        </div>
+      </section>
+    )
+  }
+
+  const activeBookLabel = activeBookId
+    ? formatBookLabel(booksMetaById[activeBookId] || activeBook, activeBookId || '—')
+    : 'اختر سفراً من القائمة'
+
   return (
-    <div className="bible-reader">
+    <div className={`bible-reader${mainTab === 'guide' ? ' guide-tab' : ''}`}>
+      {mainTab === 'reader' ? (
       <section className="card bible-sidebar">
         <div className="card-header">
           <div className="card-title">
@@ -616,41 +841,79 @@ export default function BibleReader({ toast, externalTarget }) {
 
         <div className="bible-sidebar-body">
           <div className="bible-book-list">
-            {booksTree.map((testament) => (
-              <details key={String(testament?.id || '')} className="bible-tree-testament" defaultOpen>
-                <summary className="bible-tree-summary testament">{String(testament?.name || '—')}</summary>
-                <div className="bible-tree-content">
-                  {(Array.isArray(testament?.sections) ? testament.sections : []).map((section) => renderSectionNode(section, 0))}
-                </div>
-              </details>
-            ))}
-          </div>
+            <div className="bible-book-list-inner">
+              {booksTree.map((testament) => (
+                <details key={String(testament?.id || '')} className="bible-tree-testament">
+                  <summary className="bible-tree-summary testament">{String(testament?.name || '—')}</summary>
+                  <div className="bible-tree-content">
+                    {(Array.isArray(testament?.sections) ? testament.sections : []).map((section) => renderSectionNode(section, 0, String(testament?.id || 'testament')))}
+                  </div>
+                </details>
+              ))}
 
-          <div className="bible-ch-grid">
-            {chapters.map((chapter, index) => (
-              <button
-                key={`${activeBookId}-${chapter?.n}-${index}`}
-                className={`bible-ch-btn${index === activeChapterIndex ? ' active' : ''}`}
-                onClick={() => {
-                  setActiveChapterIndex(index)
-                  setHighlightVerses([])
-                  setViewMode('chapter')
-                  setMultiChapterView(null)
-                }}
-              >
-                {toArabicDigits(chapter?.n)}
-              </button>
-            ))}
+              {activeBookId && chapters.length ? (
+                <div className="bible-tree-group">
+                  <div className="bible-tree-group-label">فصول {activeBookLabel}</div>
+                  <div className="bible-ch-grid">
+                    {chapters.map((chapter, index) => (
+                      <button
+                        key={`${activeBookId}-${chapter?.n}-${index}`}
+                        className={`bible-ch-btn${index === activeChapterIndex ? ' active' : ''}`}
+                        onClick={() => {
+                          setActiveChapterIndex(index)
+                          setHighlightVerses([])
+                          setViewMode('chapter')
+                          setMultiChapterView(null)
+                        }}
+                      >
+                        {toArabicDigits(chapter?.n)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="bible-sidebar-note">
+                  اختر سفراً أولاً لعرض الأصحاحات في نفس القائمة.
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </section>
+      ) : null}
 
       <section className="card bible-main">
         <div className="bible-main-header">
-          <div className="bible-main-title">
-            {activeBook?.name || booksMetaById[activeBookId]?.name || '—'}
+          <div className="bible-main-header-copy">
+            <div className="bible-main-tabs" role="tablist" aria-label="عرض قارئ الكتاب المقدس">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mainTab === 'reader'}
+                className={`bible-main-tab${mainTab === 'reader' ? ' active' : ''}`}
+                onClick={() => setMainTab('reader')}
+              >
+                القارئ
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mainTab === 'guide'}
+                className={`bible-main-tab${mainTab === 'guide' ? ' active' : ''}`}
+                onClick={() => setMainTab('guide')}
+              >
+                دليل الأسفار
+              </button>
+            </div>
+            <div className="bible-main-title">
+              {mainTab === 'guide' ? 'الدليل السريع لأسفار الكتاب المقدس' : activeBookLabel}
+            </div>
           </div>
-          {activeChapter ? (
+          {mainTab === 'guide' ? (
+            <div className="bible-guide-header-note">
+              ترتيب هرمي سريع بالأسماء والاختصارات
+            </div>
+          ) : activeChapter ? (
             <div style={{ fontSize: '0.84rem', color: 'var(--gray-500)' }}>
               الفصل {toArabicDigits(activeChapter?.n)}
             </div>
@@ -658,7 +921,15 @@ export default function BibleReader({ toast, externalTarget }) {
         </div>
 
         <div className="bible-main-body">
-          {viewMode === 'search' && searchResult ? (
+          {mainTab === 'guide' ? (
+            <div className="bible-guide-page">
+              <div className="bible-guide-sheet">
+                <div className="bible-guide-banner">الترتيب الكتابي لأسماء أسفار الكتاب المقدس</div>
+                <div className="bible-guide-subtitle">الأقسام، الأسفار، والاختصارات المرجعية السريعة</div>
+                {quickGuide.map((testament) => renderGuidePanel(testament))}
+              </div>
+            </div>
+          ) : viewMode === 'search' && searchResult ? (
             <>
               {!searchResult.total ? (
                 <div style={{ textAlign: 'center', padding: '48px 12px', color: 'var(--gray-500)' }}>
@@ -705,10 +976,10 @@ export default function BibleReader({ toast, externalTarget }) {
                         <div
                           key={`verse-${idx}`}
                           className="bible-result-item"
-                          onClick={() => goToChapter(hit.bookId, hit.chapterIndex, [hit.verseNum])}
+                          onClick={() => goToChapter(hit.bookId, hit.chapterIndex, [hit.verseId])}
                         >
                           <div className="bible-result-ref">
-                            {hit.bookName} • الفصل {toArabicDigits(hit.chapterNum)} • الآية {toArabicDigits(hit.verseNum)}
+                            {hit.bookName} • الفصل {toArabicDigits(hit.chapterNum)} • الآية {toArabicDigits(hit.verseId)}
                           </div>
                           <div className="bible-result-text">{renderHighlightedText(hit.verseText, searchResult.query)}</div>
                         </div>
@@ -733,7 +1004,7 @@ export default function BibleReader({ toast, externalTarget }) {
                       const primaryHeading = String(sectionHeadings[0] || '')
                       const subHeadings = sectionHeadings.slice(1)
                       const relevant = Object.entries(section?.v && typeof section.v === 'object' ? section.v : {})
-                        .filter(([verse]) => (multiChapterView.byChapter[chapterNumber] || []).includes(Number(verse)))
+                        .filter(([verse]) => (multiChapterView.byChapter[chapterNumber] || []).includes(normalizeVerseId(verse)))
 
                       if (!relevant.length) return null
 
@@ -776,7 +1047,7 @@ export default function BibleReader({ toast, externalTarget }) {
                     ))}
                     <p className="bible-paragraph">
                       {entries.map(([verseNumber, verseText], idx) => {
-                        const isHighlighted = highlightVerses.includes(Number(verseNumber))
+                        const isHighlighted = highlightVerses.includes(normalizeVerseId(verseNumber))
                         return (
                           <span key={`verse-${verseNumber}`} className={`bible-verse${isHighlighted ? ' hl' : ''}`}>
                             <sup className="bible-verse-num">{toArabicDigits(verseNumber)}</sup>
@@ -813,6 +1084,14 @@ export default function BibleReader({ toast, externalTarget }) {
                 </button>
               </div>
             </>
+          ) : !activeBookId ? (
+            <div className="bible-empty-state">
+              <BookOpen size={30} />
+              <div className="bible-empty-state-title">اختر سفراً لبدء القراءة</div>
+              <div className="bible-empty-state-copy">
+                افتح أحد العهدين من القائمة الجانبية ثم اختر السفر والفصل المطلوب.
+              </div>
+            </div>
           ) : (
             <div style={{ textAlign: 'center', padding: '48px 12px', color: 'var(--gray-500)' }}>
               لا توجد بيانات لعرضها

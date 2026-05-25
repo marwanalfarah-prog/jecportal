@@ -23,7 +23,7 @@ os.makedirs(PROFILE_PHOTOS_DIR, exist_ok=True)
 SHEETS = [
     "persons", "nationality", "mobile_numbers", "mobile_number_family_relations", "personal_mobile_number_primary", "mobile_number_linked_jobs", "emails", "email_family_relations", "personal_email_primary", "email_linked_jobs", "social_media", "schools", "school_sections", "school_grades",
     "higher_education", "jobs", "timestamps", "responsibilities",
-    "person_youth_group", "person_youth_group_age_history", "hobbies_skills", "person_health_conditions", "person_special_notes", "addresses", "person_titles", "person_school_system_sectors", "parishes", "churches", "youth_groups", "youth_group_special_logos",
+    "person_youth_group", "person_youth_group_age_history", "hobbies_skills", "person_health_conditions", "person_special_notes", "addresses", "person_titles", "person_school_system_sectors", "parishes", "churches", "youth_groups", "youth_group_social_media", "youth_group_social_media_ages", "youth_group_special_logos",
     "nationality_iso_codes", "school_logos",
 ]
 
@@ -163,6 +163,11 @@ YOUTH_GROUP_PARISH_ID_COL = "parish_id"
 YOUTH_GROUP_USE_PARISH_LOGO_COL = "use_parish_logo"
 YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL = "inherit_parish_social_media"
 YOUTH_GROUP_SHEET = "youth_groups"
+YOUTH_GROUP_SOCIAL_MEDIA_SHEET = "youth_group_social_media"
+YOUTH_GROUP_SOCIAL_MEDIA_ID_COL = "youth_group_social_media_id"
+YOUTH_GROUP_SOCIAL_MEDIA_COLUMNS = ["youth_group_id", YOUTH_GROUP_SOCIAL_MEDIA_ID_COL, "platform", "url"]
+YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_SHEET = "youth_group_social_media_ages"
+YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_COLUMNS = [YOUTH_GROUP_SOCIAL_MEDIA_ID_COL, "age_group"]
 YOUTH_GROUP_SPECIAL_LOGO_SHEET = "youth_group_special_logos"
 SPECIAL_LOGO_ID_COL = "special_logo_id"
 YOUTH_GROUP_SPECIAL_LOGO_COLUMNS = ["youth_group_id", SPECIAL_LOGO_ID_COL, "occasion", "start_date", "end_date", "logo_file_name", "is_active"]

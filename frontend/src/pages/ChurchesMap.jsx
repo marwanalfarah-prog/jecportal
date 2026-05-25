@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Map, MapPin, Instagram } from 'lucide-react'
 import { api } from '../api.js'
+import { EmptyState, ErrorState, LoadingState } from '../pageStates.jsx'
 
 const REGIONS = ['الشمال', 'الوسط', 'الجنوب']
 const LEAFLET_JS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
@@ -77,10 +78,13 @@ function youthGroupNames(church) {
 export default function ChurchesMap({ toast }) {
   const [churches, setChurches] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [mapError, setMapError] = useState('')
   const [regionFilter, setRegionFilter] = useState('')
   const [governorateFilter, setGovernorateFilter] = useState('')
   const [parishFilter, setParishFilter] = useState('')
   const [search, setSearch] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
 
   const mapRef = useRef(null)
   const mapInstanceRef = useRef(null)
@@ -184,14 +188,20 @@ export default function ChurchesMap({ toast }) {
 
   useEffect(() => {
     setLoading(true)
+    setLoadError('')
     api.listChurches()
       .then((res) => setChurches(res?.churches || []))
-      .catch(() => toast?.('تعذّر تحميل بيانات الكنائس', 'error'))
+      .catch(() => {
+        setChurches([])
+        setLoadError('تعذّر تحميل بيانات الكنائس حالياً. حاول مرة أخرى.')
+        toast?.('تعذّر تحميل بيانات الكنائس', 'error')
+      })
       .finally(() => setLoading(false))
-  }, [toast])
+  }, [reloadKey, toast])
 
   useEffect(() => {
     let cancelled = false
+    setMapError('')
 
     ensureLeafletAssets()
       .then((L) => {
@@ -229,13 +239,16 @@ export default function ChurchesMap({ toast }) {
         else map.setView(DEFAULT_CENTER, 8)
       })
       .catch(() => {
-        if (!cancelled) toast?.('تعذّر تحميل الخريطة', 'error')
+        if (!cancelled) {
+          setMapError('تعذّر تحميل الخريطة حالياً. حاول إعادة المحاولة.')
+          toast?.('تعذّر تحميل الخريطة', 'error')
+        }
       })
 
     return () => {
       cancelled = true
     }
-  }, [mapRows, toast])
+  }, [mapRows, reloadKey, toast])
 
   return (
     <div style={{ display: 'grid', gap: 14 }}>
@@ -244,17 +257,26 @@ export default function ChurchesMap({ toast }) {
           <Map size={18} color="var(--gold)" />
           <h3 style={{ margin: 0, color: 'var(--navy)' }}>خريطة الكنائس</h3>
         </div>
-        <div
-          ref={mapRef}
-          style={{
-            width: '100%',
-            height: 430,
-            borderRadius: 12,
-            border: '1px solid var(--gray-200)',
-            overflow: 'hidden',
-            background: '#f1f5f9',
-          }}
-        />
+        {mapError ? (
+          <ErrorState
+            title="تعذر تحميل الخريطة"
+            description={mapError}
+            onRetry={() => setReloadKey((value) => value + 1)}
+            minHeight={260}
+          />
+        ) : (
+          <div
+            ref={mapRef}
+            style={{
+              width: '100%',
+              height: 430,
+              borderRadius: 12,
+              border: '1px solid var(--gray-200)',
+              overflow: 'hidden',
+              background: '#f1f5f9',
+            }}
+          />
+        )}
       </section>
 
       <section className="card" style={{ padding: 16 }}>
@@ -313,9 +335,25 @@ export default function ChurchesMap({ toast }) {
 
         <h3 style={{ margin: '0 0 10px', color: 'var(--navy)' }}>الكنائس على الخريطة</h3>
         {loading ? (
-          <div className="spinner" />
+          <LoadingState
+            title="جارٍ تحميل الكنائس"
+            description="يتم تجهيز بيانات الكنائس ومواقعها الآن."
+            minHeight={220}
+          />
+        ) : loadError ? (
+          <ErrorState
+            title="تعذر تحميل الكنائس"
+            description={loadError}
+            onRetry={() => setReloadKey((value) => value + 1)}
+            minHeight={220}
+          />
         ) : mapRows.length === 0 ? (
-          <div style={{ color: 'var(--gray-500)' }}>لا توجد مواقع كنائس صالحة للعرض.</div>
+          <EmptyState
+            title="لا توجد مواقع كنائس صالحة للعرض"
+            description="لم يتم العثور على كنائس مطابقة للفلاتر الحالية مع إحداثيات صالحة."
+            icon={MapPin}
+            minHeight={220}
+          />
         ) : (
           <div style={{ display: 'grid', gap: 8 }}>
             {mapRows.map((church) => {

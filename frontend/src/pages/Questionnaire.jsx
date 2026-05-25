@@ -6,6 +6,7 @@ import {
   ToggleLeft, ToggleRight, Search, RefreshCw, ChevronDown, ChevronUp
 } from 'lucide-react'
 import { api } from '../api.js'
+import { EmptyState, ErrorState, LoadingState } from '../pageStates.jsx'
 
 // ─── Constants — mirror OrgTree exactly ───────────────────────────────────────
 const BARAEM_GROUP = 'البراعم'
@@ -866,35 +867,45 @@ function QuestionnaireForm({ initial, youthGroups, persons, onSave, onCancel, to
 export default function Questionnaire({ toast }) {
   const [questionnaires, setQs]   = useState([])
   const [loading, setLoading]     = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [view, setView]           = useState('list')
   const [editing, setEditing]     = useState(null)
   const [viewingResp, setViewResp]= useState(null)
   const [persons, setPersons]     = useState([])
   const [youthGroups, setYGs]     = useState([])
   const [formDataReady, setFormDataReady] = useState(false)
+  const [formDataError, setFormDataError] = useState('')
   const formDataPromiseRef = useRef(null)
 
-  const load = useCallback(() => {
+  const load = useCallback(async () => {
     setLoading(true)
-    api.adminListQuestionnaires()
-      .then((qd) => {
-        setQs(qd.questionnaires || [])
-        setLoading(false)
-      }).catch(() => setLoading(false))
-  }, [])
+    setLoadError('')
+    try {
+      const qd = await api.adminListQuestionnaires()
+      setQs(qd.questionnaires || [])
+    } catch {
+      setLoadError('تعذر تحميل قائمة الاستبيانات حالياً. حاول مرة أخرى.')
+      toast('تعذر تحميل الاستبيانات', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }, [toast])
 
   const ensureFormData = useCallback((opts = {}) => {
     const { silent = false } = opts
     if (formDataReady) return Promise.resolve()
     if (formDataPromiseRef.current) return formDataPromiseRef.current
+    setFormDataError('')
 
     const p = Promise.all([api.listUsersBasic(), api.filters()])
       .then(([ud, fd]) => {
         setPersons(ud.users || [])
         setYGs((fd.youth_group || []).map(g => ({ value: g.value, label: api.formatYouthGroupLabel(g.label || g.value) })).filter(g => g.value).sort((a, b) => (a.label || '').localeCompare(b.label || '', 'ar')))
         setFormDataReady(true)
+        setFormDataError('')
       })
       .catch(() => {
+        setFormDataError('تعذر تحميل بيانات النموذج اللازمة لإنشاء أو تعديل الاستبيان.')
         if (!silent) toast('تعذر تحميل بيانات النموذج. حاول مرة أخرى','error')
       })
       .finally(() => {
@@ -908,10 +919,10 @@ export default function Questionnaire({ toast }) {
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
-    if (loading || formDataReady || formDataPromiseRef.current) return
+    if (loading || formDataReady || formDataPromiseRef.current || formDataError) return
     const timer = setTimeout(() => { ensureFormData({ silent: true }) }, 400)
     return () => clearTimeout(timer)
-  }, [loading, formDataReady, ensureFormData])
+  }, [loading, formDataError, formDataReady, ensureFormData])
 
   const handleCreate = async (f) => { await api.createQuestionnaire(f); toast('تم إنشاء الاستبيان بنجاح','success'); setView('list'); load() }
   const handleUpdate = async (f) => { await api.updateQuestionnaire(editing.id,f); toast('تم تحديث الاستبيان','success'); setEditing(null); setView('list'); load() }
@@ -920,12 +931,14 @@ export default function Questionnaire({ toast }) {
 
   const openCreate = async () => {
     setView('create')
+    setFormDataError('')
     await ensureFormData()
   }
 
   const openEdit = async (q) => {
     setEditing(q)
     setView('edit')
+    setFormDataError('')
     await ensureFormData()
   }
 
@@ -936,7 +949,20 @@ export default function Questionnaire({ toast }) {
         <h2 style={{ fontFamily:'var(--font-head)', color:'#0f2744', margin:0, fontSize:'1.2rem', fontWeight:800 }}>إنشاء استبيان جديد</h2>
       </div>
       {!formDataReady ? (
-        <div style={{ textAlign:'center', padding:60 }}><div className="spinner"/></div>
+        formDataError ? (
+          <ErrorState
+            title="تعذر تجهيز نموذج الاستبيان"
+            description={formDataError}
+            onRetry={() => ensureFormData()}
+            minHeight={260}
+          />
+        ) : (
+          <LoadingState
+            title="جارٍ تجهيز نموذج الاستبيان"
+            description="يتم تحميل الأشخاص والمجموعات المستهدفة الآن."
+            minHeight={260}
+          />
+        )
       ) : (
         <QuestionnaireForm youthGroups={youthGroups} persons={persons} onSave={handleCreate} onCancel={()=>setView('list')} toast={toast}/>
       )}
@@ -950,7 +976,20 @@ export default function Questionnaire({ toast }) {
         <h2 style={{ fontFamily:'var(--font-head)', color:'#0f2744', margin:0, fontSize:'1.2rem', fontWeight:800 }}>تعديل الاستبيان</h2>
       </div>
       {!formDataReady ? (
-        <div style={{ textAlign:'center', padding:60 }}><div className="spinner"/></div>
+        formDataError ? (
+          <ErrorState
+            title="تعذر تجهيز نموذج الاستبيان"
+            description={formDataError}
+            onRetry={() => ensureFormData()}
+            minHeight={260}
+          />
+        ) : (
+          <LoadingState
+            title="جارٍ تجهيز نموذج الاستبيان"
+            description="يتم تحميل الأشخاص والمجموعات المستهدفة الآن."
+            minHeight={260}
+          />
+        )
       ) : (
         <QuestionnaireForm initial={editing} youthGroups={youthGroups} persons={persons} onSave={handleUpdate} onCancel={()=>{setView('list');setEditing(null)}} toast={toast}/>
       )}
@@ -967,13 +1006,26 @@ export default function Questionnaire({ toast }) {
         <button onClick={openCreate} style={btnSty('navy')}><Plus size={16}/> استبيان جديد</button>
       </div>
 
-      {loading ? <div style={{ textAlign:'center', padding:60 }}><div className="spinner"/></div>
-      : questionnaires.length===0 ? (
-        <div style={{ textAlign:'center', padding:'60px', background:'white', borderRadius:12, border:'1px solid #e2e6ef', color:'#9ba5bc' }}>
-          <FileText size={40} style={{ marginBottom:12, opacity:0.4 }}/>
-          <div style={{ fontWeight:700, marginBottom:6 }}>لا توجد استبيانات بعد</div>
-          <div style={{ fontSize:'0.85rem' }}>اضغط "استبيان جديد" للبدء</div>
-        </div>
+      {loading ? (
+        <LoadingState
+          title="جارٍ تحميل الاستبيانات"
+          description="يتم تجهيز قائمة الاستبيانات والردود الآن."
+          minHeight={320}
+        />
+      ) : loadError ? (
+        <ErrorState
+          title="تعذر تحميل الاستبيانات"
+          description={loadError}
+          onRetry={load}
+          minHeight={320}
+        />
+      ) : questionnaires.length===0 ? (
+        <EmptyState
+          title="لا توجد استبيانات بعد"
+          description={'اضغط على "استبيان جديد" للبدء بإنشاء أول استبيان.'}
+          icon={FileText}
+          minHeight={260}
+        />
       ) : questionnaires.map(q => (
         <div key={q.id} style={{ background:'white', borderRadius:12, border:'1px solid #e2e6ef', marginBottom:12, padding:'14px 18px', display:'flex', alignItems:'flex-start', gap:14 }}>
           <div style={{ width:10, height:10, borderRadius:'50%', background:q.active?'#38a169':'#9ba5bc', marginTop:6, flexShrink:0 }}/>

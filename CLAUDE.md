@@ -34,7 +34,7 @@ This is a full-stack member management portal for JEC Jordan (a Coptic youth org
 ### Backend
 
 - **Flask** REST API — all routes prefixed with `/api/`
-- **No SQL database.** The primary data store is a single Excel workbook: [backend/data/JECJordanData.xlsx](backend/data/JECJordanData.xlsx), loaded into memory with pandas on startup.
+- **No SQL database.** The primary data store is a single Excel workbook: [data/JECJordanData.xlsx](data/JECJordanData.xlsx), loaded into memory with pandas on startup.
 - Routes are split by domain into 12+ `routes_*.py` files, all registered in [backend/app.py](backend/app.py).
 - [backend/core/state.py](backend/core/state.py) (~195KB) is the central module — it defines every Excel sheet name and column mapping, holds in-memory state after load, and provides helper functions used across all route files.
 - [backend/core/database.py](backend/core/database.py) handles loading/reloading the Excel workbook with pandas, including sheet-to-column renaming.
@@ -43,14 +43,16 @@ This is a full-stack member management portal for JEC Jordan (a Coptic youth org
 
 All member data lives in `JECJordanData.xlsx` with sheets for: persons, addresses, mobile numbers, emails, jobs, schools, higher education, youth groups, churches, responsibilities, hobbies/skills, health conditions, org trees, logos, and more.
 
-Supplementary JSON files in `backend/data/`:
-- `config.json` — active year, name-variation mappings for fuzzy matching
+Supplementary JSON files in `data/`:
+- `config/` — per-option JSON files for active year, name-variation mappings, person titles, school branches, and mottos
 - `org_trees/` — per-youth-group leadership hierarchy trees
 - `questionnaires.json`, `notifications.json` — survey and notification definitions
-- `mottos.json`, `youth_group_social_media.json` — organization metadata
 - `bible_books/` — Bible content for the reader feature
 
-Photos (logos, profile pictures) are stored under `backend/data/photos/`.
+Youth-group social media metadata is stored in the `youth_group_social_media` sheet inside `JECJordanData.xlsx`.
+Specific age-group targeting for those links is stored in the `youth_group_social_media_ages` sheet. If a youth-group social-media row has no related age-group rows, it applies to all age groups.
+
+Photos (logos, profile pictures) are stored under `data/photos/`.
 
 ### Auth & roles
 
@@ -58,6 +60,6 @@ Session-based auth via Flask sessions. Two roles: **admin** and **member**. Admi
 
 ### Key cross-cutting patterns
 
-- **Fuzzy name matching** — `config.json` stores name variations; `state.py` normalizes Arabic text before comparisons.
-- **Active year** — `config.json` controls which year's data is active; most queries filter by this.
+- **Fuzzy name matching** — `data/config/name_variations.json` stores name variations; `state.py` normalizes Arabic text before comparisons.
+- **Active year** — `data/config/active_jec_year.json` controls which year's data is active; most queries filter by this.
 - **Excel as DB** — data is loaded once into pandas DataFrames on startup; mutations write back to the xlsx file. There is no migration system.

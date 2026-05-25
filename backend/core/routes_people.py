@@ -408,6 +408,31 @@ def _person_group_ids_for_sheet(store: dict, pid, sheet: str, *, compare_as_stri
     }
 
 
+def _seed_current_membership_rows(membership_rows, *, youth_group_id: str | None) -> list[dict]:
+    base_rows = [dict(row) for row in (membership_rows or []) if isinstance(row, dict)]
+    target_group_id = S.youth_group_id(youth_group_id) or S._normalize_text(youth_group_id)
+    if not target_group_id or not S._is_group_id(target_group_id):
+        return base_rows
+
+    found = False
+    for row in base_rows:
+        group_id = S.youth_group_id(row.get(S.YOUTH_GROUP_ID_COL)) or S._normalize_text(row.get(S.YOUTH_GROUP_ID_COL))
+        if group_id != target_group_id:
+            continue
+        row[S.YOUTH_GROUP_ID_COL] = target_group_id
+        row["archived"] = False
+        found = True
+
+    if found:
+        return base_rows
+
+    base_rows.append({
+        S.YOUTH_GROUP_ID_COL: target_group_id,
+        "archived": False,
+    })
+    return base_rows
+
+
 def validate_responsibility_membership_groups(
     store: dict,
     pid,
@@ -2222,6 +2247,7 @@ def register_unregistered_routes(app):
         nodes = body.get("nodes", [])
         sync_group_ids = _request_youth_group_ids(body)
         sync_group_id = sync_group_ids[0] if sync_group_ids else ""
+        sync_membership_group_id = sync_group_id if S._is_group_id(sync_group_id) else ""
         created = {}
         changed = False
         with S.unreg_lock:
@@ -2253,6 +2279,26 @@ def register_unregistered_routes(app):
                             break
 
                 if existing_uid:
+                    if sync_membership_group_id:
+                        existing_membership_rows = get_profile_sub_rows(
+                            S.unreg_store,
+                            existing_uid,
+                            S.PERSON_YOUTH_GROUP_SHEET,
+                            compare_as_string=True,
+                        )
+                        seeded_membership_rows = _seed_current_membership_rows(
+                            existing_membership_rows,
+                            youth_group_id=sync_membership_group_id,
+                        )
+                        if seeded_membership_rows != existing_membership_rows:
+                            replace_profile_sub_rows(
+                                S.unreg_store,
+                                existing_uid,
+                                S.PERSON_YOUTH_GROUP_SHEET,
+                                seeded_membership_rows,
+                                compare_as_string=True,
+                            )
+                            changed = True
                     if sync_group_id:
                         existing_timestamp_rows = _profile_timestamp_rows(
                             S.unreg_store,
@@ -2286,6 +2332,14 @@ def register_unregistered_routes(app):
                 new_row = pd.DataFrame([p_row])
                 S.unreg_store["persons"] = pd.concat([persons_df, new_row], ignore_index=True)
                 S.replace_person_title(S.unreg_store, new_uid, n.get("laqab", ""))
+                if sync_membership_group_id:
+                    replace_profile_sub_rows(
+                        S.unreg_store,
+                        new_uid,
+                        S.PERSON_YOUTH_GROUP_SHEET,
+                        _seed_current_membership_rows([], youth_group_id=sync_membership_group_id),
+                        compare_as_string=True,
+                    )
                 if sync_group_id:
                     replace_profile_sub_rows(
                         S.unreg_store,

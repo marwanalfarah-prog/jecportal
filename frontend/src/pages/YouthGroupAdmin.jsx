@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Upload, Users, CalendarDays, ShieldEllipsis, UserRound, Globe, Facebook, Instagram, Linkedin } from 'lucide-react'
 import { api } from '../api.js'
+import { ErrorState, LoadingState } from '../pageStates.jsx'
 
 const AGE_GROUPS = ['البراعم', 'الإعدادي', 'الثانوي', 'الجامعيّة', 'العاملة']
 
@@ -16,6 +17,10 @@ function normalizeUrlInput(value) {
   if (!text) return ''
   if (/^https?:\/\//i.test(text)) return text
   return `https://${text}`
+}
+
+function socialMediaItemId(item) {
+  return String(item?.youth_group_social_media_id || item?.id || '').trim()
 }
 
 function socialPlatformLabel(platform) {
@@ -161,6 +166,8 @@ export default function YouthGroupAdmin({ toast }) {
   const [details, setDetails] = useState(null)
   const [loadingGroups, setLoadingGroups] = useState(true)
   const [loadingDetails, setLoadingDetails] = useState(false)
+  const [groupsLoadError, setGroupsLoadError] = useState('')
+  const [detailsLoadError, setDetailsLoadError] = useState('')
   const [logoUploading, setLogoUploading] = useState(false)
   const [specialLogoUploading, setSpecialLogoUploading] = useState(false)
   const [logoBust, setLogoBust] = useState(Date.now())
@@ -183,15 +190,22 @@ export default function YouthGroupAdmin({ toast }) {
   const [socialUrl, setSocialUrl] = useState('')
   const [socialAgeGroups, setSocialAgeGroups] = useState([])
   const [activeTab, setActiveTab] = useState('dashboard')
+  const [reloadKey, setReloadKey] = useState(0)
 
   useEffect(() => {
+    setLoadingGroups(true)
+    setGroupsLoadError('')
     api.listYouthGroupProfiles()
       .then(res => {
         const list = res.groups || []
         setGroups(list)
         if (list[0]?.group_id) setSelected(list[0].group_id)
       })
-      .catch(() => toast?.('فشل تحميل فرق الشبيبة', 'error'))
+      .catch(() => {
+        setGroups([])
+        setGroupsLoadError('تعذر تحميل فرق الشبيبة حالياً. حاول مرة أخرى.')
+        toast?.('فشل تحميل فرق الشبيبة', 'error')
+      })
       .finally(() => setLoadingGroups(false))
 
     api.listParishes()
@@ -200,12 +214,13 @@ export default function YouthGroupAdmin({ toast }) {
         setParishes([])
         toast?.('تعذر تحميل قائمة الرعايا', 'error')
       })
-  }, [])
+  }, [reloadKey, toast])
 
   useEffect(() => {
     if (!selected) return
     setActiveTab('dashboard')
     setLoadingDetails(true)
+    setDetailsLoadError('')
     api.getYouthGroupDetails(selected)
       .then(res => {
         setDetails(res)
@@ -238,10 +253,11 @@ export default function YouthGroupAdmin({ toast }) {
         setSpecialLogoStartDate('')
         setSpecialLogoEndDate('')
         setSpecialLogoIsCurrent(true)
+          setDetailsLoadError('تعذر تحميل تفاصيل الفرقة المحددة. حاول مرة أخرى.')
         toast?.('تعذر تحميل تفاصيل الفرقة', 'error')
       })
       .finally(() => setLoadingDetails(false))
-  }, [selected, logoBust])
+        }, [selected, logoBust, toast])
 
   const group = details?.group || null
   const stats = details?.stats || {}
@@ -604,7 +620,7 @@ export default function YouthGroupAdmin({ toast }) {
   }
 
   const onRemoveSocialMedia = async (entryId) => {
-    const nextEntries = socialMediaEntries.filter((row) => String(row?.id || '') !== String(entryId || ''))
+    const nextEntries = socialMediaEntries.filter((row) => socialMediaItemId(row) !== String(entryId || ''))
     await persistSocialMedia(nextEntries, inheritParishSocialMedia, 'تم حذف رابط التواصل')
   }
 
@@ -621,7 +637,26 @@ export default function YouthGroupAdmin({ toast }) {
     })
   }
 
-  if (loadingGroups) return <div className="loading-center"><div className="spinner" /></div>
+  if (loadingGroups) {
+    return (
+      <LoadingState
+        title="جارٍ تحميل فرق الشبيبة"
+        description="يتم تجهيز ملفات الفرق وبياناتها الآن."
+        minHeight={320}
+      />
+    )
+  }
+
+  if (groupsLoadError) {
+    return (
+      <ErrorState
+        title="تعذر تحميل فرق الشبيبة"
+        description={groupsLoadError}
+        onRetry={() => setReloadKey((value) => value + 1)}
+        minHeight={320}
+      />
+    )
+  }
 
   const shouldShowGroupLogo = useParishLogo ? Boolean(group?.parish_logo_url) : Boolean(group?.has_logo)
   const shouldShowActiveSpecialLogo = Boolean(group?.special_logo_active && group?.active_special_logo_url)
@@ -658,7 +693,18 @@ export default function YouthGroupAdmin({ toast }) {
       </div>
 
       {loadingDetails ? (
-        <div className="loading-center"><div className="spinner" /></div>
+        <LoadingState
+          title="جارٍ تحميل تفاصيل الفرقة"
+          description="يتم تجهيز بيانات الفرقة المختارة الآن."
+          minHeight={260}
+        />
+      ) : detailsLoadError ? (
+        <ErrorState
+          title="تعذر تحميل تفاصيل الفرقة"
+          description={detailsLoadError}
+          onRetry={() => setReloadKey((value) => value + 1)}
+          minHeight={260}
+        />
       ) : !group ? (
         <div className="card" style={{ padding: 24, textAlign: 'center', color: 'var(--gray-500)' }}>
           لا توجد بيانات متاحة لهذه الفرقة.
@@ -747,9 +793,10 @@ export default function YouthGroupAdmin({ toast }) {
                       : 'جميع الفئات'
                     const sourceText = item?.source === 'parish' ? ' (موروث من الرعية)' : ''
                     const title = `${socialPlatformLabel(platform)}${sourceText} - ${groupsText}`
+                    const itemId = socialMediaItemId(item)
                     return (
                       <a
-                        key={`${item?.id || `${platform}-${url}`}`}
+                        key={`${itemId || `${platform}-${url}`}`}
                         href={url}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -1022,8 +1069,9 @@ export default function YouthGroupAdmin({ toast }) {
                     const ageLabel = Array.isArray(item?.age_groups) && item.age_groups.length > 0
                       ? item.age_groups.join('، ')
                       : 'كل الفئات'
+                    const itemId = socialMediaItemId(item)
                     return (
-                      <div key={item?.id || `${platform}-${item?.url || ''}`} style={{ border: '1px solid var(--gray-200)', borderRadius: 8, padding: '6px 8px', display: 'grid', gridTemplateColumns: 'auto 1fr auto', alignItems: 'center', gap: 8, background: 'white' }}>
+                      <div key={itemId || `${platform}-${item?.url || ''}`} style={{ border: '1px solid var(--gray-200)', borderRadius: 8, padding: '6px 8px', display: 'grid', gridTemplateColumns: 'auto 1fr auto', alignItems: 'center', gap: 8, background: 'white' }}>
                         <span style={{ color: socialPlatformColor(platform), display: 'inline-flex', alignItems: 'center' }}>
                           <SocialIcon platform={platform} size={14} />
                         </span>
@@ -1036,7 +1084,7 @@ export default function YouthGroupAdmin({ toast }) {
                         <button
                           type="button"
                           className="btn btn-ghost btn-sm"
-                          onClick={() => onRemoveSocialMedia(item?.id)}
+                          onClick={() => onRemoveSocialMedia(itemId)}
                           disabled={savingSocialMedia}
                         >
                           حذف

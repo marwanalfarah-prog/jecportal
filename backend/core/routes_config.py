@@ -44,7 +44,7 @@ os.makedirs(COMPANY_LOGOS_DIR, exist_ok=True)
 
 
 def _bible_books_tree_path() -> str:
-    return os.path.join(S.db.data_dir, "bible_books.json")
+    return os.path.join(S.db.data_dir, "bible_books", "bible_books.json")
 
 
 def _load_bible_books_tree() -> list[dict]:
@@ -56,14 +56,26 @@ def _load_bible_books_tree() -> list[dict]:
 
 CATHOLIC_BIBLE_BOOK_TREE = _load_bible_books_tree()
 
-VERSE_SEGMENT_RE = re.compile(r"^\s*(\d+)\s*:\s*(\d+)\s*(?:-\s*(?:(\d+)\s*:\s*)?(\d+))?\s*$")
+VERSE_SEGMENT_RE = re.compile(r"^\s*(\d+)\s*:\s*([^\s,:-]+)\s*(?:-\s*(?:(\d+)\s*:\s*)?([^\s,:-]+))?\s*$")
 
 
-def _config_path() -> str:
+def _config_dir() -> str:
+    return os.path.join(S.db.data_dir, "config")
+
+
+def _legacy_config_path() -> str:
     return os.path.join(S.db.data_dir, "config.json")
 
 
+def _config_fragment_path(option_name: str) -> str:
+    return os.path.join(_config_dir(), f"{option_name}.json")
+
+
 def _mottos_path() -> str:
+    return _config_fragment_path("mottos")
+
+
+def _legacy_mottos_path() -> str:
     return os.path.join(S.db.data_dir, "mottos.json")
 
 
@@ -74,6 +86,39 @@ def _clean_text(value):
     if text in ("", "nan", "None", "null"):
         return ""
     return text
+
+
+def _normalize_verse_id(value) -> str:
+    return re.sub(r"\s+", "", _clean_text(value))
+
+
+def _parse_verse_id(value) -> tuple[str, int, str] | None:
+    verse_id = _normalize_verse_id(value)
+    if not verse_id:
+        return None
+
+    match = re.match(r"^(\d+)(.*)$", verse_id)
+    if not match:
+        return None
+
+    number = int(match.group(1))
+    if number <= 0:
+        return None
+
+    return verse_id, number, match.group(2) or ""
+
+
+def _compare_verse_ids(left, right) -> int | None:
+    left_meta = _parse_verse_id(left)
+    right_meta = _parse_verse_id(right)
+    if left_meta is None or right_meta is None:
+        return None
+
+    if left_meta[1] != right_meta[1]:
+        return -1 if left_meta[1] < right_meta[1] else 1
+    if left_meta[2] == right_meta[2]:
+        return 0
+    return -1 if left_meta[2] < right_meta[2] else 1
 
 
 def _normalize_name_variations(raw):
@@ -229,6 +274,17 @@ def _default_config():
     }
 
 
+def _normalize_config_payload(raw):
+    config = _default_config()
+    if isinstance(raw, dict):
+        config.update(raw)
+    config["active_jec_year"] = _normalize_year_label(config.get("active_jec_year"))
+    config["name_variations"] = _normalize_name_variations(config.get("name_variations", {}))
+    config["person_titles"] = _normalize_person_titles(config.get("person_titles", []))
+    config["school_branches"] = _normalize_school_branches(config.get("school_branches", {}))
+    return config
+
+
 def _default_mottos_payload():
     return {"mottos": []}
 
@@ -338,15 +394,17 @@ def _parse_verse_segment(raw_segment: str) -> dict | None:
         return None
 
     start_chapter = int(m.group(1))
-    start_verse = int(m.group(2))
+    start_verse = _normalize_verse_id(m.group(2))
     end_chapter = int(m.group(3)) if m.group(3) else start_chapter
-    end_verse = int(m.group(4)) if m.group(4) else start_verse
+    end_verse = _normalize_verse_id(m.group(4)) if m.group(4) else start_verse
 
-    if min(start_chapter, start_verse, end_chapter, end_verse) <= 0:
+    if min(start_chapter, end_chapter) <= 0:
+        return None
+    if _parse_verse_id(start_verse) is None or _parse_verse_id(end_verse) is None:
         return None
     if end_chapter < start_chapter:
         return None
-    if end_chapter == start_chapter and end_verse < start_verse:
+    if end_chapter == start_chapter and _compare_verse_ids(start_verse, end_verse) > 0:
         return None
 
     return {
@@ -368,13 +426,18 @@ def _verse_segment_to_text(segment: dict) -> str:
 
     try:
         start_chapter = int(start.get("chapter"))
-        start_verse = int(start.get("verse"))
         end_chapter = int(end.get("chapter"))
-        end_verse = int(end.get("verse"))
     except Exception:
         return ""
 
-    if min(start_chapter, start_verse, end_chapter, end_verse) <= 0:
+    start_verse = _normalize_verse_id(start.get("verse"))
+    end_verse = _normalize_verse_id(end.get("verse"))
+
+    if min(start_chapter, end_chapter) <= 0:
+        return ""
+    if _parse_verse_id(start_verse) is None or _parse_verse_id(end_verse) is None:
+        return ""
+    if end_chapter == start_chapter and _compare_verse_ids(start_verse, end_verse) > 0:
         return ""
 
     if start_chapter == end_chapter and start_verse == end_verse:
@@ -642,7 +705,8 @@ def _is_motto_applicable_to_groups(row: dict, group_ids: list[str], include_jec_
 
 
 def _load_mottos_payload() -> dict:
-    raw = S.db.load_json_file(_mottos_path(), _default_mottos_payload())
+    path = _mottos_path() if os.path.exists(_mottos_path()) else _legacy_mottos_path()
+    raw = S.db.load_json_file(path, _default_mottos_payload())
     if not isinstance(raw, dict):
         return _default_mottos_payload()
 
@@ -668,6 +732,12 @@ def _save_mottos_payload(payload: dict) -> dict:
         normalized.append(item)
     result = {"mottos": normalized}
     S.db.save_json_file(_mottos_path(), result)
+    legacy_path = _legacy_mottos_path()
+    if os.path.exists(legacy_path):
+        try:
+            os.remove(legacy_path)
+        except OSError:
+            pass
     return result
 
 
@@ -714,7 +784,7 @@ def _validate_motto_single_reference(motto: dict) -> tuple[bool, str | None]:
     verse = ref.get("verse") if isinstance(ref.get("verse"), dict) else {}
     segments = verse.get("segments") if isinstance(verse.get("segments"), list) else []
     if not segments or not bool(verse.get("all_segments_structured")):
-        return False, "invalid verses format; use chapter:verse or ranges like 3:15-16"
+        return False, "invalid verses format; use chapter:verse or ranges like 1:1ب or 3:15-16"
     return True, None
 
 
@@ -742,15 +812,16 @@ def _youth_group_scope_options() -> list[dict]:
 
 
 def _load_config():
-    data = S.db.load_json_file(_config_path(), _default_config())
-    if not isinstance(data, dict):
-        data = _default_config()
-    config = dict(data)
-    config["active_jec_year"] = _normalize_year_label(config.get("active_jec_year"))
-    config["name_variations"] = _normalize_name_variations(config.get("name_variations", {}))
-    config["person_titles"] = _normalize_person_titles(config.get("person_titles", []))
-    config["school_branches"] = _normalize_school_branches(config.get("school_branches", {}))
-    return config
+    defaults = _default_config()
+
+    if os.path.isdir(_config_dir()):
+        fragments = {}
+        for key, default_value in defaults.items():
+            fragments[key] = S.db.load_json_file(_config_fragment_path(key), default_value)
+        return _normalize_config_payload(fragments)
+
+    legacy = S.db.load_json_file(_legacy_config_path(), defaults)
+    return _normalize_config_payload(legacy)
 
 
 # ── School / University Logos ─────────────────────────────────────────────────
@@ -1065,13 +1136,19 @@ def _serialize_school_logo_entry(row: dict) -> dict:
 
 
 def _save_config(config):
-    payload = {
-        "active_jec_year": _normalize_year_label(config.get("active_jec_year")),
-        "name_variations": _normalize_name_variations(config.get("name_variations", {})),
-        "person_titles": _normalize_person_titles(config.get("person_titles", [])),
-        "school_branches": _normalize_school_branches(config.get("school_branches", {})),
-    }
-    S.db.save_json_file(_config_path(), payload)
+    defaults = _default_config()
+    payload = _normalize_config_payload(config)
+
+    for key, default_value in defaults.items():
+        S.db.save_json_file(_config_fragment_path(key), payload.get(key, default_value))
+
+    legacy_path = _legacy_config_path()
+    if os.path.exists(legacy_path):
+        try:
+            os.remove(legacy_path)
+        except OSError:
+            pass
+
     return payload
 
 

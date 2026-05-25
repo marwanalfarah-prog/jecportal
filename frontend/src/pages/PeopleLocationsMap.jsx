@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Map as MapIcon, MapPin, Users, LocateFixed, Building2 } from 'lucide-react'
 import { api } from '../api.js'
+import { EmptyState, ErrorState, LoadingState } from '../pageStates.jsx'
 
 const LEAFLET_JS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
 const LEAFLET_CSS = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
@@ -279,12 +280,15 @@ export default function PeopleLocationsMap({ toast }) {
   const [locations, setLocations] = useState([])
   const [churches, setChurches] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [mapError, setMapError] = useState('')
   const [search, setSearch] = useState('')
   const [governorateFilter, setGovernorateFilter] = useState('')
   const [youthGroupFilter, setYouthGroupFilter] = useState('')
   const [primaryFilter, setPrimaryFilter] = useState('all')
   const [showChurches, setShowChurches] = useState(false)
   const [selectedKey, setSelectedKey] = useState('')
+  const [reloadKey, setReloadKey] = useState(0)
 
   const mapRef = useRef(null)
   const mapInstanceRef = useRef(null)
@@ -293,17 +297,22 @@ export default function PeopleLocationsMap({ toast }) {
 
   useEffect(() => {
     setLoading(true)
+    setLoadError('')
     api.listPeopleLocations()
       .then((res) => setLocations(Array.isArray(res?.locations) ? res.locations : []))
-      .catch(() => toast?.('تعذّر تحميل مواقع الأشخاص', 'error'))
+      .catch(() => {
+        setLocations([])
+        setLoadError('تعذّر تحميل مواقع الأشخاص حالياً. حاول مرة أخرى.')
+        toast?.('تعذّر تحميل مواقع الأشخاص', 'error')
+      })
       .finally(() => setLoading(false))
-  }, [toast])
+  }, [reloadKey, toast])
 
   useEffect(() => {
     api.listChurches()
       .then((res) => setChurches(Array.isArray(res?.churches) ? res.churches : []))
       .catch(() => toast?.('تعذّر تحميل بيانات الكنائس', 'error'))
-  }, [toast])
+  }, [reloadKey, toast])
 
   const governorateOptions = useMemo(
     () => Array.from(new Set(locations.map((row) => normalizeText(row.governorate)).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'ar', { sensitivity: 'base' })),
@@ -355,6 +364,7 @@ export default function PeopleLocationsMap({ toast }) {
 
   useEffect(() => {
     let cancelled = false
+    setMapError('')
 
     ensureLeafletAssets()
       .then((L) => {
@@ -433,13 +443,16 @@ export default function PeopleLocationsMap({ toast }) {
         else map.setView(DEFAULT_CENTER, 8)
       })
       .catch(() => {
-        if (!cancelled) toast?.('تعذّر تحميل الخريطة', 'error')
+        if (!cancelled) {
+          setMapError('تعذّر تحميل الخريطة حالياً. حاول إعادة المحاولة.')
+          toast?.('تعذّر تحميل الخريطة', 'error')
+        }
       })
 
     return () => {
       cancelled = true
     }
-  }, [filteredLocations, mapChurches, sharedLocationGroups, sharedPersonPositions, toast, visibleMarkerPositions])
+  }, [filteredLocations, mapChurches, reloadKey, sharedLocationGroups, sharedPersonPositions, toast, visibleMarkerPositions])
 
   const focusLocation = (location) => {
     const map = mapInstanceRef.current
@@ -549,18 +562,27 @@ export default function PeopleLocationsMap({ toast }) {
           </button>
         </div>
 
-        <div
-          ref={mapRef}
-          style={{
-            width: '100%',
-            height: 430,
-            borderRadius: 12,
-            border: '1px solid var(--gray-200)',
-            overflow: 'hidden',
-            background: '#f1f5f9',
-            marginTop: 14,
-          }}
-        />
+        {mapError ? (
+          <ErrorState
+            title="تعذر تحميل الخريطة"
+            description={mapError}
+            onRetry={() => setReloadKey((value) => value + 1)}
+            minHeight={260}
+          />
+        ) : (
+          <div
+            ref={mapRef}
+            style={{
+              width: '100%',
+              height: 430,
+              borderRadius: 12,
+              border: '1px solid var(--gray-200)',
+              overflow: 'hidden',
+              background: '#f1f5f9',
+              marginTop: 14,
+            }}
+          />
+        )}
       </section>
 
       <section className="card" style={{ padding: 16 }}>
@@ -570,9 +592,25 @@ export default function PeopleLocationsMap({ toast }) {
         </div>
 
         {loading ? (
-          <div className="spinner" />
+            <LoadingState
+              title="جارٍ تحميل المواقع"
+              description="يتم تجهيز مواقع الأشخاص والعناوين الآن."
+              minHeight={220}
+            />
+          ) : loadError ? (
+            <ErrorState
+              title="تعذر تحميل المواقع"
+              description={loadError}
+              onRetry={() => setReloadKey((value) => value + 1)}
+              minHeight={220}
+            />
         ) : filteredLocations.length === 0 ? (
-          <div style={{ color: 'var(--gray-500)' }}>لا توجد مواقع مطابقة للعرض.</div>
+            <EmptyState
+              title="لا توجد مواقع مطابقة للعرض"
+              description="لم يتم العثور على مواقع توافق الفلاتر الحالية."
+              icon={LocateFixed}
+              minHeight={220}
+            />
         ) : (
           <div style={{ display: 'grid', gap: 10 }}>
             {filteredLocations.map((location) => {

@@ -1,0 +1,65 @@
+
+> jec-manager@1.0.0 dev
+> vite --host 127.0.0.1
+
+
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m190[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5173[22m/[39m
+[2m9:16:56 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MyQuestions.jsx[22m
+[2m9:19:36 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Dashboard.jsx[22m
+[2m9:19:36 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/UserManagement.jsx[22m
+[2m9:19:36 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/CouncilMembers.jsx[22m
+[2m9:19:36 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.jsx[22m
+[2m9:21:58 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Questionnaire.jsx[22m
+[2m9:21:58 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Config.jsx[22m
+[2m9:21:58 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Members.jsx[22m
+[2m9:22:34 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Questionnaire.jsx[22m
+[2m9:23:16 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Questionnaire.jsx[22m
+[2m9:23:36 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Questionnaire.jsx[22m
+[2m9:27:58 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/YouthGroupAdmin.jsx[22m
+[2m9:27:58 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ChurchesMap.jsx[22m
+[2m9:27:58 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/PeopleLocationsMap.jsx[22m
+[2m9:27:58 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/OrgTree.jsx[22m
+[2m9:29:16 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/MyQuestions.jsx[22m
+[2m9:29:16 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Dashboard.jsx[22m
+[2m9:29:16 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/UserManagement.jsx[22m
+[2m9:29:16 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/CouncilMembers.jsx[22m
+[2m9:29:16 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.jsx[22m
+[2m9:29:16 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Questionnaire.jsx[22m
+[2m9:29:16 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Config.jsx[22m
+[2m9:29:16 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Members.jsx[22m
+[2m9:29:16 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/YouthGroupAdmin.jsx[22m
+[2m9:29:16 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/ChurchesMap.jsx[22m
+[2m9:29:16 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/PeopleLocationsMap.jsx[22m
+[2m9:29:16 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/OrgTree.jsx[22m
+[2m9:32:09 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m9:34:32 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m9:37:39 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/App.jsx[22m
+[2m9:38:32 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.css[22m
+[2m9:42:13 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.css[22m
+[2m9:42:30 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.jsx[22m
+[2m9:43:13 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.jsx[22m
+[2m9:49:00 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.jsx[22m
+[2m9:49:32 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.jsx[22m
+[2m9:50:43 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/App.jsx, /src/pages/Dashboard.jsx, /src/pages/Config.jsx[22m
+[2m9:50:43 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Config.jsx[22m
+[2m9:51:49 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/App.jsx, /src/pages/Dashboard.jsx, /src/pages/Config.jsx[22m
+[2m9:53:08 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.jsx[22m
+[2m9:53:08 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/Config.jsx[22m
+[2m9:53:08 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/App.jsx, /src/pages/Dashboard.jsx, /src/pages/Config.jsx[22m
+[2m12:43:21 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.jsx[22m
+[2m12:43:21 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.css[22m
+[2m12:50:22 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.jsx[22m
+[2m12:50:22 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.css[22m
+[2m12:55:12 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.jsx[22m
+[2m12:55:12 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.css[22m
+[2m1:00:21 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.jsx[22m
+[2m1:00:21 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.css[22m
+[2m1:04:35 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.jsx[22m
+[2m1:04:35 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.css[22m
+[2m1:07:41 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.jsx[22m
+[2m1:13:37 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.css[22m
+[2m1:13:37 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/BibleReader.jsx[22m
+[2m4:26:52 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/YouthGroupAdmin.jsx[22m
+[2m4:51:16 PM[22m [36m[1m[vite][22m[39m [32mhmr update [39m[2m/src/pages/YouthGroupAdmin.jsx[22m

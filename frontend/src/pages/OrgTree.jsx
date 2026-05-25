@@ -5,6 +5,7 @@ import {
   Calendar, ChevronDown, Clock, FileDown
 } from 'lucide-react'
 import { api } from '../api.js'
+import { ErrorState } from '../pageStates.jsx'
 
 // ── Arabic normalization ───────────────────────────────────────────────────────
 function normalizeWord(w) {
@@ -2207,10 +2208,12 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
   const [connectSource, setConnSrc]   = useState(null)
   const [allPersons, setAllPersons]   = useState([])
   const [loading, setLoading]         = useState(false)
+  const [loadError, setLoadError]     = useState('')
   const [saving, setSaving]           = useState(false)
   const [dirty, setDirty]             = useState(false)
   const [groupSearch, setGSearch]     = useState('')
   const [animating, setAnimating]     = useState(false)
+  const [reloadKey, setReloadKey]     = useState(0)
 
   // Period state
   const [periods, setPeriods]         = useState([])          // all periods for this group
@@ -2255,6 +2258,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
   useEffect(() => {
     if (!selectedGroup) return
     setLoading(true)
+    setLoadError('')
     setSuppressed(new Set())
     // No period_id → backend returns the active (open) period, or latest if all closed
     api.getOrgTree(selectedGroup)
@@ -2267,9 +2271,17 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
         setDirty(false)
         setStructuralDirty(false)
       })
-      .catch(() => { setNodes([]); setEdges([]); setCurrentPeriod(null); setPeriods([]); setDirty(false); setStructuralDirty(false) })
+      .catch(() => {
+        setNodes([])
+        setEdges([])
+        setCurrentPeriod(null)
+        setPeriods([])
+        setDirty(false)
+        setStructuralDirty(false)
+        setLoadError('تعذر تحميل الهيكل التنظيمي الحالي. حاول مرة أخرى.')
+      })
       .finally(() => setLoading(false))
-  }, [selectedGroup])
+  }, [reloadKey, selectedGroup])
 
   useEffect(() => {
     const onWindowFocus = () => {
@@ -2292,6 +2304,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
   // ── Load a specific period ─────────────────────────────────────────────────
   const loadPeriod = (period) => {
     setLoading(true)
+    setLoadError('')
     setSuppressed(new Set())
     api.getOrgTree(selectedGroup, period.id)
       .then(data => {
@@ -2302,7 +2315,11 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
         setDirty(false)
         setStructuralDirty(false)
       })
-      .catch(() => { setNodes([]); setEdges([]) })
+      .catch(() => {
+        setNodes([])
+        setEdges([])
+        setLoadError('تعذر تحميل الفترة المحددة من الهيكل التنظيمي. حاول مرة أخرى.')
+      })
       .finally(() => setLoading(false))
   }
 
@@ -3130,6 +3147,16 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
 
         {loading
           ? <div className="loading-center"><div className="spinner"/></div>
+          : loadError
+            ? <ErrorState
+                title="تعذر تحميل الهيكل التنظيمي"
+                description={loadError}
+                onRetry={() => {
+                  if (currentPeriod?.id) loadPeriod(currentPeriod)
+                  else setReloadKey((value) => value + 1)
+                }}
+                minHeight={260}
+              />
           : (
           <svg
             ref={svgRef}
@@ -3429,7 +3456,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
         )}
 
         {/* Empty state */}
-        {!loading && nodes.length === 0 && (
+        {!loading && !loadError && nodes.length === 0 && (
           <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', pointerEvents:'none' }}>
             <GitBranch size={52} style={{ color:'var(--gray-300)', marginBottom:16 }}/>
             <p style={{ color:'var(--gray-400)', fontSize:'1rem', fontWeight:600 }}>لا يوجد هيكل تنظيمي بعد</p>
