@@ -10,17 +10,25 @@ from core import state as S
 
 ORG_TREES_DIR = S.db.org_trees_dir
 os.makedirs(ORG_TREES_DIR, exist_ok=True)
-ORG_TREE_PERIODS_CSV = os.path.join(S.db.csv_dir, "org_tree_periods.csv")
-ORG_TREE_NODES_CSV = os.path.join(S.db.csv_dir, "org_tree_nodes.csv")
-ORG_TREE_EDGES_CSV = os.path.join(S.db.csv_dir, "org_tree_edges.csv")
-ORG_TREE_HULLS_CSV = os.path.join(S.db.csv_dir, "org_tree_hulls.csv")
+ORG_TREE_PERIODS_CSV = os.path.join(S.db.csv_dir, "scd_org_tree_periods.csv")
+ORG_TREE_NODES_CSV = os.path.join(S.db.csv_dir, "scd_org_tree_nodes.csv")
+ORG_TREE_EDGES_CSV = os.path.join(S.db.csv_dir, "scd_org_tree_edges.csv")
+ORG_TREE_HULLS_CSV = os.path.join(S.db.csv_dir, "scd_org_tree_hulls.csv")
+ORG_TREE_LEGACY_CSV_PATHS = (
+    (os.path.join(S.db.csv_dir, "org_tree_periods.csv"), ORG_TREE_PERIODS_CSV),
+    (os.path.join(S.db.csv_dir, "org_tree_nodes.csv"), ORG_TREE_NODES_CSV),
+    (os.path.join(S.db.csv_dir, "org_tree_edges.csv"), ORG_TREE_EDGES_CSV),
+    (os.path.join(S.db.csv_dir, "org_tree_hulls.csv"), ORG_TREE_HULLS_CSV),
+)
 
 ORG_TREE_PERIOD_COLUMNS = ["group_id", "period_id", "jec_year", "from_date", "to_date"]
+ORG_TREE_SCD_COLUMNS = list(S.SCD_METADATA_COLUMNS)
+ORG_TREE_PERIOD_ALL_COLUMNS = ORG_TREE_PERIOD_COLUMNS + ORG_TREE_SCD_COLUMNS
 
 
 def _next_period_id() -> str:
     max_n = 0
-    for row in _read_csv_records(ORG_TREE_PERIODS_CSV, ORG_TREE_PERIOD_COLUMNS):
+    for row in _read_csv_records(ORG_TREE_PERIODS_CSV, ORG_TREE_PERIOD_COLUMNS, active_only=False):
         pid = str(row.get("period_id") or "").strip()
         if pid.startswith("OTPD") and pid[4:].isdigit():
             max_n = max(max_n, int(pid[4:]))
@@ -30,6 +38,9 @@ def _next_period_id() -> str:
 ORG_TREE_NODE_COLUMNS = ["period_id", "node_id", "person_id", "role"]
 ORG_TREE_EDGE_COLUMNS = ["period_id", "from_node_id", "to_node_id", "edge_type"]
 ORG_TREE_HULL_COLUMNS = ["node_id", "hull"]
+ORG_TREE_NODE_ALL_COLUMNS = ORG_TREE_NODE_COLUMNS + ORG_TREE_SCD_COLUMNS
+ORG_TREE_EDGE_ALL_COLUMNS = ORG_TREE_EDGE_COLUMNS + ORG_TREE_SCD_COLUMNS
+ORG_TREE_HULL_ALL_COLUMNS = ORG_TREE_HULL_COLUMNS + ORG_TREE_SCD_COLUMNS
 
 _PERSON_LOOKUP_CACHE_VERSION = None
 _REGISTERED_PERSON_ROWS: dict = {}
@@ -123,7 +134,117 @@ def _csv_number(value):
         return text
 
 
-def _read_csv_records(path: str, columns: list[str]) -> list[dict]:
+def _scd_timestamp() -> str:
+    return pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _scd_is_active(row: dict) -> bool:
+    flag = row.get(S.SCD_CURRENTLY_ACTIVE_FLAG_COL, True)
+    if isinstance(flag, bool):
+        return flag
+    text = str(flag if flag is not None else "").strip().lower()
+    return text not in ("false", "0", "no", "n", "f")
+
+
+def _scd_compare_value(value) -> str:
+    text = "" if value is None else str(value).strip()
+    return "" if text in ("nan", "None", "NaT", "<NA>", "null") else text
+
+
+def _scd_row_key(row: dict, key_columns: list[str]) -> tuple[str, ...]:
+    return tuple(_scd_compare_value(row.get(col)) for col in key_columns)
+
+
+def _scd_business_changed(old_row: dict, new_row: dict, business_columns: list[str]) -> bool:
+    return any(
+        _scd_compare_value(old_row.get(col)) != _scd_compare_value(new_row.get(col))
+        for col in business_columns
+    )
+
+
+def _scd_new_row(row: dict, business_columns: list[str], changed_by: str, now: str) -> dict:
+    return {
+        **{col: _csv_value(row.get(col)) for col in business_columns},
+        S.SCD_ACTIVE_FROM_COL: now,
+        S.SCD_ACTIVE_TO_COL: "",
+        S.SCD_CURRENTLY_ACTIVE_FLAG_COL: True,
+        S.SCD_CHANGED_BY_USER_COL: changed_by,
+    }
+
+
+def _scd_close_row(row: dict, changed_by: str, now: str) -> dict:
+    closed = dict(row)
+    closed[S.SCD_ACTIVE_TO_COL] = now
+    closed[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+    closed[S.SCD_CHANGED_BY_USER_COL] = changed_by
+    return closed
+
+
+def _scd_merge_records(
+    old_records: list[dict],
+    new_records: list[dict],
+    business_columns: list[str],
+    key_columns: list[str],
+    *,
+    changed_by: str,
+    scope_matches=None,
+) -> list[dict]:
+    """Apply row-level SCD versioning inside a scoped slice of a CSV."""
+    now = _scd_timestamp()
+
+    def in_scope(row: dict) -> bool:
+        return bool(scope_matches(row)) if scope_matches else True
+
+    new_by_key: dict[tuple[str, ...], dict] = {}
+    new_key_order: list[tuple[str, ...]] = []
+    for raw_new in new_records or []:
+        new_row = {col: _csv_value(raw_new.get(col)) for col in business_columns}
+        key = _scd_row_key(new_row, key_columns)
+        if key in new_by_key:
+            continue
+        new_by_key[key] = new_row
+        new_key_order.append(key)
+
+    merged: list[dict] = []
+    processed_active_keys: set[tuple[str, ...]] = set()
+
+    for raw_old in old_records:
+        old_row = dict(raw_old)
+        if not in_scope(old_row) or not _scd_is_active(old_row):
+            merged.append(old_row)
+            continue
+
+        key = _scd_row_key(old_row, key_columns)
+        new_row = new_by_key.get(key)
+        if new_row is None:
+            merged.append(_scd_close_row(old_row, changed_by, now))
+            continue
+
+        if key in processed_active_keys:
+            merged.append(_scd_close_row(old_row, changed_by, now))
+            continue
+
+        processed_active_keys.add(key)
+        if _scd_business_changed(old_row, new_row, business_columns):
+            merged.append(_scd_close_row(old_row, changed_by, now))
+            merged.append(_scd_new_row(new_row, business_columns, changed_by, now))
+        else:
+            merged.append(old_row)
+
+    for key in new_key_order:
+        if key not in processed_active_keys:
+            merged.append(_scd_new_row(new_by_key[key], business_columns, changed_by, now))
+
+    return merged
+
+
+def _read_csv_records(
+    path: str,
+    columns: list[str],
+    *,
+    active_only: bool = True,
+    include_scd: bool = False,
+) -> list[dict]:
     if not os.path.exists(path):
         return []
     try:
@@ -133,13 +254,84 @@ def _read_csv_records(path: str, columns: list[str]) -> list[dict]:
     for col in columns:
         if col not in df.columns:
             df[col] = ""
-    return df[columns].to_dict(orient="records")
+    for col in ORG_TREE_SCD_COLUMNS:
+        if col not in df.columns:
+            df[col] = "True" if col == S.SCD_CURRENTLY_ACTIVE_FLAG_COL else ""
+    read_columns = columns + ORG_TREE_SCD_COLUMNS
+    rows = df[read_columns].to_dict(orient="records")
+    if active_only:
+        rows = [row for row in rows if _scd_is_active(row)]
+    if include_scd:
+        return rows
+    return [{col: row.get(col, "") for col in columns} for row in rows]
 
 
 def _write_csv_records(path: str, columns: list[str], rows: list[dict]):
     os.makedirs(S.db.csv_dir, exist_ok=True)
     df = pd.DataFrame(rows, columns=columns)
     df.to_csv(path, index=False, encoding="utf-8-sig")
+
+
+def _ensure_org_tree_csv_scd(path: str, business_columns: list[str]):
+    if not os.path.exists(path):
+        return
+    try:
+        df = pd.read_csv(path, dtype=str, encoding="utf-8-sig", keep_default_na=False)
+    except Exception:
+        return
+
+    changed = False
+    now = _scd_timestamp()
+    for col in business_columns:
+        if col not in df.columns:
+            df[col] = ""
+            changed = True
+    for col in ORG_TREE_SCD_COLUMNS:
+        if col in df.columns:
+            continue
+        if col == S.SCD_ACTIVE_FROM_COL:
+            df[col] = now
+        elif col == S.SCD_ACTIVE_TO_COL:
+            df[col] = ""
+        elif col == S.SCD_CURRENTLY_ACTIVE_FLAG_COL:
+            df[col] = True
+        else:
+            df[col] = "admin"
+        changed = True
+
+    if changed:
+        _write_csv_records(path, business_columns + ORG_TREE_SCD_COLUMNS, df.to_dict(orient="records"))
+
+
+def _ensure_org_tree_csv_scd_columns():
+    for legacy_path, scd_path in ORG_TREE_LEGACY_CSV_PATHS:
+        if os.path.exists(scd_path) or not os.path.exists(legacy_path):
+            continue
+        try:
+            os.replace(legacy_path, scd_path)
+        except OSError:
+            pass
+    _ensure_org_tree_csv_scd(ORG_TREE_PERIODS_CSV, ORG_TREE_PERIOD_COLUMNS)
+    _ensure_org_tree_csv_scd(ORG_TREE_NODES_CSV, ORG_TREE_NODE_COLUMNS)
+    _ensure_org_tree_csv_scd(ORG_TREE_EDGES_CSV, ORG_TREE_EDGE_COLUMNS)
+    _ensure_org_tree_csv_scd(ORG_TREE_HULLS_CSV, ORG_TREE_HULL_COLUMNS)
+
+
+def _changed_by_from_current_user() -> str:
+    try:
+        from core.routes_auth import exports as auth_exports
+
+        user = auth_exports["_current_user"]()
+    except Exception:
+        user = None
+    if not user:
+        return "admin"
+    if user.get("role") == "admin":
+        return "admin"
+    person_id = user.get("person_id")
+    if person_id is None or str(person_id).strip() == "":
+        return "admin"
+    return str(person_id)
 
 
 def _period_from_csv_record(row: dict) -> dict:
@@ -224,8 +416,8 @@ def _load_csv_hulls(node_ids: set[str]) -> dict[str, list[str]]:
     return result
 
 
-def _save_csv_hulls(nodes: list, *, remove_node_ids: set[str] | None = None):
-    rows = _read_csv_records(ORG_TREE_HULLS_CSV, ORG_TREE_HULL_COLUMNS)
+def _save_csv_hulls(nodes: list, *, remove_node_ids: set[str] | None = None, changed_by: str = "admin"):
+    rows = _read_csv_records(ORG_TREE_HULLS_CSV, ORG_TREE_HULL_COLUMNS, active_only=False, include_scd=True)
     node_ids = {
         _csv_value(node.get("id"))
         for node in (nodes or [])
@@ -237,17 +429,25 @@ def _save_csv_hulls(nodes: list, *, remove_node_ids: set[str] | None = None):
         if str(node_id or "").strip()
     }
     replaced_node_ids = node_ids | stale_node_ids
-    kept = [row for row in rows if _none_if_blank(row.get("node_id")) not in replaced_node_ids]
+    new_rows = []
     for node in (nodes or []):
         nid = _csv_value(node.get("id"))
         for hull in (node.get("hulls") or []):
             hull_str = _none_if_blank(str(hull) if hull is not None else None)
             if nid and hull_str:
-                kept.append({"node_id": nid, "hull": hull_str})
-    _write_csv_records(ORG_TREE_HULLS_CSV, ORG_TREE_HULL_COLUMNS, kept)
+                new_rows.append({"node_id": nid, "hull": hull_str})
+    merged = _scd_merge_records(
+        rows,
+        new_rows,
+        ORG_TREE_HULL_COLUMNS,
+        ORG_TREE_HULL_COLUMNS,
+        changed_by=changed_by,
+        scope_matches=lambda row: _scd_compare_value(row.get("node_id")) in replaced_node_ids,
+    )
+    _write_csv_records(ORG_TREE_HULLS_CSV, ORG_TREE_HULL_ALL_COLUMNS, merged)
 
 
-def _delete_csv_hulls(node_ids: set[str]):
+def _delete_csv_hulls(node_ids: set[str], *, changed_by: str = "admin"):
     delete_ids = {
         str(node_id).strip()
         for node_id in (node_ids or set())
@@ -255,12 +455,16 @@ def _delete_csv_hulls(node_ids: set[str]):
     }
     if not delete_ids:
         return
-    rows = _read_csv_records(ORG_TREE_HULLS_CSV, ORG_TREE_HULL_COLUMNS)
-    _write_csv_records(
-        ORG_TREE_HULLS_CSV,
+    rows = _read_csv_records(ORG_TREE_HULLS_CSV, ORG_TREE_HULL_COLUMNS, active_only=False, include_scd=True)
+    merged = _scd_merge_records(
+        rows,
+        [],
         ORG_TREE_HULL_COLUMNS,
-        [row for row in rows if _none_if_blank(row.get("node_id")) not in delete_ids],
+        ORG_TREE_HULL_COLUMNS,
+        changed_by=changed_by,
+        scope_matches=lambda row: _scd_compare_value(row.get("node_id")) in delete_ids,
     )
+    _write_csv_records(ORG_TREE_HULLS_CSV, ORG_TREE_HULL_ALL_COLUMNS, merged)
 
 
 def _load_csv_index(group_id: str) -> list[dict]:
@@ -271,11 +475,18 @@ def _load_csv_index(group_id: str) -> list[dict]:
     return [_period_from_csv_record(row) for row in rows]
 
 
-def _save_csv_index(group_id: str, periods: list):
-    rows = _read_csv_records(ORG_TREE_PERIODS_CSV, ORG_TREE_PERIOD_COLUMNS)
-    kept = [row for row in rows if row.get("group_id") != group_id]
-    kept.extend(_period_to_csv_record(group_id, period) for period in (periods or []))
-    _write_csv_records(ORG_TREE_PERIODS_CSV, ORG_TREE_PERIOD_COLUMNS, kept)
+def _save_csv_index(group_id: str, periods: list, *, changed_by: str = "admin"):
+    rows = _read_csv_records(ORG_TREE_PERIODS_CSV, ORG_TREE_PERIOD_COLUMNS, active_only=False, include_scd=True)
+    new_rows = [_period_to_csv_record(group_id, period) for period in (periods or [])]
+    merged = _scd_merge_records(
+        rows,
+        new_rows,
+        ORG_TREE_PERIOD_COLUMNS,
+        ["group_id", "period_id"],
+        changed_by=changed_by,
+        scope_matches=lambda row: _scd_compare_value(row.get("group_id")) == group_id,
+    )
+    _write_csv_records(ORG_TREE_PERIODS_CSV, ORG_TREE_PERIOD_ALL_COLUMNS, merged)
 
 
 def _load_csv_tree_data(group_id: str, period_id: str) -> dict:
@@ -297,48 +508,74 @@ def _load_csv_tree_data(group_id: str, period_id: str) -> dict:
     return {"nodes": nodes, "edges": edges}
 
 
-def _save_csv_tree_data(group_id: str, period_id: str, data: dict):
-    node_rows = _read_csv_records(ORG_TREE_NODES_CSV, ORG_TREE_NODE_COLUMNS)
+def _save_csv_tree_data(group_id: str, period_id: str, data: dict, *, changed_by: str = "admin"):
+    active_node_rows = _read_csv_records(ORG_TREE_NODES_CSV, ORG_TREE_NODE_COLUMNS)
     old_node_ids = {
         _none_if_blank(row.get("node_id"))
-        for row in node_rows
+        for row in active_node_rows
         if row.get("period_id") == period_id
     }
     old_node_ids = {node_id for node_id in old_node_ids if node_id}
-    kept_nodes = [row for row in node_rows if row.get("period_id") != period_id]
-    kept_nodes.extend(_node_to_csv_record(period_id, node) for node in (data.get("nodes") or []))
-    _write_csv_records(ORG_TREE_NODES_CSV, ORG_TREE_NODE_COLUMNS, kept_nodes)
 
-    edge_rows = _read_csv_records(ORG_TREE_EDGES_CSV, ORG_TREE_EDGE_COLUMNS)
-    kept_edges = [row for row in edge_rows if row.get("period_id") != period_id]
-    kept_edges.extend(_edge_to_csv_record(period_id, edge) for edge in (data.get("edges") or []))
-    _write_csv_records(ORG_TREE_EDGES_CSV, ORG_TREE_EDGE_COLUMNS, kept_edges)
+    node_rows = _read_csv_records(ORG_TREE_NODES_CSV, ORG_TREE_NODE_COLUMNS, active_only=False, include_scd=True)
+    new_node_rows = [_node_to_csv_record(period_id, node) for node in (data.get("nodes") or [])]
+    merged_nodes = _scd_merge_records(
+        node_rows,
+        new_node_rows,
+        ORG_TREE_NODE_COLUMNS,
+        ["period_id", "node_id"],
+        changed_by=changed_by,
+        scope_matches=lambda row: _scd_compare_value(row.get("period_id")) == period_id,
+    )
+    _write_csv_records(ORG_TREE_NODES_CSV, ORG_TREE_NODE_ALL_COLUMNS, merged_nodes)
 
-    _save_csv_hulls(data.get("nodes") or [], remove_node_ids=old_node_ids)
+    edge_rows = _read_csv_records(ORG_TREE_EDGES_CSV, ORG_TREE_EDGE_COLUMNS, active_only=False, include_scd=True)
+    new_edge_rows = [_edge_to_csv_record(period_id, edge) for edge in (data.get("edges") or [])]
+    merged_edges = _scd_merge_records(
+        edge_rows,
+        new_edge_rows,
+        ORG_TREE_EDGE_COLUMNS,
+        ORG_TREE_EDGE_COLUMNS,
+        changed_by=changed_by,
+        scope_matches=lambda row: _scd_compare_value(row.get("period_id")) == period_id,
+    )
+    _write_csv_records(ORG_TREE_EDGES_CSV, ORG_TREE_EDGE_ALL_COLUMNS, merged_edges)
+
+    _save_csv_hulls(data.get("nodes") or [], remove_node_ids=old_node_ids, changed_by=changed_by)
 
 
-def _delete_csv_tree_data(group_id: str, period_id: str):
-    node_rows = _read_csv_records(ORG_TREE_NODES_CSV, ORG_TREE_NODE_COLUMNS)
+def _delete_csv_tree_data(group_id: str, period_id: str, *, changed_by: str = "admin"):
+    active_node_rows = _read_csv_records(ORG_TREE_NODES_CSV, ORG_TREE_NODE_COLUMNS)
     delete_node_ids = {
         _none_if_blank(row.get("node_id"))
-        for row in node_rows
+        for row in active_node_rows
         if row.get("period_id") == period_id
     }
     delete_node_ids = {node_id for node_id in delete_node_ids if node_id}
-    _write_csv_records(
-        ORG_TREE_NODES_CSV,
+
+    node_rows = _read_csv_records(ORG_TREE_NODES_CSV, ORG_TREE_NODE_COLUMNS, active_only=False, include_scd=True)
+    merged_nodes = _scd_merge_records(
+        node_rows,
+        [],
         ORG_TREE_NODE_COLUMNS,
-        [row for row in node_rows if row.get("period_id") != period_id],
+        ["period_id", "node_id"],
+        changed_by=changed_by,
+        scope_matches=lambda row: _scd_compare_value(row.get("period_id")) == period_id,
     )
+    _write_csv_records(ORG_TREE_NODES_CSV, ORG_TREE_NODE_ALL_COLUMNS, merged_nodes)
 
-    edge_rows = _read_csv_records(ORG_TREE_EDGES_CSV, ORG_TREE_EDGE_COLUMNS)
-    _write_csv_records(
-        ORG_TREE_EDGES_CSV,
+    edge_rows = _read_csv_records(ORG_TREE_EDGES_CSV, ORG_TREE_EDGE_COLUMNS, active_only=False, include_scd=True)
+    merged_edges = _scd_merge_records(
+        edge_rows,
+        [],
         ORG_TREE_EDGE_COLUMNS,
-        [row for row in edge_rows if row.get("period_id") != period_id],
+        ORG_TREE_EDGE_COLUMNS,
+        changed_by=changed_by,
+        scope_matches=lambda row: _scd_compare_value(row.get("period_id")) == period_id,
     )
+    _write_csv_records(ORG_TREE_EDGES_CSV, ORG_TREE_EDGE_ALL_COLUMNS, merged_edges)
 
-    _delete_csv_hulls(delete_node_ids)
+    _delete_csv_hulls(delete_node_ids, changed_by=changed_by)
 
 
 def _csv_storage_mtime() -> float:
@@ -412,10 +649,10 @@ def _load_index(group_name: str) -> list:
     return [_period_for_storage(p) for p in (periods or []) if isinstance(p, dict) and p.get("id")]
 
 
-def _save_index(group_name: str, periods: list):
+def _save_index(group_name: str, periods: list, *, changed_by: str = "admin"):
     group_id = _resolve_group_id(group_name)
     if not _uses_json_storage(group_id):
-        _save_csv_index(group_id, periods)
+        _save_csv_index(group_id, periods, changed_by=changed_by)
         return
 
     d = _group_dir(group_id)
@@ -443,8 +680,8 @@ def _migrate_legacy(group_name: str, legacy_path: str) -> list:
         "edges": normalized["edges"],
     }
     periods = [period]
-    _save_index(group_id, periods)
-    _save_tree_data(group_id, period_id, tree_data)
+    _save_index(group_id, periods, changed_by="admin")
+    _save_tree_data(group_id, period_id, tree_data, changed_by="admin")
     try:
         os.remove(legacy_path)
     except Exception:
@@ -767,13 +1004,13 @@ def _load_tree_data(group_name: str, period_id: str) -> dict:
     return _load_csv_tree_data(group_id, period_id)
 
 
-def _save_tree_data(group_name: str, period_id: str, data: dict):
+def _save_tree_data(group_name: str, period_id: str, data: dict, *, changed_by: str = "admin"):
     group_id = _resolve_group_id(group_name)
     if _uses_json_storage(group_id):
         os.makedirs(_group_dir(group_id), exist_ok=True)
         S.db.save_json_file(_period_path(group_id, period_id), data)
         return
-    _save_csv_tree_data(group_id, period_id, data)
+    _save_csv_tree_data(group_id, period_id, data, changed_by=changed_by)
 
 
 def _tree_period_exists(group_name: str, period_id: str) -> bool:
@@ -783,7 +1020,7 @@ def _tree_period_exists(group_name: str, period_id: str) -> bool:
     return _find_period(_load_index(group_id), period_id) is not None
 
 
-def _delete_tree_data(group_name: str, period_id: str):
+def _delete_tree_data(group_name: str, period_id: str, *, changed_by: str = "admin"):
     group_id = _resolve_group_id(group_name)
     if _uses_json_storage(group_id):
         ppath = _period_path(group_id, period_id)
@@ -793,7 +1030,7 @@ def _delete_tree_data(group_name: str, period_id: str):
         except Exception:
             pass
         return
-    _delete_csv_tree_data(group_id, period_id)
+    _delete_csv_tree_data(group_id, period_id, changed_by=changed_by)
 
 
 def _migrate_all_org_tree_files():
@@ -912,7 +1149,8 @@ def register_org_tree_routes(app):
 
     @app.put("/api/org-tree/<path:group_name>")
     def put_org_tree(group_name):
-        body = request.json
+        body = request.json or {}
+        changed_by = _changed_by_from_current_user()
         periods = _load_index(group_name)
 
         close_current = body.get("close_current", False)
@@ -944,14 +1182,14 @@ def register_org_tree_routes(app):
                 "to_date": new_period_data.get("to_date"),
             }
             periods.append(new_period)
-            _save_index(group_name, periods)
+            _save_index(group_name, periods, changed_by=changed_by)
 
             normalized = _normalize_tree_payload(body.get("nodes", []), body.get("edges", []))
             tree_data = {
                 "nodes": normalized["nodes"],
                 "edges": normalized["edges"],
             }
-            _save_tree_data(group_name, new_id, tree_data)
+            _save_tree_data(group_name, new_id, tree_data, changed_by=changed_by)
 
             return jsonify({"ok": True, "period": _period_for_response(new_period), "periods": _periods_for_response(periods)})
 
@@ -964,14 +1202,14 @@ def register_org_tree_routes(app):
             for p in periods:
                 if p["id"] == pid_str:
                     p.update({k: period_updates.get(k, p.get(k)) for k in ("jec_year", "from_date", "to_date")})
-            _save_index(group_name, periods)
+            _save_index(group_name, periods, changed_by=changed_by)
 
             normalized = _normalize_tree_payload(body.get("nodes", []), body.get("edges", []))
             tree_data = {
                 "nodes": normalized["nodes"],
                 "edges": normalized["edges"],
             }
-            _save_tree_data(group_name, pid_str, tree_data)
+            _save_tree_data(group_name, pid_str, tree_data, changed_by=changed_by)
             period_payload = _find_period(periods, pid_str)
             return jsonify({"ok": True, "period": _period_for_response(period_payload), "periods": _periods_for_response(periods)})
 
@@ -983,18 +1221,19 @@ def register_org_tree_routes(app):
             "to_date": None,
         }
         periods = [new_period]
-        _save_index(group_name, periods)
+        _save_index(group_name, periods, changed_by=changed_by)
         normalized = _normalize_tree_payload(body.get("nodes", []), body.get("edges", []))
         tree_data = {
             "nodes": normalized["nodes"],
             "edges": normalized["edges"],
         }
-        _save_tree_data(group_name, new_id, tree_data)
+        _save_tree_data(group_name, new_id, tree_data, changed_by=changed_by)
         return jsonify({"ok": True, "period": _period_for_response(new_period), "periods": _periods_for_response(periods)})
 
     @app.route("/api/org-tree/<path:group_name>/period/<period_id>", methods=["PATCH"])
     def patch_org_tree_period(group_name, period_id):
-        body = request.json
+        body = request.json or {}
+        changed_by = _changed_by_from_current_user()
         periods = _load_index(group_name)
 
         target = next((p for p in periods if p["id"] == period_id), None)
@@ -1019,22 +1258,24 @@ def register_org_tree_routes(app):
             if k in body:
                 target[k] = body[k]
 
-        _save_index(group_name, periods)
+        _save_index(group_name, periods, changed_by=changed_by)
 
         return jsonify({"ok": True, "period": _period_for_response(target), "periods": _periods_for_response(periods)})
 
     @app.route("/api/org-tree/<path:group_name>/period/<period_id>", methods=["DELETE"])
     def delete_org_tree_period(group_name, period_id):
+        changed_by = _changed_by_from_current_user()
         periods = _load_index(group_name)
         target = next((p for p in periods if p["id"] == period_id), None)
         if not target:
             return jsonify({"error": "not found"}), 404
 
         periods = [p for p in periods if p["id"] != period_id]
-        _save_index(group_name, periods)
-        _delete_tree_data(group_name, period_id)
+        _save_index(group_name, periods, changed_by=changed_by)
+        _delete_tree_data(group_name, period_id, changed_by=changed_by)
 
         return jsonify({"ok": True, "periods": _periods_for_response(periods)})
 
 
+_ensure_org_tree_csv_scd_columns()
 _migrate_all_org_tree_files()
