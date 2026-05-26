@@ -8,18 +8,10 @@ from flask import jsonify, request
 from core import state as S
 
 
-ORG_TREES_DIR = S.db.org_trees_dir
-os.makedirs(ORG_TREES_DIR, exist_ok=True)
 ORG_TREE_PERIODS_CSV = os.path.join(S.db.csv_dir, "scd_org_tree_periods.csv")
 ORG_TREE_NODES_CSV = os.path.join(S.db.csv_dir, "scd_org_tree_nodes.csv")
 ORG_TREE_EDGES_CSV = os.path.join(S.db.csv_dir, "scd_org_tree_edges.csv")
 ORG_TREE_HULLS_CSV = os.path.join(S.db.csv_dir, "scd_org_tree_hulls.csv")
-ORG_TREE_LEGACY_CSV_PATHS = (
-    (os.path.join(S.db.csv_dir, "org_tree_periods.csv"), ORG_TREE_PERIODS_CSV),
-    (os.path.join(S.db.csv_dir, "org_tree_nodes.csv"), ORG_TREE_NODES_CSV),
-    (os.path.join(S.db.csv_dir, "org_tree_edges.csv"), ORG_TREE_EDGES_CSV),
-    (os.path.join(S.db.csv_dir, "org_tree_hulls.csv"), ORG_TREE_HULLS_CSV),
-)
 
 ORG_TREE_PERIOD_COLUMNS = ["group_id", "period_id", "jec_year", "from_date", "to_date"]
 ORG_TREE_SCD_COLUMNS = list(S.SCD_METADATA_COLUMNS)
@@ -70,33 +62,11 @@ def _canonical_group_ref(group_ref: str | None) -> str | None:
     return ref
 
 
-def _group_dir(group_name: str) -> str:
-    group_ref = _canonical_group_ref(group_name) or group_name
-    group_id = S.youth_group_id(group_ref) or group_ref
-    return S.db.group_dir(group_id)
-
-
-def _index_path(group_name: str) -> str:
-    group_ref = _canonical_group_ref(group_name) or group_name
-    group_id = S.youth_group_id(group_ref) or group_ref
-    return S.db.index_path(group_id)
-
-
-def _period_path(group_name: str, period_id: str) -> str:
-    group_ref = _canonical_group_ref(group_name) or group_name
-    group_id = S.youth_group_id(group_ref) or group_ref
-    return S.db.period_path(group_id, period_id)
-
-
 def _resolve_group_id(group_ref: str) -> str:
     canonical = _canonical_group_ref(group_ref) or group_ref
     if canonical == GS_GROUP_ID:
         return GS_GROUP_ID
     return S.youth_group_id(canonical, create=True) or canonical
-
-
-def _uses_json_storage(group_ref: str | None) -> bool:
-    return False
 
 
 def _none_if_blank(value):
@@ -270,51 +240,6 @@ def _write_csv_records(path: str, columns: list[str], rows: list[dict]):
     os.makedirs(S.db.csv_dir, exist_ok=True)
     df = pd.DataFrame(rows, columns=columns)
     df.to_csv(path, index=False, encoding="utf-8-sig")
-
-
-def _ensure_org_tree_csv_scd(path: str, business_columns: list[str]):
-    if not os.path.exists(path):
-        return
-    try:
-        df = pd.read_csv(path, dtype=str, encoding="utf-8-sig", keep_default_na=False)
-    except Exception:
-        return
-
-    changed = False
-    now = _scd_timestamp()
-    for col in business_columns:
-        if col not in df.columns:
-            df[col] = ""
-            changed = True
-    for col in ORG_TREE_SCD_COLUMNS:
-        if col in df.columns:
-            continue
-        if col == S.SCD_ACTIVE_FROM_COL:
-            df[col] = now
-        elif col == S.SCD_ACTIVE_TO_COL:
-            df[col] = ""
-        elif col == S.SCD_CURRENTLY_ACTIVE_FLAG_COL:
-            df[col] = True
-        else:
-            df[col] = "admin"
-        changed = True
-
-    if changed:
-        _write_csv_records(path, business_columns + ORG_TREE_SCD_COLUMNS, df.to_dict(orient="records"))
-
-
-def _ensure_org_tree_csv_scd_columns():
-    for legacy_path, scd_path in ORG_TREE_LEGACY_CSV_PATHS:
-        if os.path.exists(scd_path) or not os.path.exists(legacy_path):
-            continue
-        try:
-            os.replace(legacy_path, scd_path)
-        except OSError:
-            pass
-    _ensure_org_tree_csv_scd(ORG_TREE_PERIODS_CSV, ORG_TREE_PERIOD_COLUMNS)
-    _ensure_org_tree_csv_scd(ORG_TREE_NODES_CSV, ORG_TREE_NODE_COLUMNS)
-    _ensure_org_tree_csv_scd(ORG_TREE_EDGES_CSV, ORG_TREE_EDGE_COLUMNS)
-    _ensure_org_tree_csv_scd(ORG_TREE_HULLS_CSV, ORG_TREE_HULL_COLUMNS)
 
 
 def _changed_by_from_current_user() -> str:
@@ -630,63 +555,13 @@ def _find_period(periods: list, period_id: str):
 
 def _load_index(group_name: str) -> list:
     group_id = _resolve_group_id(group_name)
-    if not _uses_json_storage(group_id):
-        periods = _load_csv_index(group_id)
-        if periods:
-            return [_period_for_storage(p) for p in periods if isinstance(p, dict) and p.get("id")]
-        legacy_path = S.db.legacy_group_path(group_id)
-        if os.path.exists(legacy_path):
-            return _migrate_legacy(group_id, legacy_path)
-        return []
-
-    path = _index_path(group_id)
-    if not os.path.exists(path):
-        legacy_path = S.db.legacy_group_path(group_id)
-        if os.path.exists(legacy_path):
-            return _migrate_legacy(group_id, legacy_path)
-        return []
-    periods = S.db.load_json_file(path, [])
-    return [_period_for_storage(p) for p in (periods or []) if isinstance(p, dict) and p.get("id")]
+    periods = _load_csv_index(group_id)
+    return [_period_for_storage(p) for p in periods if isinstance(p, dict) and p.get("id")]
 
 
 def _save_index(group_name: str, periods: list, *, changed_by: str = "admin"):
     group_id = _resolve_group_id(group_name)
-    if not _uses_json_storage(group_id):
-        _save_csv_index(group_id, periods, changed_by=changed_by)
-        return
-
-    d = _group_dir(group_id)
-    os.makedirs(d, exist_ok=True)
-    S.db.save_json_file(_index_path(group_id), periods)
-
-
-def _migrate_legacy(group_name: str, legacy_path: str) -> list:
-    try:
-        data = S.db.load_json_file(legacy_path, {})
-    except Exception:
-        return []
-    period_id = _next_period_id()
-    period = {
-        "id": period_id,
-        "jec_year": None,
-        "from_date": None,
-        "to_date": None,
-    }
-    group_id = _resolve_group_id(group_name)
-    normalized = _normalize_tree_payload(data.get("nodes", []), data.get("edges", []))
-    tree_data = {
-        **data,
-        "nodes": normalized["nodes"],
-        "edges": normalized["edges"],
-    }
-    periods = [period]
-    _save_index(group_id, periods, changed_by="admin")
-    _save_tree_data(group_id, period_id, tree_data, changed_by="admin")
-    try:
-        os.remove(legacy_path)
-    except Exception:
-        pass
-    return periods
+    _save_csv_index(group_id, periods, changed_by=changed_by)
 
 
 def _periods_overlap(p1: dict, p2: dict) -> bool:
@@ -765,13 +640,13 @@ def _extract_node_identity(node: dict):
     if pid is None or str(pid).strip() == "":
         pid = node.get("person_id")
 
-    legacy_unreg = node.get("unregisteredId")
-    if legacy_unreg is None or str(legacy_unreg).strip() == "":
-        legacy_unreg = node.get("unreg_id")
+    unreg_id = node.get("unregisteredId")
+    if unreg_id is None or str(unreg_id).strip() == "":
+        unreg_id = node.get("unreg_id")
 
-    if legacy_unreg is not None and str(legacy_unreg).strip() != "":
+    if unreg_id is not None and str(unreg_id).strip() != "":
         if pid is None or str(pid).strip() == "":
-            pid = legacy_unreg
+            pid = unreg_id
 
     if pid is None or str(pid).strip() == "":
         return None, False
@@ -858,15 +733,8 @@ def _enrich_node_from_person(node: dict) -> dict:
 def _period_cache_entry(group_name: str, period_id: str) -> dict:
     data_version = _current_data_version()
     group_id = _resolve_group_id(group_name)
-    if _uses_json_storage(group_id):
-        cache_key = _period_path(group_id, period_id)
-        try:
-            mtime = os.path.getmtime(cache_key)
-        except OSError:
-            return {"nodes": [], "edges": [], "person_ids": set(), "unregistered_ids": set()}
-    else:
-        cache_key = f"csv:{group_id}:{period_id}"
-        mtime = _csv_storage_mtime()
+    cache_key = f"csv:{group_id}:{period_id}"
+    mtime = _csv_storage_mtime()
 
     cached = _ORG_TREE_PERIOD_CACHE.get(cache_key)
     if cached and cached.get("mtime") == mtime and cached.get("data_version") == data_version:
@@ -999,86 +867,22 @@ def _normalize_tree_payload(nodes: list, edges: list) -> dict:
 
 def _load_tree_data(group_name: str, period_id: str) -> dict:
     group_id = _resolve_group_id(group_name)
-    if _uses_json_storage(group_id):
-        return S.db.load_json_file(_period_path(group_id, period_id), {"nodes": [], "edges": []})
     return _load_csv_tree_data(group_id, period_id)
 
 
 def _save_tree_data(group_name: str, period_id: str, data: dict, *, changed_by: str = "admin"):
     group_id = _resolve_group_id(group_name)
-    if _uses_json_storage(group_id):
-        os.makedirs(_group_dir(group_id), exist_ok=True)
-        S.db.save_json_file(_period_path(group_id, period_id), data)
-        return
     _save_csv_tree_data(group_id, period_id, data, changed_by=changed_by)
 
 
 def _tree_period_exists(group_name: str, period_id: str) -> bool:
     group_id = _resolve_group_id(group_name)
-    if _uses_json_storage(group_id):
-        return os.path.exists(_period_path(group_id, period_id))
     return _find_period(_load_index(group_id), period_id) is not None
 
 
 def _delete_tree_data(group_name: str, period_id: str, *, changed_by: str = "admin"):
     group_id = _resolve_group_id(group_name)
-    if _uses_json_storage(group_id):
-        ppath = _period_path(group_id, period_id)
-        try:
-            if os.path.exists(ppath):
-                os.remove(ppath)
-        except Exception:
-            pass
-        return
     _delete_csv_tree_data(group_id, period_id, changed_by=changed_by)
-
-
-def _migrate_all_org_tree_files():
-    try:
-        if not os.path.exists(ORG_TREES_DIR):
-            return
-
-        for group_dir in os.scandir(ORG_TREES_DIR):
-            if not group_dir.is_dir():
-                continue
-            current_name = group_dir.name
-            canonical = _canonical_group_ref(current_name)
-            if canonical != GS_GROUP_ID:
-                continue
-            target_group_id = GS_GROUP_ID
-            active_dir_path = group_dir.path
-            if target_group_id and target_group_id != current_name:
-                target_path = os.path.join(ORG_TREES_DIR, target_group_id)
-                if not os.path.exists(target_path):
-                    try:
-                        os.rename(group_dir.path, target_path)
-                        active_dir_path = target_path
-                    except Exception:
-                        active_dir_path = group_dir.path
-
-            for entry in os.scandir(active_dir_path):
-                if not entry.is_file() or not entry.name.endswith('.json'):
-                    continue
-                try:
-                    if entry.name == 'index.json':
-                        periods = S.db.load_json_file(entry.path, [])
-                        new_periods = [_period_for_storage(p) for p in (periods or []) if isinstance(p, dict) and p.get('id')]
-                        if new_periods != periods:
-                            S.db.save_json_file(entry.path, new_periods)
-                        continue
-
-                    data = S.db.load_json_file(entry.path, {})
-                    normalized = _normalize_tree_payload(data.get('nodes') or [], data.get('edges') or [])
-                    new_data = dict(data)
-                    new_data['nodes'] = normalized['nodes']
-                    new_data['edges'] = normalized['edges']
-                    new_data.pop('period', None)
-                    if new_data != data:
-                        S.db.save_json_file(entry.path, new_data)
-                except Exception:
-                    continue
-    except Exception:
-        pass
 
 
 def register_org_tree_routes(app):
@@ -1277,5 +1081,3 @@ def register_org_tree_routes(app):
         return jsonify({"ok": True, "periods": _periods_for_response(periods)})
 
 
-_ensure_org_tree_csv_scd_columns()
-_migrate_all_org_tree_files()

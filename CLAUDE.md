@@ -41,7 +41,19 @@ This is a full-stack member management portal for JEC Jordan (a Coptic youth org
 
 ### Data storage
 
-All member data lives in `data/JECJordanData/` as UTF-8-sig encoded CSV files (one file per logical sheet). Slowly changing-dimension member/auth sheets use `scd_`-prefixed filenames; non-SCD files (for example `youth_groups.csv`, `churches.csv`, `parishes.csv`, `institution_logos.csv`) keep their plain names. A few long SCD names use shorter `scd_...` aliases; the mapping is centralized in `backend/core/database.py`. Legacy sheet name aliases (e.g. `school_logos` → `institution_logos`) are declared in `LEGACY_SHEET_ALIASES` in `database.py`.
+All member data lives in `data/JECJordanData/` as UTF-8-sig encoded CSV files (one file per logical sheet). All named sheets use `scd_`-prefixed filenames (e.g. `scd_persons.csv`, `scd_youth_groups.csv`). A few long SCD names use shorter aliases; the full mapping is in `SCD_WORKBOOK_SHEET_NAMES` in `backend/core/database.py`.
+
+#### SCD (Slowly Changing Dimension) system
+
+Every CSV sheet carries four metadata columns: `scd_active_from`, `scd_active_to`, `scd_currently_active_flag`, `scd_changed_by_user`. The invariants are:
+- **Active rows**: `scd_currently_active_flag=True`, `scd_active_to` is empty.
+- **Closed rows**: `scd_currently_active_flag=False`, `scd_active_to` has a timestamp.
+- **Mutations follow a close+insert pattern**: mark the old row inactive, insert a new active row; never update in place.
+- **`_scd_filter_active(df)`** in `state.py` is the canonical filter — call it on any DataFrame before using it for read/display. It is a no-op for legacy DataFrames that lack the flag column.
+- **`store`** (main in-memory store) holds ALL rows — active and inactive — intentionally, to preserve history. Always apply `_scd_filter_active()` before querying.
+- **`unreg_store`** (unregistered-person view) is rebuilt by `_sync_unreg_view_from_store()` after every save; it receives only active rows (SCD-filtered at rebuild time). Routes that read `unreg_store` for display should still call `_scd_filter_active()` defensively.
+- **`auth_users`** SCD is handled separately in `db.save_auth()` / `db.load_auth()` in `database.py`.
+- **Org-tree sheets** (`scd_org_tree_periods/nodes/edges/hulls.csv`) are managed directly in `routes_org_tree.py` via `_read_csv_records(active_only=True)` — they are intentionally NOT in `SCD_LOGICAL_SHEETS` because they bypass the standard Database loader.
 
 Supplementary JSON files in `data/`:
 - `config/` — per-option JSON files for active year, name-variation mappings, person titles, school branches, and mottos

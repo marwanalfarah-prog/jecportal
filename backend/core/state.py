@@ -36,7 +36,6 @@ UNREG_SHEETS = [
 ADDRESS_SHEET = "addresses"
 STREET_ADDRESS_COL = "street_address"
 ADDRESS_COLUMNS = ["person_id", "country", "governorate", "city", STREET_ADDRESS_COL, "lat", "lng", "is_primary"]
-PERSON_ADDRESS_PROJECTION_COLS = ["country", "governorate", "city", STREET_ADDRESS_COL, "address", "lat", "lng"]
 DEFAULT_COUNTRY = "الأردن"
 PERSON_TITLE_SHEET = "person_titles"
 PERSON_TITLE_COLUMNS = ["person_id", "title"]
@@ -163,8 +162,8 @@ YOUTH_GROUP_ID_COL = "youth_group_id"
 YOUTH_GROUP_NAME_COL = "youth_group_name"
 YOUTH_GROUP_PATRON_COL = "youth_group_patron"
 YOUTH_GROUP_SHORT_NAME_COL = "youth_group_short_name"
-LEGACY_YOUTH_GROUP_PATRON_COL = "شفيع الشبيبة"
-LEGACY_YOUTH_GROUP_SHORT_NAME_COL = "منطقة|اسم مختصر"
+ALT_YOUTH_GROUP_PATRON_COL = "شفيع الشبيبة"
+ALT_YOUTH_GROUP_SHORT_NAME_COL = "منطقة|اسم مختصر"
 YOUTH_GROUP_PARISH_ID_COL = "parish_id"
 YOUTH_GROUP_USE_PARISH_LOGO_COL = "use_parish_logo"
 YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL = "inherit_parish_social_media"
@@ -1643,11 +1642,11 @@ def person_youth_group_age_history_rows_from_membership_rows(rows, normalized_me
                 })
             continue
 
-        legacy_age_group = _normalize_age_group(source_row.get("age_group")) or _normalize_age_group(membership_row.get("age_group"))
-        if legacy_age_group:
+        stored_age_group = _normalize_age_group(source_row.get("age_group")) or _normalize_age_group(membership_row.get("age_group"))
+        if stored_age_group:
             history_rows.append({
                 PERSON_YOUTH_GROUP_RECORD_ID_COL: record_id,
-                "age_group": legacy_age_group,
+                "age_group": stored_age_group,
                 "start_date": None,
                 "end_date": None,
             })
@@ -1669,10 +1668,10 @@ def build_person_youth_group_payload_rows(df: pd.DataFrame | None, history_df: p
                 continue
             record_id = _normalize_person_youth_group_record_id(row.get(PERSON_YOUTH_GROUP_RECORD_ID_COL))
             history_rows = history_lookup.get(record_id, [])
-            legacy_age_group = _normalize_age_group(row.get("age_group"))
-            if not history_rows and legacy_age_group:
-                history_rows = [{"age_group": legacy_age_group, "start_date": None, "end_date": None}]
-            current_age_group = current_age_group_from_history_rows(history_rows) or legacy_age_group or ""
+            stored_age_group = _normalize_age_group(row.get("age_group"))
+            if not history_rows and stored_age_group:
+                history_rows = [{"age_group": stored_age_group, "start_date": None, "end_date": None}]
+            current_age_group = current_age_group_from_history_rows(history_rows) or stored_age_group or ""
             join_year = _normalize_youth_join_year(row.get("youth_join_year"))
             archived = row.get("archived")
             rows.append({
@@ -2579,9 +2578,9 @@ def normalize_job_rows(rows, existing_id_map: dict[str, str] | None = None) -> t
         start_date = _normalize_text(row.get("start_date"))
         end_date = _normalize_text(row.get("end_date"))
         state = _normalize_text(_first_present(row, EMPLOYMENT_STATE_COL, "state"))
-        legacy_is_current = row.get("is_current")
-        has_legacy_current = legacy_is_current not in (None, "", "nan", "None", "null")
-        is_current = _to_bool(legacy_is_current) if has_legacy_current else (not bool(end_date))
+        is_current_raw = row.get("is_current")
+        has_is_current_val = is_current_raw not in (None, "", "nan", "None", "null")
+        is_current = _to_bool(is_current_raw) if has_is_current_val else (not bool(end_date))
         if not state:
             state = "current" if is_current else "previous"
         if state == "current":
@@ -2632,9 +2631,9 @@ def normalize_higher_education_rows(rows) -> list[dict]:
         start_date = _normalize_text(row.get("start_date"))
         end_date = _normalize_text(row.get("end_date"))
         state = _normalize_text(_first_present(row, EDUCATION_STATE_COL, "state"))
-        legacy_is_current = row.get("is_current")
-        has_legacy_current = legacy_is_current not in (None, "", "nan", "None", "null")
-        is_current = _to_bool(legacy_is_current) if has_legacy_current else (not bool(end_date))
+        is_current_raw = row.get("is_current")
+        has_is_current_val = is_current_raw not in (None, "", "nan", "None", "null")
+        is_current = _to_bool(is_current_raw) if has_is_current_val else (not bool(end_date))
 
         if not state:
             state = "current" if is_current else None
@@ -2666,25 +2665,25 @@ def normalize_responsibility_rows(rows) -> list[dict]:
         if not isinstance(row, dict):
             continue
 
-        legacy_period = _normalize_text(_first_present(row, "responsibility_period", "time"))
+        period_text = _normalize_text(_first_present(row, "responsibility_period", "time"))
         jec_year = _to_int_or_none(row.get("jec_year"), 1900, 2100)
-        if jec_year is None and legacy_period:
-            if legacy_period in {"حاليًّا", "حاليًا", "حالي"}:
+        if jec_year is None and period_text:
+            if period_text in {"حاليًّا", "حاليًا", "حالي"}:
                 jec_year = current_year
             else:
-                jec_year = _to_int_or_none(legacy_period, 1900, 2100)
-        legacy_is_current = row.get("is_current")
-        has_is_current_value = legacy_is_current not in (None, "", "nan", "None", "null")
-        legacy_is_active = row.get("is_active")
-        has_is_active_value = legacy_is_active not in (None, "", "nan", "None", "null")
+                jec_year = _to_int_or_none(period_text, 1900, 2100)
+        is_current_raw = row.get("is_current")
+        has_is_current_value = is_current_raw not in (None, "", "nan", "None", "null")
+        is_active_raw = row.get("is_active")
+        has_is_active_value = is_active_raw not in (None, "", "nan", "None", "null")
         has_current_flag = has_is_current_value or has_is_active_value
         if has_is_current_value:
-            is_current = _to_bool(legacy_is_current)
+            is_current = _to_bool(is_current_raw)
         elif has_is_active_value:
-            is_current = _to_bool(legacy_is_active)
-        elif legacy_period in {"حاليًّا", "حاليًا", "حالي"}:
+            is_current = _to_bool(is_active_raw)
+        elif period_text in {"حاليًّا", "حاليًا", "حالي"}:
             is_current = True
-        elif legacy_period in {"سابقًا", "سابقا"} or _to_int_or_none(legacy_period, 1900, 2100) is not None:
+        elif period_text in {"سابقًا", "سابقا"} or _to_int_or_none(period_text, 1900, 2100) is not None:
             is_current = False
         else:
             is_current = False
@@ -2693,7 +2692,7 @@ def normalize_responsibility_rows(rows) -> list[dict]:
         end_date = _normalize_text(row.get("end_date"))
         youth_group_id = _normalize_text(row.get("youth_group_id"))
 
-        if not (jec_year is not None or has_current_flag or legacy_period or responsibility_name or start_date or end_date or youth_group_id):
+        if not (jec_year is not None or has_current_flag or period_text or responsibility_name or start_date or end_date or youth_group_id):
             continue
 
         normalized.append({
@@ -2836,7 +2835,7 @@ def job_rows_for_person(source_store: dict[str, pd.DataFrame], person_id) -> lis
     return normalized_rows
 
 
-def address_rows_from_legacy_person_payload(person: dict | None) -> list[dict]:
+def address_rows_from_embedded_payload(person: dict | None) -> list[dict]:
     payload = person or {}
     governorate = _normalize_text(payload.get("governorate"))
     city = _normalize_text(payload.get("city"))
@@ -2881,7 +2880,7 @@ def _project_primary_addresses(persons_df: pd.DataFrame, addresses_df: pd.DataFr
     if working.empty or "person_id" not in working.columns:
         return working
 
-    source_addresses = addresses_df if addresses_df is not None else store.get(ADDRESS_SHEET, pd.DataFrame())
+    source_addresses = addresses_df if addresses_df is not None else _scd_filter_active(store.get(ADDRESS_SHEET, pd.DataFrame()))
     primary_rows = _primary_address_rows(source_addresses)
     if primary_rows.empty or "person_id" not in primary_rows.columns:
         return working
@@ -2950,14 +2949,14 @@ def _normalize_youth_group_column_names(df: pd.DataFrame) -> tuple[pd.DataFrame,
     working = df.copy()
     changed = False
 
-    if YOUTH_GROUP_PATRON_COL not in working.columns and LEGACY_YOUTH_GROUP_PATRON_COL in working.columns:
-        working[YOUTH_GROUP_PATRON_COL] = working[LEGACY_YOUTH_GROUP_PATRON_COL]
-        working = working.drop(columns=[LEGACY_YOUTH_GROUP_PATRON_COL])
+    if YOUTH_GROUP_PATRON_COL not in working.columns and ALT_YOUTH_GROUP_PATRON_COL in working.columns:
+        working[YOUTH_GROUP_PATRON_COL] = working[ALT_YOUTH_GROUP_PATRON_COL]
+        working = working.drop(columns=[ALT_YOUTH_GROUP_PATRON_COL])
         changed = True
 
-    if YOUTH_GROUP_SHORT_NAME_COL not in working.columns and LEGACY_YOUTH_GROUP_SHORT_NAME_COL in working.columns:
-        working[YOUTH_GROUP_SHORT_NAME_COL] = working[LEGACY_YOUTH_GROUP_SHORT_NAME_COL]
-        working = working.drop(columns=[LEGACY_YOUTH_GROUP_SHORT_NAME_COL])
+    if YOUTH_GROUP_SHORT_NAME_COL not in working.columns and ALT_YOUTH_GROUP_SHORT_NAME_COL in working.columns:
+        working[YOUTH_GROUP_SHORT_NAME_COL] = working[ALT_YOUTH_GROUP_SHORT_NAME_COL]
+        working = working.drop(columns=[ALT_YOUTH_GROUP_SHORT_NAME_COL])
         changed = True
 
     return working, changed
@@ -2986,7 +2985,7 @@ def _refresh_youth_group_indexes():
 
     for row in df.replace({np.nan: None}).to_dict(orient="records"):
         gid = _normalize_text(row.get(YOUTH_GROUP_ID_COL))
-        legacy_name = _normalize_text(row.get(YOUTH_GROUP_NAME_COL))
+        raw_name = _normalize_text(row.get(YOUTH_GROUP_NAME_COL))
         patron = _normalize_text(row.get(YOUTH_GROUP_PATRON_COL))
         short_name = _normalize_text(row.get(YOUTH_GROUP_SHORT_NAME_COL))
 
@@ -2996,8 +2995,8 @@ def _refresh_youth_group_indexes():
                 if not patron and parsed_patron:
                     patron = parsed_patron
                 short_name = parsed_short
-        if not short_name and legacy_name:
-            parsed_patron, parsed_short = _split_youth_group_name(legacy_name)
+        if not short_name and raw_name:
+            parsed_patron, parsed_short = _split_youth_group_name(raw_name)
             patron = patron or parsed_patron
             short_name = parsed_short
 
@@ -3016,7 +3015,7 @@ def _refresh_youth_group_indexes():
         add_lookup(name, gid)
         add_lookup(short_name, gid)
         add_lookup(patron, gid)
-        add_lookup(legacy_name, gid)
+        add_lookup(raw_name, gid)
 
 
 def youth_group_name(group_ref) -> str | None:
@@ -3100,9 +3099,9 @@ def _create_youth_group_id_for_name(name: str) -> str:
         yg_df[YOUTH_GROUP_USE_PARISH_LOGO_COL] = False
     if YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL not in yg_df.columns:
         yg_df[YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL] = False
-    for legacy_col in ("special_logo_active", "special_logo_occasion"):
-        if legacy_col in yg_df.columns:
-            yg_df = yg_df.drop(columns=[legacy_col])
+    for obsolete_col in ("special_logo_active", "special_logo_occasion"):
+        if obsolete_col in yg_df.columns:
+            yg_df = yg_df.drop(columns=[obsolete_col])
     if "safe_key" in yg_df.columns:
         yg_df = yg_df.drop(columns=["safe_key"])
     if YOUTH_GROUP_NAME_COL in yg_df.columns:
@@ -3179,9 +3178,9 @@ def _ensure_youth_group_catalog() -> bool:
         if YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL not in yg_df.columns:
             yg_df[YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL] = False
             changed = True
-        for legacy_col in ("special_logo_active", "special_logo_occasion"):
-            if legacy_col in yg_df.columns:
-                yg_df = yg_df.drop(columns=[legacy_col])
+        for obsolete_col in ("special_logo_active", "special_logo_occasion"):
+            if obsolete_col in yg_df.columns:
+                yg_df = yg_df.drop(columns=[obsolete_col])
                 changed = True
         if "safe_key" in yg_df.columns:
             yg_df = yg_df.drop(columns=["safe_key"])
@@ -3193,7 +3192,7 @@ def _ensure_youth_group_catalog() -> bool:
     normalized_rows = []
     for row in yg_df.replace({np.nan: None}).to_dict(orient="records"):
         gid = _normalize_text(row.get(YOUTH_GROUP_ID_COL))
-        legacy_name = _normalize_text(row.get(YOUTH_GROUP_NAME_COL))
+        raw_name = _normalize_text(row.get(YOUTH_GROUP_NAME_COL))
         patron = _normalize_text(row.get(YOUTH_GROUP_PATRON_COL))
         short_name = _normalize_text(row.get(YOUTH_GROUP_SHORT_NAME_COL))
         parish_id = _normalize_text(row.get(YOUTH_GROUP_PARISH_ID_COL))
@@ -3207,8 +3206,8 @@ def _ensure_youth_group_catalog() -> bool:
                     patron = parsed_patron
                 short_name = parsed_short
 
-        if not short_name and legacy_name:
-            parsed_patron, parsed_short = _split_youth_group_name(legacy_name)
+        if not short_name and raw_name:
+            parsed_patron, parsed_short = _split_youth_group_name(raw_name)
             patron = patron or parsed_patron
             short_name = parsed_short
 
@@ -3254,16 +3253,16 @@ def _ensure_youth_group_catalog() -> bool:
     )
     _refresh_youth_group_indexes()
 
-    legacy_names = set()
+    alt_names = set()
     for sheet in ("person_youth_group", "responsibilities"):
         df = store.get(sheet, pd.DataFrame())
         if df.empty:
             continue
         if YOUTH_GROUP_NAME_COL in df.columns:
             vals = df[YOUTH_GROUP_NAME_COL].dropna().astype(str).map(str.strip)
-            legacy_names.update(v for v in vals if v)
+            alt_names.update(v for v in vals if v)
 
-    for name in sorted(legacy_names):
+    for name in sorted(alt_names):
         if youth_group_id(name):
             continue
         _create_youth_group_id_for_name(name)
@@ -3350,26 +3349,26 @@ def _ensure_addresses_schema() -> bool:
             pid = _normalize_person_id(row.get("person_id"))
             if pid in (None, "") or str(pid) in existing_ids:
                 continue
-            legacy_governorate = _normalize_text(row.get("governorate"))
-            legacy_city = _normalize_text(row.get("city"))
-            legacy_address = _normalize_text(_first_present(row, STREET_ADDRESS_COL, "address"))
-            legacy_country = _normalize_country(row.get("country"))
-            legacy_location_url = _normalize_text(row.get("location_url"))
-            legacy_lat = _normalize_coordinate(row.get("lat"), "lat")
-            legacy_lng = _normalize_coordinate(row.get("lng"), "lng")
-            has_text_address = bool(legacy_governorate or legacy_city or legacy_address)
-            has_location_reference = bool(legacy_location_url or legacy_lat is not None or legacy_lng is not None)
+            governorate = _normalize_text(row.get("governorate"))
+            city = _normalize_text(row.get("city"))
+            address = _normalize_text(_first_present(row, STREET_ADDRESS_COL, "address"))
+            country = _normalize_country(row.get("country"))
+            location_url = _normalize_text(row.get("location_url"))
+            lat = _normalize_coordinate(row.get("lat"), "lat")
+            lng = _normalize_coordinate(row.get("lng"), "lng")
+            has_text_address = bool(governorate or city or address)
+            has_location_reference = bool(location_url or lat is not None or lng is not None)
             if not has_text_address and not has_location_reference:
                 continue
             normalized_rows.append({
                 "person_id": pid,
-                "country": legacy_country,
-                "governorate": legacy_governorate,
-                "city": legacy_city,
-                STREET_ADDRESS_COL: legacy_address,
-                "address": legacy_address,
-                "lat": legacy_lat,
-                "lng": legacy_lng,
+                "country": country,
+                "governorate": governorate,
+                "city": city,
+                STREET_ADDRESS_COL: address,
+                "address": address,
+                "lat": lat,
+                "lng": lng,
                 "is_primary": True,
             })
             changed = True
@@ -3387,11 +3386,6 @@ def _ensure_addresses_schema() -> bool:
     ]
     inactive_addr_rows = inactive_addr_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_addr_df.empty else []
     store[ADDRESS_SHEET] = pd.DataFrame(normalized_rows_with_scd + inactive_addr_rows)
-
-    for legacy_col in PERSON_ADDRESS_PROJECTION_COLS:
-        if legacy_col in persons.columns:
-            persons = persons.drop(columns=[legacy_col])
-            changed = True
     store["persons"] = persons
     return changed
 
@@ -3444,8 +3438,8 @@ def _ensure_mobile_numbers_schema() -> bool:
 
     active_fam_df, inactive_fam_df = _scd_split(mobile_number_family_relations)
     existing_family_rows = active_fam_df.replace({np.nan: None}).to_dict(orient="records") if not active_fam_df.empty else []
-    legacy_family_rows = mobile_number_family_relation_rows_from_mobile_rows(normalized_payload_rows)
-    normalized_family_rows = normalize_mobile_number_family_relation_rows(existing_family_rows + legacy_family_rows, active_mobile_record_ids)
+    embedded_family_rows = mobile_number_family_relation_rows_from_mobile_rows(normalized_payload_rows)
+    normalized_family_rows = normalize_mobile_number_family_relation_rows(existing_family_rows + embedded_family_rows, active_mobile_record_ids)
     current_family_rows = normalize_mobile_number_family_relation_rows(existing_family_rows, active_mobile_record_ids)
     if normalized_family_rows != current_family_rows:
         changed = True
@@ -3468,8 +3462,8 @@ def _ensure_mobile_numbers_schema() -> bool:
     }
     active_prim_df, inactive_prim_df = _scd_split(personal_mobile_number_primary)
     existing_personal_primary_rows = active_prim_df.replace({np.nan: None}).to_dict(orient="records") if not active_prim_df.empty else []
-    legacy_personal_primary_rows = personal_mobile_number_primary_rows_from_mobile_rows(normalized_payload_rows)
-    normalized_personal_primary_rows = normalize_personal_mobile_number_primary_rows(existing_personal_primary_rows + legacy_personal_primary_rows, personal_mobile_record_ids)
+    embedded_personal_primary_rows = personal_mobile_number_primary_rows_from_mobile_rows(normalized_payload_rows)
+    normalized_personal_primary_rows = normalize_personal_mobile_number_primary_rows(existing_personal_primary_rows + embedded_personal_primary_rows, personal_mobile_record_ids)
     current_personal_primary_rows = normalize_personal_mobile_number_primary_rows(existing_personal_primary_rows, personal_mobile_record_ids)
     if normalized_personal_primary_rows != current_personal_primary_rows:
         changed = True
@@ -3487,8 +3481,8 @@ def _ensure_mobile_numbers_schema() -> bool:
 
     active_lnk_df, inactive_lnk_df = _scd_split(mobile_number_linked_jobs)
     existing_linked_job_rows = active_lnk_df.replace({np.nan: None}).to_dict(orient="records") if not active_lnk_df.empty else []
-    legacy_linked_job_rows = mobile_number_linked_job_rows_from_mobile_rows(normalized_payload_rows)
-    normalized_linked_job_rows = normalize_mobile_number_linked_job_rows(existing_linked_job_rows + legacy_linked_job_rows, active_mobile_record_ids)
+    embedded_linked_job_rows = mobile_number_linked_job_rows_from_mobile_rows(normalized_payload_rows)
+    normalized_linked_job_rows = normalize_mobile_number_linked_job_rows(existing_linked_job_rows + embedded_linked_job_rows, active_mobile_record_ids)
     current_linked_job_rows = normalize_mobile_number_linked_job_rows(existing_linked_job_rows, active_mobile_record_ids)
     if normalized_linked_job_rows != current_linked_job_rows:
         changed = True
@@ -3592,16 +3586,16 @@ def _ensure_schools_schema() -> bool:
 
     active_sec_df, inactive_sec_df = _scd_split(school_sections)
     existing_section_rows = active_sec_df.replace({np.nan: None}).to_dict(orient="records") if not active_sec_df.empty else []
-    legacy_section_rows = school_section_rows_from_school_rows(normalized_payload_rows)
-    normalized_section_rows = normalize_school_section_rows(existing_section_rows + legacy_section_rows, active_school_record_ids)
+    embedded_section_rows = school_section_rows_from_school_rows(normalized_payload_rows)
+    normalized_section_rows = normalize_school_section_rows(existing_section_rows + embedded_section_rows, active_school_record_ids)
     current_section_rows = normalize_school_section_rows(existing_section_rows, active_school_record_ids)
     if normalized_section_rows != current_section_rows:
         changed = True
 
     active_grd_df, inactive_grd_df = _scd_split(school_grades)
     existing_grade_rows = active_grd_df.replace({np.nan: None}).to_dict(orient="records") if not active_grd_df.empty else []
-    legacy_grade_rows = school_grade_rows_from_school_rows(normalized_payload_rows)
-    normalized_grade_rows = normalize_school_grade_rows(existing_grade_rows + legacy_grade_rows, active_school_record_ids)
+    embedded_grade_rows = school_grade_rows_from_school_rows(normalized_payload_rows)
+    normalized_grade_rows = normalize_school_grade_rows(existing_grade_rows + embedded_grade_rows, active_school_record_ids)
     current_grade_rows = normalize_school_grade_rows(existing_grade_rows, active_school_record_ids)
     if normalized_grade_rows != current_grade_rows:
         changed = True
@@ -3689,20 +3683,20 @@ def _ensure_emails_schema() -> bool:
 
     active_fam_df, inactive_fam_df = _scd_split(email_family_relations)
     existing_family_rows = active_fam_df.replace({np.nan: None}).to_dict(orient="records") if not active_fam_df.empty else []
-    legacy_family_rows = email_family_relation_rows_from_email_rows(active_rows)
-    normalized_family_rows = normalize_email_family_relation_rows(existing_family_rows + legacy_family_rows, active_email_record_ids)
+    embedded_family_rows = email_family_relation_rows_from_email_rows(active_rows)
+    normalized_family_rows = normalize_email_family_relation_rows(existing_family_rows + embedded_family_rows, active_email_record_ids)
     current_family_rows = normalize_email_family_relation_rows(existing_family_rows, active_email_record_ids)
 
     active_prim_df, inactive_prim_df = _scd_split(personal_email_primary)
     existing_personal_primary_rows = active_prim_df.replace({np.nan: None}).to_dict(orient="records") if not active_prim_df.empty else []
-    legacy_personal_primary_rows = personal_email_primary_rows_from_email_rows(active_rows)
-    normalized_personal_primary_rows = normalize_personal_email_primary_rows(existing_personal_primary_rows + legacy_personal_primary_rows, personal_email_record_ids)
+    embedded_personal_primary_rows = personal_email_primary_rows_from_email_rows(active_rows)
+    normalized_personal_primary_rows = normalize_personal_email_primary_rows(existing_personal_primary_rows + embedded_personal_primary_rows, personal_email_record_ids)
     current_personal_primary_rows = normalize_personal_email_primary_rows(existing_personal_primary_rows, personal_email_record_ids)
 
     active_lnk_df, inactive_lnk_df = _scd_split(email_linked_jobs)
     existing_linked_job_rows = active_lnk_df.replace({np.nan: None}).to_dict(orient="records") if not active_lnk_df.empty else []
-    legacy_linked_job_rows = email_linked_job_rows_from_email_rows(active_rows)
-    normalized_linked_job_rows = normalize_email_linked_job_rows(existing_linked_job_rows + legacy_linked_job_rows, active_email_record_ids)
+    embedded_linked_job_rows = email_linked_job_rows_from_email_rows(active_rows)
+    normalized_linked_job_rows = normalize_email_linked_job_rows(existing_linked_job_rows + embedded_linked_job_rows, active_email_record_ids)
     current_linked_job_rows = normalize_email_linked_job_rows(existing_linked_job_rows, active_email_record_ids)
 
     current_rows = [{col: row.get(col) for col in EMAIL_COLUMNS} for row in active_rows]
@@ -4020,7 +4014,7 @@ def _to_int_or_none(value, min_value=None, max_value=None):
     return number
 
 
-def _parse_legacy_birth_date(value):
+def _parse_birth_date_string(value):
     if value is None:
         return None, None
     text = str(value).strip()
@@ -4061,11 +4055,11 @@ def normalize_person_birth_fields(person: dict) -> dict:
     month = _to_int_or_none(p.get("birth_month"), 1, 12)
 
     if day is None or month is None:
-        legacy_day, legacy_month = _parse_legacy_birth_date(p.get("birth_date"))
+        parsed_day, parsed_month = _parse_birth_date_string(p.get("birth_date"))
         if day is None:
-            day = legacy_day
+            day = parsed_day
         if month is None:
-            month = legacy_month
+            month = parsed_month
 
     p["birth_day"] = day
     p["birth_month"] = month
@@ -4086,8 +4080,8 @@ def _normalize_birth_columns_in_df(df: pd.DataFrame) -> tuple[pd.DataFrame, bool
             working[col] = None
             changed = True
 
-    has_legacy_birth_date = "birth_date" in working.columns
-    if has_legacy_birth_date:
+    has_birth_date_string = "birth_date" in working.columns
+    if has_birth_date_string:
         changed = True
 
     records = working.replace({np.nan: None}).to_dict(orient="records")
@@ -4097,7 +4091,7 @@ def _normalize_birth_columns_in_df(df: pd.DataFrame) -> tuple[pd.DataFrame, bool
     out["birth_day"] = out["birth_day"].apply(lambda v: _to_int_or_none(v, 1, 31))
     out["birth_month"] = out["birth_month"].apply(lambda v: _to_int_or_none(v, 1, 12))
 
-    if has_legacy_birth_date and "birth_date" in out.columns:
+    if has_birth_date_string and "birth_date" in out.columns:
         out = out.drop(columns=["birth_date"])
 
     if not changed:
@@ -4126,11 +4120,6 @@ def _ensure_persons_schema():
     if "archived" in persons.columns:
         persons = persons.drop(columns=["archived"])
         changed = True
-
-    for legacy_col in PERSON_ADDRESS_PROJECTION_COLS:
-        if legacy_col in persons.columns:
-            persons = persons.drop(columns=[legacy_col])
-            changed = True
 
     before_registered = persons["registered"].copy() if "registered" in persons.columns else None
     persons["registered"] = persons["registered"].apply(_bool_registered)
@@ -4625,14 +4614,6 @@ def normalize_arabic(text):
     return ' '.join(normalize_word(w) for w in words if w)
 
 
-def name_parts_norm(row):
-    return [
-        normalize_arabic(row.get(k))
-        for k in ("ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name")
-        if row.get(k)
-    ]
-
-
 def avatar_initial_from_person(row):
     ar_first_name = str(row.get("ar_first_name") or "").strip()
     if ar_first_name:
@@ -4642,19 +4623,6 @@ def avatar_initial_from_person(row):
         if value:
             return value[0]
     return "؟"
-
-
-def person_matches_name_query(parts, query_words):
-    if not query_words:
-        return True
-    if all(any(qw in p for p in parts) for qw in query_words):
-        return True
-    pi, qi = 0, 0
-    while pi < len(parts) and qi < len(query_words):
-        if query_words[qi] in parts[pi]:
-            qi += 1
-        pi += 1
-    return qi == len(query_words)
 
 
 def value_counts_json(series):
@@ -4872,6 +4840,7 @@ def _sync_unreg_view_from_store():
         return
 
     persons["registered"] = persons["registered"].apply(_bool_registered)
+    persons = _scd_filter_active(persons)
     up = persons[persons["registered"] == False].copy()
     if "person_id" not in up.columns:
         up["person_id"] = None
@@ -4885,7 +4854,7 @@ def _sync_unreg_view_from_store():
     for s in UNREG_SHEETS:
         if s == "persons":
             continue
-        df = store.get(s, pd.DataFrame()).copy()
+        df = _scd_filter_active(store.get(s, pd.DataFrame()).copy())
         if s == MOBILE_NUMBER_FAMILY_RELATION_SHEET:
             mobile_numbers_df = unreg_store.get(MOBILE_NUMBER_SHEET, pd.DataFrame())
             if df.empty or MOBILE_NUMBER_RECORD_ID_COL not in df.columns or mobile_numbers_df.empty or MOBILE_NUMBER_RECORD_ID_COL not in mobile_numbers_df.columns:

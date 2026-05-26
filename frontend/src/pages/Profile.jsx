@@ -569,17 +569,17 @@ function normalizeResponsibilityRows(rows, { dropEmpty = false, activeJecYear = 
   const normalizedActiveJecYear = normalizeActiveJecYearValue(activeJecYear)
   const normalized = source
     .map((row) => {
-      const legacyPeriod = normalizeLooseInput(row?.time ?? row?.responsibility_period)
+      const periodText = normalizeLooseInput(row?.time ?? row?.responsibility_period)
       const rawYear = normalizeLooseInput(row?.jec_year)
       const jecYear = /^\d{4}$/.test(rawYear)
         ? rawYear
-        : (/^\d{4}$/.test(legacyPeriod) ? legacyPeriod : '')
+        : (/^\d{4}$/.test(periodText) ? periodText : '')
       const rawIsCurrent = row?.is_current ?? row?.is_active
       const baseIsCurrent = rawIsCurrent === true || rawIsCurrent === 'true' || rawIsCurrent === 1 || rawIsCurrent === '1'
         ? true
         : rawIsCurrent === false || rawIsCurrent === 'false' || rawIsCurrent === 0 || rawIsCurrent === '0'
           ? false
-          : (legacyPeriod === 'حاليًّا' || legacyPeriod === 'حاليًا' || legacyPeriod === 'حالي')
+          : (periodText === 'حاليًّا' || periodText === 'حاليًا' || periodText === 'حالي')
       const isCurrent = normalizedActiveJecYear && jecYear && jecYear < normalizedActiveJecYear
         ? false
         : baseIsCurrent
@@ -651,14 +651,14 @@ function normalizeEmailFamilyRelationValue(value) {
   return normalizeFamilyRelationValue(value)
 }
 
-function extractLegacyEmailFamilyRelation(value) {
+function extractEmailFamilyRelationFromType(value) {
   const text = String(value ?? '').trim()
   if (!text.toLowerCase().startsWith('family:')) return ''
   return text.slice('family:'.length).replace(/\s+/g, ' ').trim()
 }
 
 function parseEmailTypeMeta(typeValue, familyRelationValue = '') {
-  const normalizedFamilyRelation = normalizeEmailFamilyRelationValue(familyRelationValue) || extractLegacyEmailFamilyRelation(typeValue)
+  const normalizedFamilyRelation = normalizeEmailFamilyRelationValue(familyRelationValue) || extractEmailFamilyRelationFromType(typeValue)
   const normalized = normalizedFamilyRelation ? 'family' : normalizeEmailType(typeValue)
   if (normalized === 'family') {
     return {
@@ -1349,7 +1349,7 @@ function normalizeMobileNumberType(value) {
   return known ? known.value : text
 }
 
-function extractLegacyFamilyRelation(value) {
+function extractFamilyRelationFromType(value) {
   const text = String(value ?? '').trim()
   if (!text.toLowerCase().startsWith('family:')) return ''
   return text.slice('family:'.length).replace(/\s+/g, ' ').trim()
@@ -1360,7 +1360,7 @@ function normalizeFamilyRelationValue(value) {
 }
 
 function parseMobileNumberTypeMeta(typeValue, familyRelationValue = '') {
-  const normalizedFamilyRelation = normalizeFamilyRelationValue(familyRelationValue) || extractLegacyFamilyRelation(typeValue)
+  const normalizedFamilyRelation = normalizeFamilyRelationValue(familyRelationValue) || extractFamilyRelationFromType(typeValue)
   const normalized = normalizedFamilyRelation ? 'family' : normalizeMobileNumberType(typeValue)
   if (normalized === 'family') {
     return {
@@ -1732,7 +1732,7 @@ function profileEditorCardStyle(active = false) {
   return { ...PROFILE_EDITOR_SURFACE_STYLE }
 }
 
-function parseLegacyBirthDate(str) {
+function parseBirthDateString(str) {
   if (!str) return { month: '', day: '' }
   const s = String(str).trim()
 
@@ -1771,7 +1771,7 @@ function toDatePart(v, min, max) {
   return String(n)
 }
 
-function BirthDatePicker({ day, month, legacyValue, onChange }) {
+function BirthDatePicker({ day, month, birthDateStr, onChange }) {
   const [monthState, setMonthState] = useState('')
   const [dayState, setDayState] = useState('')
 
@@ -1783,9 +1783,9 @@ function BirthDatePicker({ day, month, legacyValue, onChange }) {
       setMonthState(normalizedMonth)
       return
     }
-    const legacy = parseLegacyBirthDate(legacyValue)
-    setMonthState(legacy.month)
-  }, [day, month, legacyValue])
+    const parsed = parseBirthDateString(birthDateStr)
+    setMonthState(parsed.month)
+  }, [day, month, birthDateStr])
 
   const emit = (nextDay, nextMonth) => {
     setDayState(nextDay)
@@ -4000,14 +4000,14 @@ function InlineYearField({ label, value, onChange, fromYear = 1960, error = '', 
   )
 }
 
-function InlineBirthDateField({ label, day, month, legacyValue, onChange, error = '', targetId = '' }) {
+function InlineBirthDateField({ label, day, month, birthDateStr, onChange, error = '', targetId = '' }) {
   const hasError = Boolean(error)
   return (
     <div className="info-row">
       <span className="info-key">{label}</span>
       <div style={{ flex: 1, display: 'grid', gap: 6 }}>
         <div style={hasError ? PROFILE_VALIDATION_WRAPPER_STYLE : undefined} data-validation-id={targetId || undefined} tabIndex={targetId ? -1 : undefined}>
-          <BirthDatePicker day={day} month={month} legacyValue={legacyValue} onChange={onChange} />
+          <BirthDatePicker day={day} month={month} birthDateStr={birthDateStr} onChange={onChange} />
         </div>
         <ValidationMessage message={error} />
       </div>
@@ -4015,7 +4015,7 @@ function InlineBirthDateField({ label, day, month, legacyValue, onChange, error 
   )
 }
 
-function InlineDobField({ label, year, day, month, legacyValue, onChange, fromYear = 1960, error = '', targetId = '' }) {
+function InlineDobField({ label, year, day, month, birthDateStr, onChange, fromYear = 1960, error = '', targetId = '' }) {
   const [monthState, setMonthState] = useState('')
   const [dayState, setDayState] = useState('')
   const hasError = Boolean(error)
@@ -4028,10 +4028,10 @@ function InlineDobField({ label, year, day, month, legacyValue, onChange, fromYe
       setMonthState(normalizedMonth)
       return
     }
-    const legacy = parseLegacyBirthDate(legacyValue)
-    setDayState(legacy.day)
-    setMonthState(legacy.month)
-  }, [day, month, legacyValue])
+    const parsed = parseBirthDateString(birthDateStr)
+    setDayState(parsed.day)
+    setMonthState(parsed.month)
+  }, [day, month, birthDateStr])
 
   const daysInMonth = monthState ? new Date(2000, parseInt(monthState, 10), 0).getDate() : 31
   const days = Array.from({ length: daysInMonth }, (_, index) => index + 1)
@@ -6654,16 +6654,16 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       const normalizedDay = toDatePart(personData.birth_day, 1, 31)
       const normalizedMonth = toDatePart(personData.birth_month, 1, 12)
       if ((!normalizedDay || !normalizedMonth) && personData.birth_date) {
-        const legacy = parseLegacyBirthDate(personData.birth_date)
-        if (!normalizedDay && legacy.day) personData.birth_day = parseInt(legacy.day, 10)
-        if (!normalizedMonth && legacy.month) personData.birth_month = parseInt(legacy.month, 10)
+        const parsed = parseBirthDateString(personData.birth_date)
+        if (!normalizedDay && parsed.day) personData.birth_day = parseInt(parsed.day, 10)
+        if (!normalizedMonth && parsed.month) personData.birth_month = parseInt(parsed.month, 10)
       }
       if (Object.prototype.hasOwnProperty.call(personData, 'birth_date')) {
         delete personData.birth_date
       }
       if (!Array.isArray(d.addresses) || d.addresses.length === 0) {
-        const legacyLocation = [personData.address, personData.city, personData.governorate, personData.country].some(Boolean)
-        d.addresses = legacyLocation
+        const hasEmbeddedLocation = [personData.address, personData.city, personData.governorate, personData.country].some(Boolean)
+        d.addresses = hasEmbeddedLocation
           ? [{
               country: normalizeCountryValue(personData.country),
               governorate: personData.governorate || '',

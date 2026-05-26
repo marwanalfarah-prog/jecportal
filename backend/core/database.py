@@ -1,6 +1,5 @@
 import json
 import os
-import re
 import secrets
 import tempfile
 from typing import Any
@@ -89,45 +88,19 @@ def workbook_sheet_name(sheet_name: str) -> str:
     return logical_name
 
 
-LEGACY_SHEET_ALIASES: dict[str, list[str]] = {
-    "institution_logos": ["school_logos"],
-}
-
-
 def workbook_sheet_candidates(sheet_name: str) -> list[str]:
     logical_name = logical_sheet_name(sheet_name)
     physical_name = workbook_sheet_name(logical_name)
     candidates = [physical_name]
-    legacy_prefixed_name = f"{SCD_SHEET_PREFIX}{logical_name}"
-    if legacy_prefixed_name not in candidates:
-        candidates.append(legacy_prefixed_name)
+    alt_scd_name = f"{SCD_SHEET_PREFIX}{logical_name}"
+    if alt_scd_name not in candidates:
+        candidates.append(alt_scd_name)
     if logical_name not in candidates:
         candidates.append(logical_name)
-    for alias in LEGACY_SHEET_ALIASES.get(logical_name, []):
-        if alias not in candidates:
-            candidates.append(alias)
     return candidates
 
 
 WORKBOOK_COLUMN_RENAMES: dict[str, dict[str, str]] = {
-    "persons": {
-        "first_name": "ar_first_name",
-        "second_name": "ar_second_name",
-        "third_name": "ar_third_name",
-        "last_name": "ar_last_name",
-        "english_first_name": "en_first_name",
-        "english_second_name": "en_second_name",
-        "english_third_name": "en_third_name",
-        "english_last_name": "en_last_name",
-        "mother_first_name": "mother_ar_first_name",
-        "mother_second_name": "mother_ar_second_name",
-        "mother_third_name": "mother_ar_last_name",
-        "mother_english_first_name": "mother_en_first_name",
-        "mother_english_second_name": "mother_en_second_name",
-        "mother_english_third_name": "mother_en_last_name",
-        "mother_ar_third_name": "mother_ar_last_name",
-        "mother_en_third_name": "mother_en_last_name",
-    },
     "mobile_numbers": {
         "type": "mobile_number_type",
     },
@@ -180,10 +153,6 @@ WORKBOOK_COLUMN_RENAMES: dict[str, dict[str, str]] = {
 
 
 class Database:
-    person_sheet_address_projection_columns = (
-        "country", "governorate", "city", "address", "street_address", "lat", "lng",
-    )
-
     def __init__(self, backend_file: str):
         self.backend_dir = os.path.dirname(backend_file)
         self.workspace_dir = os.path.abspath(os.path.join(self.backend_dir, ".."))
@@ -195,12 +164,8 @@ class Database:
         self.photos_root_dir = os.path.join(self.data_dir, "photos")
         self.profile_pictures_dir = os.path.join(self.photos_root_dir, "profile_pictures")
         self.photos_dir = self.profile_pictures_dir
-        self.org_trees_dir = os.path.join(self.data_dir, "org_trees")
-
         self.auth_sheet = "auth_users"
         self.auth_columns = ["person_id", "username", "password_hash", "role"]
-        self.legacy_auth_path = os.path.join(self.data_dir, "auth_users.json")
-        self.promotions_path = os.path.join(self.data_dir, "promotions.json")
         self.questionnaires_path = os.path.join(self.data_dir, "questionnaires.json")
         self.notifications_path = os.path.join(self.data_dir, "notifications.json")
 
@@ -211,7 +176,6 @@ class Database:
         os.makedirs(self.csv_dir, exist_ok=True)
         os.makedirs(self.photos_root_dir, exist_ok=True)
         os.makedirs(self.profile_pictures_dir, exist_ok=True)
-        os.makedirs(self.org_trees_dir, exist_ok=True)
 
     def _list_available_sheets(self) -> set[str]:
         if not os.path.isdir(self.csv_dir):
@@ -316,42 +280,28 @@ class Database:
             return df
 
         normalized = df.copy()
-        for legacy_name, canonical_name in mapping.items():
-            if legacy_name not in normalized.columns:
+        for old_col, canonical_name in mapping.items():
+            if old_col not in normalized.columns:
                 continue
             if canonical_name in normalized.columns:
                 normalized[canonical_name] = normalized[canonical_name].where(
                     normalized[canonical_name].notna(),
-                    normalized[legacy_name],
+                    normalized[old_col],
                 )
-                normalized = normalized.drop(columns=[legacy_name])
+                normalized = normalized.drop(columns=[old_col])
                 continue
-            normalized = normalized.rename(columns={legacy_name: canonical_name})
+            normalized = normalized.rename(columns={old_col: canonical_name})
         return normalized
 
-    def _add_runtime_alias_columns(self, sheet: str, df: pd.DataFrame) -> pd.DataFrame:
+    def _strip_obsolete_sheet_columns(self, sheet: str, df: pd.DataFrame) -> pd.DataFrame:
         if df is None or df.empty:
             return df
         logical_name = logical_sheet_name(sheet)
-        mapping = WORKBOOK_COLUMN_RENAMES.get(logical_name, {})
-        if not mapping:
-            return df
-
-        normalized = df.copy()
-        for legacy_name, canonical_name in mapping.items():
-            if canonical_name in normalized.columns and legacy_name not in normalized.columns:
-                normalized[legacy_name] = normalized[canonical_name]
-        return normalized
-
-    def _strip_legacy_sheet_columns(self, sheet: str, df: pd.DataFrame) -> pd.DataFrame:
-        if df is None or df.empty:
-            return df
-        logical_name = logical_sheet_name(sheet)
-        legacy_columns = [column for column in WORKBOOK_COLUMN_RENAMES.get(logical_name, {}) if column in df.columns]
+        obsolete_columns = [column for column in WORKBOOK_COLUMN_RENAMES.get(logical_name, {}) if column in df.columns]
         runtime_only_columns: list[str] = []
         if logical_name == "person_youth_group":
             runtime_only_columns = [column for column in ("age_group", "current_age_group", "age_group_history") if column in df.columns]
-        columns_to_drop = legacy_columns + runtime_only_columns
+        columns_to_drop = obsolete_columns + runtime_only_columns
         if not columns_to_drop:
             return df
         return df.drop(columns=columns_to_drop)
@@ -419,7 +369,6 @@ class Database:
             dtype = self._SHEET_DTYPES.get(logical_name)
             df = pd.read_csv(csv_path, dtype=dtype, encoding="utf-8-sig", keep_default_na=True)
             df = self._canonicalize_sheet_columns(logical_name, df)
-            df = self._add_runtime_alias_columns(logical_name, df)
             if logical_name == "persons":
                 if "birth_date" in df.columns:
                     df["birth_date"] = df["birth_date"].where(df["birth_date"].isna(), df["birth_date"].astype(str))
@@ -434,13 +383,9 @@ class Database:
         for sheet, df in store.items():
             logical_name = logical_sheet_name(sheet)
             df = self._canonicalize_sheet_columns(logical_name, df)
-            df = self._strip_legacy_sheet_columns(logical_name, df)
+            df = self._strip_obsolete_sheet_columns(logical_name, df)
             df = self.normalize_boolean_columns(df)
             df = self._ensure_scd_columns_for_save(logical_name, df)
-            if logical_name == "persons":
-                drop_cols = [col for col in self.person_sheet_address_projection_columns if col in df.columns]
-                if drop_cols:
-                    df = df.drop(columns=drop_cols)
             prepared[workbook_sheet_name(logical_name)] = df
         self._write_sheets_atomically(prepared)
 
@@ -492,63 +437,20 @@ class Database:
             })
         return users
 
-    def _load_auth_json_users(self, path: str) -> list[dict]:
-        payload = self.load_json_file(path, {"users": []})
-        users: list[dict] = []
-        for row in payload.get("users", []):
-            username = (str(row.get("username") or "")).strip().lower()
-            password_hash = str(row.get("password_hash") or "").strip()
-            role = str(row.get("role") or "member").strip() or "member"
-            person_id = self._normalize_auth_person_id(row.get("person_id"))
-            if not username or not password_hash:
-                continue
-            users.append({
-                "person_id": person_id,
-                "username": username,
-                "password_hash": password_hash,
-                "role": role,
-            })
-        return users
-
     def load_auth(self) -> dict:
-        users: list[dict] = []
-        csv_error: OSError | None = None
-
         auth_workbook_sheet = workbook_sheet_name(self.auth_sheet)
         auth_csv_path = os.path.join(self.csv_dir, f"{auth_workbook_sheet}.csv")
-        if os.path.exists(auth_csv_path):
-            try:
-                df = pd.read_csv(
-                    auth_csv_path,
-                    dtype={"person_id": str, "username": str, "password_hash": str, "role": str},
-                    encoding="utf-8-sig",
-                    keep_default_na=True,
-                )
-                if "scd_currently_active_flag" in df.columns:
-                    df = df[df["scd_currently_active_flag"].astype(str).str.strip().str.lower() != "false"]
-                users = self._auth_users_from_df(df)
-            except OSError as exc:
-                csv_error = exc
-
-        if users:
-            return {"users": users}
-
-        if os.path.exists(self.legacy_auth_path):
-            users = self._load_auth_json_users(self.legacy_auth_path)
-
-        if users:
-            if csv_error is None:
-                self.save_auth({"users": users})
-                try:
-                    os.remove(self.legacy_auth_path)
-                except OSError:
-                    pass
-            return {"users": users}
-
-        if csv_error is not None:
-            raise csv_error
-
-        return {"users": users}
+        if not os.path.exists(auth_csv_path):
+            return {"users": []}
+        df = pd.read_csv(
+            auth_csv_path,
+            dtype={"person_id": str, "username": str, "password_hash": str, "role": str},
+            encoding="utf-8-sig",
+            keep_default_na=True,
+        )
+        if "scd_currently_active_flag" in df.columns:
+            df = df[df["scd_currently_active_flag"].astype(str).str.strip().str.lower() != "false"]
+        return {"users": self._auth_users_from_df(df)}
 
     @staticmethod
     def _person_id_str(v) -> str:
@@ -639,12 +541,6 @@ class Database:
         df["person_id"] = df["person_id"].apply(self._person_id_str)
         self._write_sheets_atomically({workbook_sheet_name(self.auth_sheet): df})
 
-    def load_promotions(self) -> dict:
-        return self.load_json_file(self.promotions_path, {"promotions": []})
-
-    def save_promotions(self, data: dict):
-        self.save_json_file(self.promotions_path, data)
-
     def load_questionnaires(self) -> dict:
         return self.load_json_file(self.questionnaires_path, {"questionnaires": [], "responses": []})
 
@@ -656,21 +552,6 @@ class Database:
 
     def save_notifications(self, data: dict):
         self.save_json_file(self.notifications_path, data)
-
-    def group_dir(self, group_name: str) -> str:
-        safe = re.sub(r"[^\w\u0600-\u06FF]", "_", group_name)
-        return os.path.join(self.org_trees_dir, safe)
-
-    def index_path(self, group_name: str) -> str:
-        return os.path.join(self.group_dir(group_name), "index.json")
-
-    def period_path(self, group_name: str, period_id: str) -> str:
-        safe_id = re.sub(r"[^\w\-]", "_", period_id)
-        return os.path.join(self.group_dir(group_name), f"{safe_id}.json")
-
-    def legacy_group_path(self, group_name: str) -> str:
-        safe = re.sub(r"[^\w\u0600-\u06FF]", "_", group_name)
-        return os.path.join(self.org_trees_dir, f"{safe}.json")
 
     def get_photo_path(self, person_id, allowed_extensions: set[str]):
         for ext in allowed_extensions:

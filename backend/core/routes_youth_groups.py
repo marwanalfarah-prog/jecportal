@@ -18,7 +18,6 @@ YOUTH_GROUP_SPECIAL_LOGOS_DIR = os.path.join(S.PHOTOS_ROOT_DIR, "logos", "youth_
 PARISH_LOGOS_DIR = os.path.join(S.PHOTOS_ROOT_DIR, "logos", "parishes")
 os.makedirs(YOUTH_GROUP_LOGOS_DIR, exist_ok=True)
 os.makedirs(YOUTH_GROUP_SPECIAL_LOGOS_DIR, exist_ok=True)
-LEGACY_SPECIAL_LOGOS_META_FILE = "youth_group_special_logos.json"
 ALLOWED_SOCIAL_PLATFORMS = {"facebook", "instagram", "linkedin"}
 ALL_AGE_GROUPS = ['البراعم', 'الإعدادي', 'الثانوي', 'الجامعيّة', 'العاملة']
 ALL_AGE_GROUPS_SET = set(ALL_AGE_GROUPS)
@@ -127,17 +126,6 @@ def _parish_logo_filename(parish_id: str):
         if os.path.exists(path):
             return filename
     return None
-
-
-def _special_logos_meta_path() -> str:
-    return os.path.join(S.db.data_dir, LEGACY_SPECIAL_LOGOS_META_FILE)
-
-
-def _load_special_logos_meta() -> dict:
-    raw = S.db.load_json_file(_special_logos_meta_path(), {})
-    if not isinstance(raw, dict):
-        return {}
-    return raw
 
 
 def _normalize_url(value) -> str | None:
@@ -406,10 +394,10 @@ def _ensure_youth_group_social_media_storage() -> bool:
     current_main_rows = _canonical_social_media_sheet_rows()
     current_age_rows = _canonical_social_media_age_group_sheet_rows()
 
-    has_legacy_columns = False
+    has_obsolete_columns = False
     main_df = S._scd_filter_active(S.store.get(S.YOUTH_GROUP_SOCIAL_MEDIA_SHEET, pd.DataFrame()).copy())
     if not main_df.empty:
-        has_legacy_columns = any(
+        has_obsolete_columns = any(
             col not in S.YOUTH_GROUP_SOCIAL_MEDIA_COLUMNS and col not in S.SCD_METADATA_COLUMNS and col != "id"
             for col in main_df.columns
         )
@@ -423,7 +411,7 @@ def _ensure_youth_group_social_media_storage() -> bool:
         )
 
     changed = (
-        has_legacy_columns
+        has_obsolete_columns
         or has_age_sheet_schema_mismatch
         or migrated_main_rows != current_main_rows
         or migrated_age_rows != current_age_rows
@@ -618,45 +606,7 @@ def _special_logo_sheet_rows() -> list[dict]:
     return df.replace({pd.NA: None}).to_dict(orient="records")
 
 
-def _maybe_migrate_legacy_special_logos() -> bool:
-    legacy_path = _special_logos_meta_path()
-    if not os.path.exists(legacy_path):
-        return False
-
-    existing_df = S._scd_filter_active(S.store.get(S.YOUTH_GROUP_SPECIAL_LOGO_SHEET, pd.DataFrame()))
-    if existing_df is not None and not existing_df.empty:
-        return False
-
-    payload = _load_special_logos_meta()
-    rows = []
-    for raw_group_id, entries in payload.items():
-        group_id = _resolve_group_id(raw_group_id) or _normalize_text(raw_group_id)
-        if not group_id or not isinstance(entries, list):
-            continue
-        for entry in entries:
-            normalized = _normalize_special_logo_entry(entry)
-            if not normalized.get(S.SPECIAL_LOGO_ID_COL) or not normalized.get("logo_file_name"):
-                continue
-            rows.append({
-                "youth_group_id": group_id,
-                **normalized,
-            })
-
-    S._scd_replace_rows_by_key(
-        S.store,
-        S.YOUTH_GROUP_SPECIAL_LOGO_SHEET,
-        S.normalize_youth_group_special_logo_rows(rows),
-        S.YOUTH_GROUP_SPECIAL_LOGO_COLUMNS,
-        [S.SPECIAL_LOGO_ID_COL],
-        changed_by="admin",
-    )
-    S.save()
-    return True
-
-
 def _group_special_logos(group_id: str) -> list[dict]:
-    _maybe_migrate_legacy_special_logos()
-
     rows = []
     for row in _special_logo_sheet_rows():
         if _normalize_text(row.get("youth_group_id")) != str(group_id):
@@ -675,7 +625,6 @@ def _group_special_logos(group_id: str) -> list[dict]:
 
 
 def _save_group_special_logos(group_id: str, rows: list[dict], *, changed_by: str = "admin"):
-    _maybe_migrate_legacy_special_logos()
 
     with S.lock:
         existing_rows = [
@@ -973,7 +922,7 @@ def _registered_member_rows(group_id: str) -> list[dict]:
 
 
 def _unregistered_member_rows(group_id: str) -> list[dict]:
-    pyg = S.unreg_store.get("person_youth_group", pd.DataFrame())
+    pyg = S._scd_filter_active(S.unreg_store.get("person_youth_group", pd.DataFrame()))
     if pyg.empty or S.YOUTH_GROUP_ID_COL not in pyg.columns:
         return []
 
@@ -1040,7 +989,7 @@ def _schools_by_person_key(person_type: str) -> dict[str, list[str]]:
     if person_type == "registered":
         schools_df = S._sheet_for_registered("schools")
     else:
-        schools_df = S.unreg_store.get("schools", pd.DataFrame())
+        schools_df = S._scd_filter_active(S.unreg_store.get("schools", pd.DataFrame()))
 
     if schools_df.empty or "person_id" not in schools_df.columns:
         return {}
@@ -1188,13 +1137,9 @@ def register_youth_group_routes(app):
         special_logo_url = _effective_group_special_logo_url(group_id, meta)
         active_special_logo_url = _effective_group_special_logo_url(group_id, meta, only_if_active=True)
 
-        promo_data = S.db.load_promotions()
-        promo_changed = promo_exports["_ensure_promotion_settings_shape"](promo_data)
-        if promo_changed:
-            S.db.save_promotions(promo_data)
-
+        promo_rules = promo_exports["_load_promotion_rules"]()
         default_rules = promo_exports["_default_promotion_age_rules"]()
-        group_rules = promo_exports["_group_promotion_rules"](promo_data, group_id)
+        group_rules = promo_exports["_group_promotion_rules"](promo_rules, group_id)
 
         payload = {
             "group": {
@@ -1249,15 +1194,11 @@ def register_youth_group_routes(app):
 
         normalized = promo_exports["_normalize_group_promotion_rules"](raw_rules)
 
-        promo_data = S.db.load_promotions()
-        promo_exports["_ensure_promotion_settings_shape"](promo_data)
-        by_group = promo_data.get("group_age_rules")
-        if not isinstance(by_group, dict):
-            by_group = {}
-            promo_data["group_age_rules"] = by_group
-
-        by_group[group_id] = normalized
-        S.db.save_promotions(promo_data)
+        promo_rules = promo_exports["_load_promotion_rules"]()
+        if not isinstance(promo_rules.get("group_age_rules"), dict):
+            promo_rules["group_age_rules"] = {}
+        promo_rules["group_age_rules"][group_id] = normalized
+        promo_exports["_save_promotion_rules"](promo_rules)
 
         return jsonify({"ok": True, "group_id": group_id, "age_rules": normalized})
 

@@ -1,6 +1,7 @@
+import base64
 import copy
-import threading
-import uuid
+import datetime as _dt
+import os
 
 import pandas as pd
 from flask import jsonify, request
@@ -8,9 +9,6 @@ from flask import jsonify, request
 from core import state as S
 from core.routes_auth import _current_user, _get_council_access, _get_person_youth_groups
 
-
-PROMOTIONS_PATH = S.db.promotions_path
-promotions_lock = threading.Lock()
 
 AGE_GROUP_ORDER = ['البراعم', 'الإعدادي', 'الثانوي', 'الجامعيّة', 'العاملة']
 _AGE_ORDER_INDEX = {name: idx for idx, name in enumerate(AGE_GROUP_ORDER)}
@@ -47,6 +45,8 @@ DEFAULT_PROMOTION_AGE_RULES = [
         "promotion_to": None,
     },
 ]
+
+_PROMOTION_RULES_PATH = os.path.join(S.db.data_dir, "config", "promotion_rules.json")
 
 
 def _as_year_or_none(value):
@@ -105,32 +105,38 @@ def _normalize_group_promotion_rules(rules) -> list[dict]:
     ]
 
 
-def _ensure_promotion_settings_shape(data: dict) -> bool:
-    changed = False
-    if 'promotions' not in data or not isinstance(data.get('promotions'), list):
-        data['promotions'] = []
-        changed = True
-
-    rules_by_group = data.get('group_age_rules')
-    if not isinstance(rules_by_group, dict):
-        rules_by_group = {}
-        data['group_age_rules'] = rules_by_group
-        changed = True
-
-    for gid, rules in list(rules_by_group.items()):
-        normalized = _normalize_group_promotion_rules(rules)
-        if normalized != rules:
-            rules_by_group[gid] = normalized
-            changed = True
-
-    return changed
+def _load_promotion_rules() -> dict:
+    data = S.db.load_json_file(_PROMOTION_RULES_PATH, {})
+    if not isinstance(data.get('group_age_rules'), dict):
+        data['group_age_rules'] = {}
+        S.db.save_json_file(_PROMOTION_RULES_PATH, data)
+    return data
 
 
-def _group_promotion_rules(data: dict, group_id: str | None) -> list[dict]:
-    rules_by_group = data.get('group_age_rules') if isinstance(data.get('group_age_rules'), dict) else {}
+def _save_promotion_rules(data: dict):
+    S.db.save_json_file(_PROMOTION_RULES_PATH, data)
+
+
+def _group_promotion_rules(rules_dict: dict, group_id: str | None) -> list[dict]:
+    rules_by_group = rules_dict.get('group_age_rules') if isinstance(rules_dict.get('group_age_rules'), dict) else {}
     if group_id and group_id in rules_by_group:
         return _normalize_group_promotion_rules(rules_by_group.get(group_id))
     return copy.deepcopy(DEFAULT_PROMOTION_AGE_RULES)
+
+
+def _make_promo_id(person_type: str, person_id, youth_group: str, from_age_group: str) -> str:
+    key = f"{person_type}|{person_id}|{youth_group}|{from_age_group}"
+    return base64.urlsafe_b64encode(key.encode('utf-8')).decode('ascii').rstrip('=')
+
+
+def _parse_promo_id(promo_id: str):
+    try:
+        padded = promo_id + '=' * (-len(promo_id) % 4)
+        key = base64.urlsafe_b64decode(padded).decode('utf-8')
+        parts = key.split('|', 3)
+        return parts if len(parts) == 4 else None
+    except Exception:
+        return None
 
 
 def _birth_year_in_rule(birth_year: int, rule: dict) -> bool:
@@ -206,33 +212,197 @@ def _expected_age_group(birth_year, current_age_group=None) -> str | None:
 _SAME_TIER = {'الجامعيّة', 'العاملة'}
 
 
-def _load_promotions() -> dict:
-    data = S.db.load_promotions()
-    changed = _ensure_promotion_settings_shape(data)
-    for promo in data.get("promotions", []):
-        gid = S.youth_group_id(promo.get("youth_group"), create=True)
-        if gid and promo.get("youth_group") != gid:
-            promo["youth_group"] = gid
-            changed = True
-        if "youth_group_name" in promo:
-            promo.pop("youth_group_name", None)
-            changed = True
-    if changed:
-        _save_promotions(data)
-    return data
-
-
-def _save_promotions(data: dict):
-    S.db.save_promotions(data)
-
-
-def _promo_id() -> str:
-    return str(uuid.uuid4())[:12]
-
-
 def _now_str() -> str:
-    import datetime as _dt
     return _dt.datetime.utcnow().isoformat()[:19] + 'Z'
+
+
+def _scan_for_pending(result, person_type, persons_df, pyg_df, youth_groups_filter, rules_cache, rules_dict):
+    if persons_df.empty or pyg_df.empty:
+        return
+
+    persons_by_id = {
+        str(row.get('person_id', '')): row
+        for row in persons_df.replace({pd.NA: None, float('nan'): None}).to_dict('records')
+    }
+    seen = set()
+
+    for _, pyg_row in pyg_df.replace({pd.NA: None, float('nan'): None}).iterrows():
+        pid = pyg_row.get('person_id')
+        yg = pyg_row.get(S.YOUTH_GROUP_ID_COL)
+        ag = pyg_row.get('age_group')
+        if pid is None or not yg or not ag:
+            continue
+        if youth_groups_filter and yg not in youth_groups_filter:
+            continue
+
+        pid_str = str(pid)
+        person = persons_by_id.get(pid_str)
+        if person is None:
+            continue
+
+        by_raw = person.get('birth_year')
+        by = None
+        try:
+            if by_raw and str(by_raw) not in ('nan', 'None', ''):
+                by = int(by_raw)
+        except (ValueError, TypeError):
+            pass
+        if by is None:
+            continue
+
+        if yg not in rules_cache:
+            rules_cache[yg] = _group_promotion_rules(rules_dict, yg)
+        expected = _expected_age_group_for_group(by, current_age_group=ag, rules=rules_cache[yg])
+        if expected is None or ag == expected:
+            continue
+        if ag in _SAME_TIER and expected in _SAME_TIER:
+            continue
+
+        key = (pid_str, yg, ag)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        fn = str(person.get('ar_first_name') or '')
+        ln = str(person.get('ar_last_name') or '')
+        pid_out = int(pid_str) if person_type == 'registered' else pid_str
+
+        result.append({
+            'id': _make_promo_id(person_type, pid_str, yg, ag),
+            'person_type': person_type,
+            'person_id': pid_out,
+            'display_name': f'{fn} {ln}'.strip(),
+            'birth_year': by,
+            'youth_group': yg,
+            'from_age_group': ag,
+            'to_age_group': expected,
+            'status': 'pending',
+            'approved_by': None,
+        })
+
+
+def _build_approved(result, person_type, pyg_all_df, persons_df, youth_groups_filter):
+    if pyg_all_df.empty or S.SCD_CURRENTLY_ACTIVE_FLAG_COL not in pyg_all_df.columns:
+        return
+
+    inactive_mask = S._scd_inactive_mask(pyg_all_df[S.SCD_CURRENTLY_ACTIVE_FLAG_COL])
+    pyg_inactive = pyg_all_df[inactive_mask].replace({pd.NA: None, float('nan'): None})
+    if pyg_inactive.empty:
+        return
+
+    pyg_active = S._scd_filter_active(pyg_all_df)
+
+    # (pid_str, yg) → active row info
+    active_by_key = {}
+    for _, row in pyg_active.iterrows():
+        key = (str(row.get('person_id', '')), row.get(S.YOUTH_GROUP_ID_COL) or '')
+        active_by_key[key] = {
+            'age_group': row.get('age_group'),
+            'scd_changed_by_user': row.get(S.SCD_CHANGED_BY_USER_COL),
+        }
+
+    persons_by_id = {}
+    if not persons_df.empty:
+        for _, row in persons_df.replace({pd.NA: None, float('nan'): None}).iterrows():
+            persons_by_id[str(row.get('person_id', ''))] = row.to_dict()
+
+    # Per (pid_str, yg) keep only the most recently closed inactive row
+    most_recent: dict[tuple, object] = {}
+    if S.SCD_ACTIVE_TO_COL in pyg_inactive.columns:
+        pyg_inactive = pyg_inactive.copy()
+        pyg_inactive['_scd_to_dt'] = pd.to_datetime(pyg_inactive[S.SCD_ACTIVE_TO_COL], errors='coerce')
+        for _, inact in pyg_inactive.iterrows():
+            pid_str = str(inact.get('person_id', ''))
+            yg = inact.get(S.YOUTH_GROUP_ID_COL) or ''
+            key = (pid_str, yg)
+            ts = inact.get('_scd_to_dt')
+            existing = most_recent.get(key)
+            if existing is None or (ts is not None and (existing.get('_scd_to_dt') is None or ts > existing.get('_scd_to_dt'))):
+                most_recent[key] = inact.to_dict()
+    else:
+        for _, inact in pyg_inactive.iterrows():
+            pid_str = str(inact.get('person_id', ''))
+            yg = inact.get(S.YOUTH_GROUP_ID_COL) or ''
+            most_recent[(pid_str, yg)] = inact.to_dict()
+
+    for (pid_str, yg), inact in most_recent.items():
+        if youth_groups_filter and yg not in youth_groups_filter:
+            continue
+
+        from_ag = inact.get('age_group') or ''
+        from_ag_idx = _AGE_ORDER_INDEX.get(from_ag)
+        if from_ag_idx is None:
+            continue
+
+        active = active_by_key.get((pid_str, yg))
+        if not active:
+            continue
+
+        to_ag = active.get('age_group') or ''
+        to_ag_idx = _AGE_ORDER_INDEX.get(to_ag)
+        if to_ag_idx is None or to_ag_idx <= from_ag_idx:
+            continue
+
+        approved_by = inact.get(S.SCD_CHANGED_BY_USER_COL) or active.get('scd_changed_by_user') or ''
+        if not approved_by:
+            continue
+
+        person = persons_by_id.get(pid_str)
+        if person is None:
+            continue
+
+        by_raw = person.get('birth_year')
+        by = None
+        try:
+            if by_raw and str(by_raw) not in ('nan', 'None', ''):
+                by = int(by_raw)
+        except (ValueError, TypeError):
+            pass
+
+        fn = str(person.get('ar_first_name') or '')
+        ln = str(person.get('ar_last_name') or '')
+        pid_out = int(pid_str) if person_type == 'registered' else pid_str
+
+        result.append({
+            'id': _make_promo_id(person_type, pid_str, yg, from_ag),
+            'person_type': person_type,
+            'person_id': pid_out,
+            'display_name': f'{fn} {ln}'.strip(),
+            'birth_year': by,
+            'youth_group': yg,
+            'from_age_group': from_ag,
+            'to_age_group': to_ag,
+            'status': 'approved',
+            'approved_by': approved_by,
+        })
+
+
+def _compute_promotions(youth_groups_filter=None) -> list[dict]:
+    rules_dict = _load_promotion_rules()
+    rules_cache: dict = {}
+    result: list = []
+
+    pyg_active = S._scd_filter_active(S.store.get("person_youth_group", pd.DataFrame()))
+    persons_df = S._registered_persons_df().copy()
+    _scan_for_pending(result, 'registered', persons_df, pyg_active,
+                      youth_groups_filter, rules_cache, rules_dict)
+
+    unreg_persons = S.unregistered_persons_view_df().copy()
+    unreg_pyg_active = S._scd_filter_active(S.unreg_store.get("person_youth_group", pd.DataFrame())).copy()
+    if not unreg_persons.empty:
+        _scan_for_pending(result, 'unregistered', unreg_persons, unreg_pyg_active,
+                          youth_groups_filter, rules_cache, rules_dict)
+
+    _build_approved(result, 'registered',
+                    S.store.get("person_youth_group", pd.DataFrame()),
+                    persons_df, youth_groups_filter)
+
+    if not unreg_persons.empty:
+        _build_approved(result, 'unregistered',
+                        S.unreg_store.get("person_youth_group", pd.DataFrame()),
+                        unreg_persons, youth_groups_filter)
+
+    return result
 
 
 def register_promotions_routes(app):
@@ -242,28 +412,29 @@ def register_promotions_routes(app):
         if not u:
             return jsonify({"error": "unauthorized"}), 401
 
-        data = _load_promotions()
-        promos = data.get("promotions", [])
-
         if u["role"] == "admin":
-            return jsonify({"promotions": promos})
+            promos = _compute_promotions()
+        else:
+            youth_groups = _get_person_youth_groups(u["person_type"], u["person_id"])
+            council_access = _get_council_access(u["person_type"], u["person_id"], youth_groups)
+            yg_filter = set(council_access.keys())
+            promos = _compute_promotions(youth_groups_filter=yg_filter)
 
-        youth_groups = _get_person_youth_groups(u["person_type"], u["person_id"])
-        council_access = _get_council_access(u["person_type"], u["person_id"], youth_groups)
+            def _can_see(pr):
+                grp = pr.get("youth_group")
+                info = council_access.get(grp)
+                if not info:
+                    return False
+                if info.get("full_group"):
+                    return True
+                from_ag = pr.get("from_age_group")
+                to_ag = pr.get("to_age_group")
+                ags = info.get("age_groups", [])
+                return from_ag in ags or to_ag in ags
 
-        def _can_see(pr):
-            grp = pr.get("youth_group")
-            info = council_access.get(grp)
-            if not info:
-                return False
-            if info.get("full_group"):
-                return True
-            from_ag = pr.get("from_age_group")
-            to_ag = pr.get("to_age_group")
-            ags = info.get("age_groups", [])
-            return from_ag in ags or to_ag in ags
+            promos = [p for p in promos if _can_see(p)]
 
-        return jsonify({"promotions": [p for p in promos if _can_see(p)]})
+        return jsonify({"promotions": promos})
 
     @app.post("/api/promotions/scan")
     def scan_promotions():
@@ -271,92 +442,16 @@ def register_promotions_routes(app):
         if not u:
             return jsonify({"error": "unauthorized"}), 401
 
-        youth_groups_filter = None
-        if u["role"] != "admin":
+        if u["role"] == "admin":
+            promos = _compute_promotions()
+        else:
             ygs = _get_person_youth_groups(u["person_type"], u["person_id"])
             council_access = _get_council_access(u["person_type"], u["person_id"], ygs)
-            youth_groups_filter = set(council_access.keys())
+            yg_filter = set(council_access.keys())
+            promos = _compute_promotions(youth_groups_filter=yg_filter)
 
-        created = []
-        with promotions_lock:
-            data = _load_promotions()
-            existing = {
-                (str(p["person_id"]), p["youth_group"], p["from_age_group"]): p
-                for p in data["promotions"]
-                if p["status"] == "pending"
-            }
-
-            pyg = S._scd_filter_active(S.store.get("person_youth_group", pd.DataFrame()))
-            rules_cache = {}
-
-            def _scan_persons(person_type, persons_df, pyg_df):
-                for row in persons_df.replace({pd.NA: None, float('nan'): None}).to_dict(orient='records'):
-                    pid = row.get("person_id")
-                    if pid is None:
-                        continue
-                    pid_str = str(pid)
-                    by_raw = row.get("birth_year")
-                    by = None
-                    try:
-                        if by_raw and str(by_raw) not in ('nan', 'None', ''):
-                            by = int(by_raw)
-                    except (ValueError, TypeError):
-                        pass
-                    if by is None:
-                        continue
-
-                    if not pyg_df.empty and "person_id" in pyg_df.columns:
-                        mask = pyg_df["person_id"].astype(str) == pid_str
-                        for _, pyg_row in pyg_df[mask].iterrows():
-                            yg = pyg_row.get(S.YOUTH_GROUP_ID_COL)
-                            ag = pyg_row.get("age_group")
-                            if not yg or not ag:
-                                continue
-                            if youth_groups_filter and yg not in youth_groups_filter:
-                                continue
-                            if yg not in rules_cache:
-                                rules_cache[yg] = _group_promotion_rules(data, yg)
-                            expected = _expected_age_group_for_group(by, current_age_group=ag, rules=rules_cache[yg])
-                            if expected is None:
-                                continue
-                            if ag == expected:
-                                continue
-                            if ag in _SAME_TIER and expected in _SAME_TIER:
-                                continue
-
-                            key = (pid_str, yg, ag)
-                            if key in existing:
-                                continue
-
-                            fn = str(row.get("ar_first_name") or "")
-                            ln = str(row.get("ar_last_name") or "")
-                            new_promo = {
-                                "id": _promo_id(),
-                                "person_type": person_type,
-                                "person_id": pid if person_type == "registered" else pid_str,
-                                "display_name": f"{fn} {ln}".strip(),
-                                "birth_year": by,
-                                "youth_group": yg,
-                                "from_age_group": ag,
-                                "to_age_group": expected,
-                                "status": "pending",
-                                "approved_by": None,
-                                "created_at": _now_str(),
-                                "updated_at": _now_str(),
-                            }
-                            data["promotions"].append(new_promo)
-                            existing[key] = new_promo
-                            created.append(new_promo)
-
-            _scan_persons("registered", S._registered_persons_df().copy(), pyg)
-            unreg_persons = S.unregistered_persons_view_df().copy()
-            unreg_pyg = S.unreg_store.get("person_youth_group", pd.DataFrame()).copy()
-            if not unreg_persons.empty:
-                _scan_persons("unregistered", unreg_persons, unreg_pyg)
-
-            _save_promotions(data)
-
-        return jsonify({"ok": True, "created": len(created), "promotions": created})
+        pending = [p for p in promos if p["status"] == "pending"]
+        return jsonify({"ok": True, "created": len(pending), "promotions": pending})
 
     @app.patch("/api/promotions/<promo_id>")
     def update_promotion(promo_id):
@@ -369,166 +464,201 @@ def register_promotions_routes(app):
         if action not in ("approve", "reject"):
             return jsonify({"error": "action must be approve or reject"}), 400
 
-        with promotions_lock:
-            data = _load_promotions()
-            promo = next((p for p in data["promotions"] if p["id"] == promo_id), None)
-            if not promo:
-                return jsonify({"error": "not found"}), 404
+        parsed = _parse_promo_id(promo_id)
+        if not parsed:
+            return jsonify({"error": "invalid promotion id"}), 400
+        person_type, pid_str, yg, from_ag = parsed
 
-            if u["role"] != "admin":
-                ygs = _get_person_youth_groups(u["person_type"], u["person_id"])
-                ca = _get_council_access(u["person_type"], u["person_id"], ygs)
-                info = ca.get(promo["youth_group"])
-                if not info:
+        if action == "reject":
+            # Without persistence, rejection is a no-op
+            return jsonify({"ok": True, "promotion": {
+                "id": promo_id, "status": "rejected",
+                "from_age_group": from_ag, "youth_group": yg,
+            }})
+
+        # action == "approve"
+        if u["role"] != "admin":
+            ygs = _get_person_youth_groups(u["person_type"], u["person_id"])
+            ca = _get_council_access(u["person_type"], u["person_id"], ygs)
+            info = ca.get(yg)
+            if not info:
+                return jsonify({"error": "forbidden"}), 403
+            if not info.get("full_group"):
+                ags = info.get("age_groups", [])
+                if from_ag not in ags:
                     return jsonify({"error": "forbidden"}), 403
-                if not info.get("full_group"):
-                    ags = info.get("age_groups", [])
-                    if promo["from_age_group"] not in ags and promo["to_age_group"] not in ags:
-                        return jsonify({"error": "forbidden"}), 403
 
-            promo["status"] = "approved" if action == "approve" else "rejected"
-            promo["approved_by"] = u["username"]
-            promo["updated_at"] = _now_str()
+        # Determine to_age_group dynamically
+        rules_dict = _load_promotion_rules()
+        rules = _group_promotion_rules(rules_dict, yg)
 
-            if action == "approve":
-                pid = promo["person_id"]
-                yg = promo["youth_group"]
-                from_ag = promo["from_age_group"]
-                to_ag = promo["to_age_group"]
-                ptype = promo["person_type"]
-                extra = body.get("extra_data") or {}
+        extra = body.get("extra_data") or {}
+        promo_changed_by = u["username"]
 
-                if ptype == "registered":
-                    with S.lock:
-                        pyg_df = S._scd_ensure_columns(S.store["person_youth_group"].copy())
-                        # Only match currently-active rows
-                        active_mask = (
-                            (pyg_df["person_id"] == int(pid))
-                            & (pyg_df[S.YOUTH_GROUP_ID_COL] == yg)
-                            & (pyg_df["age_group"] == from_ag)
-                            & (pyg_df[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
-                        )
-                        if not active_mask.any():
-                            _save_promotions(data)
-                            return jsonify({"error": "record not found in person_youth_group"}), 404
-                        now = pd.Timestamp.now()
-                        promo_changed_by = u["username"]
-                        new_scd = S._scd_new_metadata(promo_changed_by)
-                        # Get current active row to carry forward; keep same record_id so history stays linked
-                        current_pyg = pyg_df[active_mask].iloc[0].to_dict()
-                        record_id = S._normalize_person_youth_group_record_id(current_pyg.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL))
-                        # SCD-deactivate old row
-                        pyg_df.loc[active_mask, S.SCD_ACTIVE_TO_COL] = now
-                        pyg_df.loc[active_mask, S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
-                        pyg_df.loc[active_mask, S.SCD_CHANGED_BY_USER_COL] = promo_changed_by
-                        # Insert new active row with updated age_group (same record_id)
-                        new_pyg = {k: v for k, v in current_pyg.items() if k not in S.SCD_METADATA_COLUMNS}
-                        new_pyg["age_group"] = to_ag
-                        new_pyg.update(new_scd)
-                        S.store["person_youth_group"] = pd.concat([pyg_df, pd.DataFrame([new_pyg])], ignore_index=True)
-                        # Append history entry for the new age_group; do NOT replace the whole sheet
-                        history_df = S._scd_ensure_columns(S.store.get(S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame()).copy())
-                        new_hist = {
-                            S.PERSON_YOUTH_GROUP_RECORD_ID_COL: record_id,
-                            "age_group": to_ag,
-                            "start_date": None,
-                            "end_date": None,
-                            **new_scd,
-                        }
-                        S.store[S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET] = pd.concat(
-                            [history_df, pd.DataFrame([new_hist])], ignore_index=True
-                        )
-                        if extra and from_ag == 'الثانوي' and to_ag == 'الجامعيّة':
-                            int_pid = int(pid)
+        if person_type == "registered":
+            try:
+                pid = int(pid_str)
+            except ValueError:
+                return jsonify({"error": "invalid person_id"}), 400
 
-                            def _app_reg(sheet, rows):
-                                if not rows:
-                                    return
-                                row_scd = S._scd_new_metadata(promo_changed_by)
-                                ndf = pd.DataFrame([{**r, **row_scd} for r in rows])
-                                ndf["person_id"] = int_pid
-                                cur = S._scd_ensure_columns(S.store.get(sheet, pd.DataFrame()).copy())
-                                S.store[sheet] = pd.concat([cur, ndf], ignore_index=True)
+            # Look up birth_year
+            persons_df = S._registered_persons_df()
+            person_row = persons_df[persons_df["person_id"] == pid]
+            if person_row.empty:
+                return jsonify({"error": "person not found"}), 404
+            by_raw = person_row.iloc[0].get("birth_year")
+            by = _as_year_or_none(by_raw)
+            to_ag = _expected_age_group_for_group(by, current_age_group=from_ag, rules=rules)
+            if to_ag is None:
+                return jsonify({"error": "no promotion target found"}), 400
 
-                            _app_reg("higher_education", extra.get("higher_education", []))
-                            _app_reg("jobs", extra.get("jobs", []))
-                            _app_reg("emails", extra.get("emails", []))
-                            _app_reg("social_media", extra.get("social_media", []))
-                            _app_reg("responsibilities", extra.get("responsibilities", []))
-                            _app_reg("hobbies_skills", extra.get("hobbies_skills", []))
-                        S.save()
+            with S.lock:
+                pyg_df = S._scd_ensure_columns(S.store["person_youth_group"].copy())
+                active_mask = (
+                    (pyg_df["person_id"] == pid)
+                    & (pyg_df[S.YOUTH_GROUP_ID_COL] == yg)
+                    & (pyg_df["age_group"] == from_ag)
+                    & (pyg_df[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+                )
+                if not active_mask.any():
+                    return jsonify({"error": "record not found in person_youth_group"}), 404
+                now = pd.Timestamp.now()
+                new_scd = S._scd_new_metadata(promo_changed_by)
+                current_pyg = pyg_df[active_mask].iloc[0].to_dict()
+                record_id = S._normalize_person_youth_group_record_id(current_pyg.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL))
+                pyg_df.loc[active_mask, S.SCD_ACTIVE_TO_COL] = now
+                pyg_df.loc[active_mask, S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+                pyg_df.loc[active_mask, S.SCD_CHANGED_BY_USER_COL] = promo_changed_by
+                new_pyg = {k: v for k, v in current_pyg.items() if k not in S.SCD_METADATA_COLUMNS}
+                new_pyg["age_group"] = to_ag
+                new_pyg.update(new_scd)
+                S.store["person_youth_group"] = pd.concat([pyg_df, pd.DataFrame([new_pyg])], ignore_index=True)
+                history_df = S._scd_ensure_columns(S.store.get(S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame()).copy())
+                new_hist = {
+                    S.PERSON_YOUTH_GROUP_RECORD_ID_COL: record_id,
+                    "age_group": to_ag,
+                    "start_date": None,
+                    "end_date": None,
+                    **new_scd,
+                }
+                S.store[S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET] = pd.concat(
+                    [history_df, pd.DataFrame([new_hist])], ignore_index=True
+                )
+                if extra and from_ag == 'الثانوي' and to_ag == 'الجامعيّة':
+                    def _app_reg(sheet, rows):
+                        if not rows:
+                            return
+                        row_scd = S._scd_new_metadata(promo_changed_by)
+                        ndf = pd.DataFrame([{**r, **row_scd} for r in rows])
+                        ndf["person_id"] = pid
+                        cur = S._scd_ensure_columns(S.store.get(sheet, pd.DataFrame()).copy())
+                        S.store[sheet] = pd.concat([cur, ndf], ignore_index=True)
 
-                elif ptype == "unregistered":
-                    with S.unreg_lock:
-                        upyg = S._scd_ensure_columns(S.unreg_store.get("person_youth_group", pd.DataFrame()).copy())
-                        if upyg.empty or "person_id" not in upyg.columns:
-                            _save_promotions(data)
-                            return jsonify({"error": "record not found"}), 404
-                        u_active_mask = (
-                            (upyg["person_id"].astype(str) == str(pid))
-                            & (upyg[S.YOUTH_GROUP_ID_COL] == yg)
-                            & (upyg["age_group"] == from_ag)
-                            & (upyg[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
-                        )
-                        if not u_active_mask.any():
-                            _save_promotions(data)
-                            return jsonify({"error": "record not found"}), 404
-                        now = pd.Timestamp.now()
-                        promo_changed_by = u["username"]
-                        new_scd = S._scd_new_metadata(promo_changed_by)
-                        current_upyg = upyg[u_active_mask].iloc[0].to_dict()
-                        record_id = S._normalize_person_youth_group_record_id(current_upyg.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL))
-                        upyg.loc[u_active_mask, S.SCD_ACTIVE_TO_COL] = now
-                        upyg.loc[u_active_mask, S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
-                        upyg.loc[u_active_mask, S.SCD_CHANGED_BY_USER_COL] = promo_changed_by
-                        new_upyg = {k: v for k, v in current_upyg.items() if k not in S.SCD_METADATA_COLUMNS}
-                        new_upyg["age_group"] = to_ag
-                        new_upyg.update(new_scd)
-                        S.unreg_store["person_youth_group"] = pd.concat([upyg, pd.DataFrame([new_upyg])], ignore_index=True)
-                        u_history_df = S._scd_ensure_columns(S.unreg_store.get(S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame()).copy())
-                        new_uhist = {
-                            S.PERSON_YOUTH_GROUP_RECORD_ID_COL: record_id,
-                            "age_group": to_ag,
-                            "start_date": None,
-                            "end_date": None,
-                            **new_scd,
-                        }
-                        S.unreg_store[S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET] = pd.concat(
-                            [u_history_df, pd.DataFrame([new_uhist])], ignore_index=True
-                        )
-                        if extra and from_ag == 'الثانوي' and to_ag == 'الجامعيّة':
-                            str_pid = str(pid)
+                    _app_reg("higher_education", extra.get("higher_education", []))
+                    _app_reg("jobs", extra.get("jobs", []))
+                    _app_reg("emails", extra.get("emails", []))
+                    _app_reg("social_media", extra.get("social_media", []))
+                    _app_reg("responsibilities", extra.get("responsibilities", []))
+                    _app_reg("hobbies_skills", extra.get("hobbies_skills", []))
+                S.save()
 
-                            def _app_unreg(sheet, rows):
-                                if not rows:
-                                    return
-                                row_scd = S._scd_new_metadata(promo_changed_by)
-                                ndf = pd.DataFrame([{**r, **row_scd} for r in rows])
-                                ndf["person_id"] = str_pid
-                                cur = S._scd_ensure_columns(S.unreg_store.get(sheet, pd.DataFrame()).copy())
-                                S.unreg_store[sheet] = pd.concat([cur, ndf], ignore_index=True)
+            fn = str(person_row.iloc[0].get("ar_first_name") or '')
+            ln = str(person_row.iloc[0].get("ar_last_name") or '')
+            return jsonify({"ok": True, "promotion": {
+                "id": promo_id,
+                "person_type": person_type,
+                "person_id": pid,
+                "display_name": f"{fn} {ln}".strip(),
+                "youth_group": yg,
+                "from_age_group": from_ag,
+                "to_age_group": to_ag,
+                "status": "approved",
+                "approved_by": promo_changed_by,
+            }})
 
-                            _app_unreg("higher_education", extra.get("higher_education", []))
-                            _app_unreg("jobs", extra.get("jobs", []))
-                            _app_unreg("emails", extra.get("emails", []))
-                            _app_unreg("social_media", extra.get("social_media", []))
-                            _app_unreg("responsibilities", extra.get("responsibilities", []))
-                            _app_unreg("hobbies_skills", extra.get("hobbies_skills", []))
-                        S._save_unreg_store()
+        else:  # unregistered
+            with S.unreg_lock:
+                upyg = S._scd_ensure_columns(S.unreg_store.get("person_youth_group", pd.DataFrame()).copy())
+                if upyg.empty or "person_id" not in upyg.columns:
+                    return jsonify({"error": "record not found"}), 404
 
-            _save_promotions(data)
+                # Look up birth_year for unregistered person
+                unreg_df = S.unregistered_persons_view_df()
+                if not unreg_df.empty:
+                    unreg_row = unreg_df[unreg_df["person_id"].astype(str) == pid_str]
+                    by_raw = unreg_row.iloc[0].get("birth_year") if not unreg_row.empty else None
+                else:
+                    by_raw = None
+                by = _as_year_or_none(by_raw)
+                to_ag = _expected_age_group_for_group(by, current_age_group=from_ag, rules=rules)
+                if to_ag is None:
+                    return jsonify({"error": "no promotion target found"}), 400
 
-        return jsonify({"ok": True, "promotion": promo})
+                u_active_mask = (
+                    (upyg["person_id"].astype(str) == pid_str)
+                    & (upyg[S.YOUTH_GROUP_ID_COL] == yg)
+                    & (upyg["age_group"] == from_ag)
+                    & (upyg[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+                )
+                if not u_active_mask.any():
+                    return jsonify({"error": "record not found"}), 404
+                now = pd.Timestamp.now()
+                new_scd = S._scd_new_metadata(promo_changed_by)
+                current_upyg = upyg[u_active_mask].iloc[0].to_dict()
+                record_id = S._normalize_person_youth_group_record_id(current_upyg.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL))
+                upyg.loc[u_active_mask, S.SCD_ACTIVE_TO_COL] = now
+                upyg.loc[u_active_mask, S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+                upyg.loc[u_active_mask, S.SCD_CHANGED_BY_USER_COL] = promo_changed_by
+                new_upyg = {k: v for k, v in current_upyg.items() if k not in S.SCD_METADATA_COLUMNS}
+                new_upyg["age_group"] = to_ag
+                new_upyg.update(new_scd)
+                S.unreg_store["person_youth_group"] = pd.concat([upyg, pd.DataFrame([new_upyg])], ignore_index=True)
+                u_history_df = S._scd_ensure_columns(S.unreg_store.get(S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame()).copy())
+                new_uhist = {
+                    S.PERSON_YOUTH_GROUP_RECORD_ID_COL: record_id,
+                    "age_group": to_ag,
+                    "start_date": None,
+                    "end_date": None,
+                    **new_scd,
+                }
+                S.unreg_store[S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET] = pd.concat(
+                    [u_history_df, pd.DataFrame([new_uhist])], ignore_index=True
+                )
+                if extra and from_ag == 'الثانوي' and to_ag == 'الجامعيّة':
+                    def _app_unreg(sheet, rows):
+                        if not rows:
+                            return
+                        row_scd = S._scd_new_metadata(promo_changed_by)
+                        ndf = pd.DataFrame([{**r, **row_scd} for r in rows])
+                        ndf["person_id"] = pid_str
+                        cur = S._scd_ensure_columns(S.unreg_store.get(sheet, pd.DataFrame()).copy())
+                        S.unreg_store[sheet] = pd.concat([cur, ndf], ignore_index=True)
+
+                    _app_unreg("higher_education", extra.get("higher_education", []))
+                    _app_unreg("jobs", extra.get("jobs", []))
+                    _app_unreg("emails", extra.get("emails", []))
+                    _app_unreg("social_media", extra.get("social_media", []))
+                    _app_unreg("responsibilities", extra.get("responsibilities", []))
+                    _app_unreg("hobbies_skills", extra.get("hobbies_skills", []))
+                S._save_unreg_store()
+
+            return jsonify({"ok": True, "promotion": {
+                "id": promo_id,
+                "person_type": person_type,
+                "person_id": pid_str,
+                "youth_group": yg,
+                "from_age_group": from_ag,
+                "to_age_group": to_ag,
+                "status": "approved",
+                "approved_by": promo_changed_by,
+            }})
 
     @app.delete("/api/promotions/<promo_id>")
     def delete_promotion(promo_id):
         u = _current_user()
         if not u:
             return jsonify({"error": "unauthorized"}), 401
-        with promotions_lock:
-            data = _load_promotions()
-            data["promotions"] = [p for p in data["promotions"] if p["id"] != promo_id]
-            _save_promotions(data)
+        # Promotions are derived from SCD; nothing to delete
         return jsonify({"ok": True})
 
 
@@ -536,6 +666,7 @@ exports = {
     "_now_str": _now_str,
     "_default_promotion_age_rules": lambda: copy.deepcopy(DEFAULT_PROMOTION_AGE_RULES),
     "_normalize_group_promotion_rules": _normalize_group_promotion_rules,
-    "_ensure_promotion_settings_shape": _ensure_promotion_settings_shape,
+    "_load_promotion_rules": _load_promotion_rules,
+    "_save_promotion_rules": _save_promotion_rules,
     "_group_promotion_rules": _group_promotion_rules,
 }

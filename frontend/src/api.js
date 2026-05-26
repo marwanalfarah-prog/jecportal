@@ -89,7 +89,6 @@ export const api = {
   formatYouthGroupLabel,
 
   // ── Auth ──────────────────────────────────────────────────────────────────
-  login:        (body)         => req('/auth/login', { method: 'POST', body }),
   logout:       ()             => req('/auth/logout', { method: 'POST' }),
   me:           ()             => req('/auth/me'),
   listUsers:    ()             => req('/auth/users'),
@@ -117,7 +116,6 @@ export const api = {
 
   personsEnriched: ()           => req('/persons/enriched'),
   membersIndex:    ()           => req('/persons/members-index'),
-  persons:         (params)     => req('/persons?' + new URLSearchParams(params)),
   getPerson:       (id)         => req(`/person/${id}`),
   updatePerson:    (id, body)   => req(`/person/${id}`, { method: 'PUT', body }),
   addPerson:       (body)       => req('/person', { method: 'POST', body }),
@@ -126,15 +124,10 @@ export const api = {
   archivePerson:   (id, youthGroupId)         => req(`/person/${id}/archive`, { method: 'PATCH', body: buildArchiveMembershipBody(youthGroupId) }),
   unarchivePerson: (id, youthGroupId)         => req(`/person/${id}/unarchive`, { method: 'PATCH', body: buildArchiveMembershipBody(youthGroupId) }),
 
-  getTable:        (sheet)      => req(`/table/${sheet}`),
-  putTable:        (sheet, rows)=> req(`/table/${sheet}`, { method: 'PUT', body: rows }),
-
   getOrgTree:      (group, periodId) =>
     periodId
       ? req(`/org-tree/${encodeURIComponent(group)}?period_id=${encodeURIComponent(periodId)}`)
       : req(`/org-tree/${encodeURIComponent(group)}`),
-
-  getOrgTreePeriods: (group) => req(`/org-tree/${encodeURIComponent(group)}/periods`),
 
   getOrgTreeHistory: ({ personId, unregisteredId, groupIds } = {}) => {
     const qs = new URLSearchParams()
@@ -143,10 +136,6 @@ export const api = {
     if (Array.isArray(groupIds) && groupIds.length) qs.set('group_ids', groupIds.map(v => String(v || '').trim()).filter(Boolean).join(','))
     return req(`/org-tree/history?${qs.toString()}`)
   },
-
-  // Lean single-period endpoint (without embedding all periods metadata)
-  getOrgTreePeriod: (group, periodId) =>
-    req(`/org-tree/${encodeURIComponent(group)}/${encodeURIComponent(periodId)}`),
 
   putOrgTree: (group, body) =>
     req(`/org-tree/${encodeURIComponent(group)}`, { method: 'PUT', body }),
@@ -165,7 +154,6 @@ export const api = {
   updateQuestionnaire:    (id, body) => req(`/questionnaires/${id}`, { method: 'PUT', body }),
   deleteQuestionnaire:    (id)       => req(`/questionnaires/${id}`, { method: 'DELETE' }),
   getQuestionnaireResponses: (id)    => req(`/questionnaires/${id}/responses`),
-  markResponseRead:       (respId)   => req(`/questionnaires/responses/${respId}/read`, { method: 'PATCH' }),
 
   // ── Questionnaires (member) ─────────────────────────────────────────────────
   listMyQuestionnaires:  ()           => req('/questionnaires'),
@@ -191,7 +179,6 @@ export const api = {
   // ── Config ──────────────────────────────────────────────────────────────────
   getConfig:          ()           => req('/config'),
   putConfig:          (body)       => req('/config', { method: 'PUT', body }),
-  resetConfig:        ()           => req('/config/reset', { method: 'PUT' }),
   getMottosMeta:      ()           => req('/config/mottos/meta'),
   listMottos:         ()           => req('/config/mottos'),
   listActiveMottos:   ({ youthGroupIds = [], includeJecJordan = true } = {}) => {
@@ -216,11 +203,6 @@ export const api = {
   },
   mottoLogoUrl: (id, bust) => `${BASE}/config/mottos/${encodeURIComponent(id)}/logo${bust ? `?t=${bust}` : ''}`,
 
-  // ── Youth Groups (config) ───────────────────────────────────────────────────
-  listYouthGroups:    ()           => req('/config/youth-groups'),
-  createYouthGroup:   (body)       => req('/config/youth-groups', { method: 'POST', body }),
-  updateYouthGroup:   (gid, body)  => req(`/config/youth-groups/${encodeURIComponent(gid)}`, { method: 'PUT', body }),
-  deleteYouthGroup:   (gid)        => req(`/config/youth-groups/${encodeURIComponent(gid)}`, { method: 'DELETE' }),
 
   // ── School / University Logos ────────────────────────────────────────────────
   listSchoolLogos:         ()           => req('/config/school-logos'),
@@ -258,11 +240,6 @@ export const api = {
     return readResponsePayload(res)
   },
   parishLogoUrl: (id, bust) => `${BASE}/parishes/${encodeURIComponent(id)}/logo${bust ? `?t=${bust}` : ''}`,
-
-  // ── Maintenance ─────────────────────────────────────────────────────────────
-  clearNotifications: ()           => req('/config/maintenance/notifications', { method: 'DELETE' }),
-  clearPromotions:    ()           => req('/config/maintenance/promotions', { method: 'DELETE' }),
-  reloadData:         ()           => req('/config/maintenance/reload', { method: 'POST' }),
 
   // Unregistered photo
   uploadUnregisteredPhoto: async (id, file) => {

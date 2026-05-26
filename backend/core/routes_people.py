@@ -550,7 +550,7 @@ def build_profile_record(
     }
 
 
-def prepare_profile_person_payload(raw_person, *, addresses_rows=_MISSING, fallback_to_legacy_addresses: bool = False):
+def prepare_profile_person_payload(raw_person, *, addresses_rows=_MISSING, infer_addresses_from_payload: bool = False):
     source = raw_person or {}
     person_fields = _normalize_profile_person_fields(S.normalize_person_birth_fields(source))
     title_in_payload = "title" in source
@@ -559,13 +559,13 @@ def prepare_profile_person_payload(raw_person, *, addresses_rows=_MISSING, fallb
     school_system_sector = person_fields.pop("school_system_sector", None)
 
     resolved_addresses = None if addresses_rows is _MISSING else addresses_rows
-    if fallback_to_legacy_addresses and resolved_addresses is None:
-        legacy_addresses = S.address_rows_from_legacy_person_payload(source)
-        if legacy_addresses:
-            resolved_addresses = legacy_addresses
+    if infer_addresses_from_payload and resolved_addresses is None:
+        inferred_addresses = S.address_rows_from_embedded_payload(source)
+        if inferred_addresses:
+            resolved_addresses = inferred_addresses
 
-    for legacy_col in ("governorate", "city", "country", "address"):
-        person_fields.pop(legacy_col, None)
+    for obsolete_col in ("governorate", "city", "country", "address"):
+        person_fields.pop(obsolete_col, None)
 
     return person_fields, {
         "title_in_payload": title_in_payload,
@@ -1495,7 +1495,7 @@ def register_registered_routes(app):
             p, person_payload = prepare_profile_person_payload(
                 raw_person,
                 addresses_rows=body.get("addresses") if "addresses" in body else None,
-                fallback_to_legacy_addresses=True,
+                infer_addresses_from_payload=True,
             )
             validation_errors = collect_profile_validation_errors(
                 body,
@@ -1596,7 +1596,7 @@ def register_registered_routes(app):
             p, person_payload = prepare_profile_person_payload(
                 raw_person,
                 addresses_rows=body.get("addresses") if "addresses" in body else None,
-                fallback_to_legacy_addresses="addresses" not in body,
+                infer_addresses_from_payload="addresses" not in body,
             )
             validation_errors = collect_profile_validation_errors(
                 body,
@@ -1757,16 +1757,16 @@ def register_unregistered_routes(app):
         with S.unreg_lock:
             persons_df = S._project_primary_addresses(
                 S.unregistered_persons_view_df(),
-                S.unreg_store.get("addresses", pd.DataFrame()),
+                S._scd_filter_active(S.unreg_store.get("addresses", pd.DataFrame())),
             ).replace({np.nan: None})
-            pyg = S.unreg_store.get("person_youth_group", pd.DataFrame())
-            pyg_history = S.unreg_store.get(S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame())
-            resp = S.unreg_store.get("responsibilities", pd.DataFrame())
-            nat = S.unreg_store.get("nationality", pd.DataFrame())
-            sch = S.unreg_store.get("schools", pd.DataFrame())
-            he = S.unreg_store.get("higher_education", pd.DataFrame())
-            jobs = S.unreg_store.get("jobs", pd.DataFrame())
-            hob = S.unreg_store.get("hobbies_skills", pd.DataFrame())
+            pyg = S._scd_filter_active(S.unreg_store.get("person_youth_group", pd.DataFrame()))
+            pyg_history = S._scd_filter_active(S.unreg_store.get(S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame()))
+            resp = S._scd_filter_active(S.unreg_store.get("responsibilities", pd.DataFrame()))
+            nat = S._scd_filter_active(S.unreg_store.get("nationality", pd.DataFrame()))
+            sch = S._scd_filter_active(S.unreg_store.get("schools", pd.DataFrame()))
+            he = S._scd_filter_active(S.unreg_store.get("higher_education", pd.DataFrame()))
+            jobs = S._scd_filter_active(S.unreg_store.get("jobs", pd.DataFrame()))
+            hob = S._scd_filter_active(S.unreg_store.get("hobbies_skills", pd.DataFrame()))
 
             def pid_to_list_u(df, col):
                 result = {}
@@ -1871,7 +1871,7 @@ def register_unregistered_routes(app):
             p, person_payload = prepare_profile_person_payload(
                 raw_person,
                 addresses_rows=body.get("addresses") if "addresses" in body else None,
-                fallback_to_legacy_addresses="addresses" not in body,
+                infer_addresses_from_payload="addresses" not in body,
             )
             p = _populate_arabic_name_from_full_name(p, body.get("name"))
             validation_errors = collect_profile_validation_errors(
@@ -2001,7 +2001,7 @@ def register_unregistered_routes(app):
             p, person_payload = prepare_profile_person_payload(
                 raw_person,
                 addresses_rows=body.get("addresses") if "addresses" in body else None,
-                fallback_to_legacy_addresses=True,
+                infer_addresses_from_payload=True,
             )
             validation_errors = collect_profile_validation_errors(
                 body,

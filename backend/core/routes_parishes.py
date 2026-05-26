@@ -295,7 +295,7 @@ def _normalize_parish_rows(rows) -> list[dict]:
     return normalized
 
 
-def _build_parishes_from_legacy_church_rows(rows: list[dict]) -> tuple[list[dict], list[dict]]:
+def _build_parishes_from_flat_rows(rows: list[dict]) -> tuple[list[dict], list[dict]]:
     parishes = []
     churches = []
     parish_by_key = {}
@@ -388,9 +388,9 @@ def _normalize_payload(payload) -> dict:
         churches = _normalize_church_rows(payload.get("churches", []), valid_parish_ids)
         return {"parishes": parishes, "churches": churches}
 
-    # Legacy shape: only churches list with per-church lpj_url.
-    legacy_rows = payload.get("churches", []) if isinstance(payload.get("churches"), list) else []
-    return dict(zip(["parishes", "churches"], _build_parishes_from_legacy_church_rows(legacy_rows)))
+    # Flat shape: only churches list with per-church lpj_url.
+    flat_rows = payload.get("churches", []) if isinstance(payload.get("churches"), list) else []
+    return dict(zip(["parishes", "churches"], _build_parishes_from_flat_rows(flat_rows)))
 
 
 def _parish_rows_df(rows: list[dict]) -> pd.DataFrame:

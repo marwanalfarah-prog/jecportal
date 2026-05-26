@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, FileText } from 'lucide-react'
+import { AlertCircle, FileText } from 'lucide-react'
 
 const shellStyle = (minHeight) => ({
   minHeight,
@@ -101,22 +101,3 @@ export function EmptyState({
   )
 }
 
-export function SuccessState({
-  title = 'تمت العملية بنجاح',
-  description = 'تم حفظ التغييرات بنجاح.',
-  actionLabel = '',
-  onAction,
-  minHeight = 260,
-  icon: Icon = CheckCircle2,
-}) {
-  return (
-    <div style={shellStyle(minHeight)}>
-      <Icon size={42} color="#1a7a45" />
-      <h3 style={titleStyle}>{title}</h3>
-      <p style={descriptionStyle}>{description}</p>
-      {actionLabel && typeof onAction === 'function' ? (
-        <button type="button" style={actionStyle} onClick={onAction}>{actionLabel}</button>
-      ) : null}
-    </div>
-  )
-}

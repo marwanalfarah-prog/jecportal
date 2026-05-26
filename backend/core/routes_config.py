@@ -63,20 +63,12 @@ def _config_dir() -> str:
     return os.path.join(S.db.data_dir, "config")
 
 
-def _legacy_config_path() -> str:
-    return os.path.join(S.db.data_dir, "config.json")
-
-
 def _config_fragment_path(option_name: str) -> str:
     return os.path.join(_config_dir(), f"{option_name}.json")
 
 
 def _mottos_path() -> str:
     return _config_fragment_path("mottos")
-
-
-def _legacy_mottos_path() -> str:
-    return os.path.join(S.db.data_dir, "mottos.json")
 
 
 def _clean_text(value):
@@ -931,12 +923,6 @@ def _save_mottos_payload(payload: dict, changed_by: str = "admin") -> dict:
         normalized.append(item)
     result = {"mottos": normalized}
     _save_mottos_to_sheets(result, changed_by=changed_by)
-    for legacy_path in (_mottos_path(), _legacy_mottos_path()):
-        if os.path.exists(legacy_path):
-            try:
-                os.remove(legacy_path)
-            except OSError:
-                pass
     return result
 
 
@@ -1040,9 +1026,7 @@ def _load_config():
         fragments["person_titles"] = _load_person_titles_from_sheet()
         return _normalize_config_payload(fragments)
 
-    legacy = S.db.load_json_file(_legacy_config_path(), defaults)
-    legacy["person_titles"] = _load_person_titles_from_sheet()
-    return _normalize_config_payload(legacy)
+    return _normalize_config_payload(defaults)
 
 
 # ── School / University Logos ─────────────────────────────────────────────────
@@ -1140,11 +1124,11 @@ def _school_logo_candidate_paths(entry_id: str, logo_file_name: str) -> list[str
 
     if eid:
         for ext in S.ALLOWED_EXTENSIONS:
-            legacy_name = f"{eid}.{ext}"
+            eid_filename = f"{eid}.{ext}"
             candidates.extend([
-                os.path.join(SCHOOL_LOGOS_DIR, legacy_name),
-                os.path.join(UNIVERSITY_LOGOS_DIR, legacy_name),
-                os.path.join(COMPANY_LOGOS_DIR, legacy_name),
+                os.path.join(SCHOOL_LOGOS_DIR, eid_filename),
+                os.path.join(UNIVERSITY_LOGOS_DIR, eid_filename),
+                os.path.join(COMPANY_LOGOS_DIR, eid_filename),
             ])
 
     deduped = []
@@ -1399,13 +1383,6 @@ def _save_config(config):
         S.db.save_json_file(_config_fragment_path(key), payload.get(key, default_value))
 
     _save_person_titles_to_sheet(payload.get("person_titles", []))
-
-    legacy_path = _legacy_config_path()
-    if os.path.exists(legacy_path):
-        try:
-            os.remove(legacy_path)
-        except OSError:
-            pass
 
     return payload
 
@@ -1672,34 +1649,6 @@ def register_config_routes(app):
         with S.lock:
             saved = _save_config(_default_config())
         return jsonify({"ok": True, "config": saved})
-
-    @app.get("/api/config/youth-groups")
-    def list_config_youth_groups_placeholder():
-        return jsonify({"groups": []})
-
-    @app.post("/api/config/youth-groups")
-    def create_config_youth_groups_placeholder():
-        return jsonify({"ok": False, "message": "Not implemented in this workspace snapshot"}), 501
-
-    @app.put("/api/config/youth-groups/<gid>")
-    def update_config_youth_groups_placeholder(gid):
-        return jsonify({"ok": False, "message": "Not implemented in this workspace snapshot"}), 501
-
-    @app.delete("/api/config/youth-groups/<gid>")
-    def delete_config_youth_groups_placeholder(gid):
-        return jsonify({"ok": False, "message": "Not implemented in this workspace snapshot"}), 501
-
-    @app.delete("/api/config/maintenance/notifications")
-    def clear_notifications_placeholder():
-        return jsonify({"ok": False, "message": "Not implemented in this workspace snapshot"}), 501
-
-    @app.delete("/api/config/maintenance/promotions")
-    def clear_promotions_placeholder():
-        return jsonify({"ok": False, "message": "Not implemented in this workspace snapshot"}), 501
-
-    @app.post("/api/config/maintenance/reload")
-    def reload_data_placeholder():
-        return jsonify({"ok": True})
 
     # ── School / University Logo routes ──────────────────────────────────────
 

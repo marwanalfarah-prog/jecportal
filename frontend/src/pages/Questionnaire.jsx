@@ -722,7 +722,7 @@ function QuestionnaireForm({ initial, youthGroups, persons, onSave, onCancel, to
           ? (r.selectedCommittees?.length ? r.selectedCommittees : null)
           : null,
         role_is_acting:     form.target_type === 'role' ? (r.isActing || false) : false,
-        // youth groups — store as array in new field, keep legacy single-value too
+        // youth groups — store as array; keep single-value field for backward compat
         target_youth_groups: form.target_type === 'role' ? (form.target_youth_groups || []) : [],
         target_youth_group:  form.target_type === 'role' && form.target_youth_groups?.length === 1
           ? form.target_youth_groups[0] : null,

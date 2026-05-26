@@ -15,25 +15,18 @@ from core.routes_org_tree import _extract_node_identity, _load_index, _load_tree
 auth_lock = threading.Lock()
 _auth_cache_lock = threading.Lock()
 _auth_cache_data: dict | None = None
-_auth_cache_token: tuple[float | None, float | None] | None = None
+_auth_cache_token: float | None = None
 
 
-def _auth_cache_file_token() -> tuple[float | None, float | None]:
+def _auth_cache_file_token() -> float | None:
     from core.database import workbook_sheet_name
-    auth_csv_mtime = None
-    legacy_mtime = None
     try:
         auth_csv = os.path.join(S.db.csv_dir, f"{workbook_sheet_name(S.db.auth_sheet)}.csv")
         if os.path.exists(auth_csv):
-            auth_csv_mtime = os.path.getmtime(auth_csv)
+            return os.path.getmtime(auth_csv)
     except OSError:
-        auth_csv_mtime = None
-    try:
-        if os.path.exists(S.db.legacy_auth_path):
-            legacy_mtime = os.path.getmtime(S.db.legacy_auth_path)
-    except OSError:
-        legacy_mtime = None
-    return (auth_csv_mtime, legacy_mtime)
+        pass
+    return None
 
 
 def _invalidate_auth_cache():
