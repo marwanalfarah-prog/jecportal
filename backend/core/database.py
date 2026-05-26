@@ -517,28 +517,93 @@ class Database:
 
         return {"users": users}
 
-    def save_auth(self, data: dict):
-        users = []
+    @staticmethod
+    def _person_id_str(v) -> str:
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return ""
+        if isinstance(v, (int, float)) and not isinstance(v, bool):
+            return str(int(v))
+        s = str(v).strip()
+        return "" if s in ("nan", "None", "NaT", "") else s
+
+    def save_auth(self, data: dict, changed_by: str = "admin"):
+        _COL_FROM    = "scd_active_from"
+        _COL_TO      = "scd_active_to"
+        _COL_FLAG    = "scd_currently_active_flag"
+        _COL_BY      = "scd_changed_by_user"
+        _SCD_COLS    = [_COL_FROM, _COL_TO, _COL_FLAG, _COL_BY]
+        _BIZ_COLS    = self.auth_columns  # [person_id, username, password_hash, role]
+        _ALL_COLS    = _BIZ_COLS + _SCD_COLS
+
+        now = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Build the incoming active users keyed by username
+        new_users: dict[str, dict] = {}
         for row in data.get("users", []):
             username = (str(row.get("username") or "")).strip().lower()
             password_hash = str(row.get("password_hash") or "").strip()
-            role = str(row.get("role") or "member").strip() or "member"
-            person_id = self._normalize_auth_person_id(row.get("person_id"))
             if not username or not password_hash:
                 continue
-            users.append({
-                "person_id": person_id,
-                "username": username,
+            new_users[username] = {
+                "person_id":     self._person_id_str(self._normalize_auth_person_id(row.get("person_id"))),
+                "username":      username,
                 "password_hash": password_hash,
-                "role": role,
-            })
+                "role":          (str(row.get("role") or "member").strip() or "member"),
+            }
 
-        df = pd.DataFrame(users, columns=self.auth_columns)
-        df["person_id"] = df["person_id"].apply(
-            lambda v: "" if v is None or (isinstance(v, float) and pd.isna(v))
-            else str(int(v)) if isinstance(v, (int, float)) and not isinstance(v, bool)
-            else str(v)
-        )
+        # Read the full CSV (active + inactive rows)
+        auth_csv = os.path.join(self.csv_dir, f"{workbook_sheet_name(self.auth_sheet)}.csv")
+        old_df = pd.DataFrame(columns=_ALL_COLS)
+        if os.path.exists(auth_csv):
+            try:
+                old_df = pd.read_csv(auth_csv, dtype=str, encoding="utf-8-sig", keep_default_na=False)
+            except OSError:
+                pass
+        for col in _SCD_COLS:
+            if col not in old_df.columns:
+                old_df[col] = "True" if col == _COL_FLAG else ""
+
+        def _is_inactive(row: dict) -> bool:
+            return str(row.get(_COL_FLAG, "True")).strip().lower() in ("false", "0", "no")
+
+        def _val(v) -> str:
+            s = str(v or "").strip()
+            return "" if s in ("nan", "None", "NaT") else s
+
+        old_records = old_df.to_dict(orient="records")
+        inactive_rows = [r for r in old_records if _is_inactive(r)]
+        old_active: dict[str, dict] = {}
+        for r in old_records:
+            if not _is_inactive(r):
+                uname = str(r.get("username") or "").strip().lower()
+                if uname:
+                    old_active[uname] = r
+
+        final_rows: list[dict] = list(inactive_rows)
+
+        for username, new_row in new_users.items():
+            old_row = old_active.get(username)
+            if old_row is None:
+                # New user — insert with fresh SCD metadata
+                final_rows.append({**new_row, _COL_FROM: now, _COL_TO: "", _COL_FLAG: True, _COL_BY: changed_by})
+            else:
+                changed = any(_val(old_row.get(c)) != _val(new_row.get(c)) for c in _BIZ_COLS)
+                if not changed:
+                    # Unchanged — preserve existing SCD metadata exactly
+                    final_rows.append(old_row)
+                else:
+                    # Close old row, insert new
+                    closed = {**old_row, _COL_TO: now, _COL_FLAG: False}
+                    final_rows.append(closed)
+                    final_rows.append({**new_row, _COL_FROM: now, _COL_TO: "", _COL_FLAG: True, _COL_BY: changed_by})
+
+        # Close active users removed from the incoming list (soft delete)
+        for username, old_row in old_active.items():
+            if username not in new_users:
+                final_rows.append({**old_row, _COL_TO: now, _COL_FLAG: False})
+
+        df = pd.DataFrame(final_rows, columns=_ALL_COLS)
+        df["person_id"] = df["person_id"].apply(self._person_id_str)
         self._write_sheets_atomically({workbook_sheet_name(self.auth_sheet): df})
 
     def load_promotions(self) -> dict:

@@ -1,5 +1,4 @@
 import os
-import uuid
 from datetime import date
 
 import numpy as np
@@ -11,6 +10,26 @@ from core import state as S
 
 ORG_TREES_DIR = S.db.org_trees_dir
 os.makedirs(ORG_TREES_DIR, exist_ok=True)
+ORG_TREE_PERIODS_CSV = os.path.join(S.db.csv_dir, "org_tree_periods.csv")
+ORG_TREE_NODES_CSV = os.path.join(S.db.csv_dir, "org_tree_nodes.csv")
+ORG_TREE_EDGES_CSV = os.path.join(S.db.csv_dir, "org_tree_edges.csv")
+ORG_TREE_NODE_HULLS_CSV = os.path.join(S.db.csv_dir, "org_tree_node_hulls.csv")
+
+ORG_TREE_PERIOD_COLUMNS = ["group_id", "period_id", "jec_year", "from_date", "to_date"]
+
+
+def _next_period_id() -> str:
+    max_n = 0
+    for row in _read_csv_records(ORG_TREE_PERIODS_CSV, ORG_TREE_PERIOD_COLUMNS):
+        pid = str(row.get("period_id") or "").strip()
+        if pid.startswith("OTPD") and pid[4:].isdigit():
+            max_n = max(max_n, int(pid[4:]))
+    return f"OTPD{(max_n + 1):06d}"
+
+
+ORG_TREE_NODE_COLUMNS = ["period_id", "node_id", "person_id", "role"]
+ORG_TREE_EDGE_COLUMNS = ["period_id", "from_node_id", "to_node_id", "edge_type"]
+ORG_TREE_NODE_HULL_COLUMNS = ["period_id", "node_id", "hull"]
 
 _PERSON_LOOKUP_CACHE_VERSION = None
 _REGISTERED_PERSON_ROWS: dict = {}
@@ -65,6 +84,240 @@ def _resolve_group_id(group_ref: str) -> str:
     return S.youth_group_id(canonical, create=True) or canonical
 
 
+def _uses_json_storage(group_ref: str | None) -> bool:
+    return (_canonical_group_ref(group_ref) or group_ref) == GS_GROUP_ID
+
+
+def _none_if_blank(value):
+    text = "" if value is None else str(value).strip()
+    if text in ("", "nan", "None", "null"):
+        return None
+    return text
+
+
+def _csv_value(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def _csv_bool(value):
+    if isinstance(value, bool):
+        return value
+    text = _none_if_blank(value)
+    if text is None:
+        return None
+    return text.lower() in ("1", "true", "yes", "y")
+
+
+def _csv_number(value):
+    text = _none_if_blank(value)
+    if text is None:
+        return None
+    try:
+        number = float(text)
+        return int(number) if number.is_integer() else number
+    except Exception:
+        return text
+
+
+def _read_csv_records(path: str, columns: list[str]) -> list[dict]:
+    if not os.path.exists(path):
+        return []
+    try:
+        df = pd.read_csv(path, dtype=str, encoding="utf-8-sig", keep_default_na=False)
+    except Exception:
+        return []
+    for col in columns:
+        if col not in df.columns:
+            df[col] = ""
+    return df[columns].to_dict(orient="records")
+
+
+def _write_csv_records(path: str, columns: list[str], rows: list[dict]):
+    os.makedirs(S.db.csv_dir, exist_ok=True)
+    df = pd.DataFrame(rows, columns=columns)
+    df.to_csv(path, index=False, encoding="utf-8-sig")
+
+
+def _period_from_csv_record(row: dict) -> dict:
+    return {
+        "id": _none_if_blank(row.get("period_id")),
+        "jec_year": _csv_number(row.get("jec_year")),
+        "from_date": _none_if_blank(row.get("from_date")),
+        "to_date": _none_if_blank(row.get("to_date")),
+    }
+
+
+def _period_to_csv_record(group_id: str, period: dict) -> dict:
+    p = _period_for_storage(period)
+    return {
+        "group_id": group_id,
+        "period_id": _csv_value(p.get("id")),
+        "jec_year": _csv_value(p.get("jec_year")),
+        "from_date": _csv_value(p.get("from_date")),
+        "to_date": _csv_value(p.get("to_date")),
+    }
+
+
+def _node_from_csv_record(row: dict) -> dict:
+    node = {}
+    node_id = _none_if_blank(row.get("node_id"))
+    if node_id is not None:
+        node["id"] = node_id
+    person_id = _csv_number(row.get("person_id"))
+    if person_id is not None:
+        node["personId"] = person_id
+    role = _none_if_blank(row.get("role"))
+    if role is not None:
+        node["role"] = role
+    return node
+
+
+def _node_to_csv_record(period_id: str, node: dict) -> dict:
+    return {
+        "period_id": period_id,
+        "node_id": _csv_value(node.get("id")),
+        "person_id": _csv_value(node.get("personId")),
+        "role": _csv_value(node.get("role")),
+    }
+
+
+def _edge_from_csv_record(row: dict) -> dict:
+    edge = {}
+    from_node_id = _none_if_blank(row.get("from_node_id"))
+    if from_node_id is not None:
+        edge["from"] = from_node_id
+    to_node_id = _none_if_blank(row.get("to_node_id"))
+    if to_node_id is not None:
+        edge["to"] = to_node_id
+    edge_type = _none_if_blank(row.get("edge_type"))
+    if edge_type is not None:
+        edge["type"] = edge_type
+    edge["id"] = f"{from_node_id or ''}|{to_node_id or ''}|{edge_type or ''}"
+    return edge
+
+
+def _edge_to_csv_record(period_id: str, edge: dict) -> dict:
+    return {
+        "period_id": period_id,
+        "from_node_id": _csv_value(edge.get("from")),
+        "to_node_id": _csv_value(edge.get("to")),
+        "edge_type": _csv_value(edge.get("type")),
+    }
+
+
+def _load_csv_node_hulls(period_id: str) -> dict[str, list[str]]:
+    result: dict[str, list[str]] = {}
+    for row in _read_csv_records(ORG_TREE_NODE_HULLS_CSV, ORG_TREE_NODE_HULL_COLUMNS):
+        if row.get("period_id") != period_id:
+            continue
+        nid = _none_if_blank(row.get("node_id"))
+        hull = _none_if_blank(row.get("hull"))
+        if nid and hull:
+            result.setdefault(nid, []).append(hull)
+    return result
+
+
+def _save_csv_node_hulls(period_id: str, nodes: list):
+    rows = _read_csv_records(ORG_TREE_NODE_HULLS_CSV, ORG_TREE_NODE_HULL_COLUMNS)
+    kept = [row for row in rows if row.get("period_id") != period_id]
+    for node in (nodes or []):
+        nid = _csv_value(node.get("id"))
+        for hull in (node.get("hulls") or []):
+            hull_str = _none_if_blank(str(hull) if hull is not None else None)
+            if nid and hull_str:
+                kept.append({"period_id": period_id, "node_id": nid, "hull": hull_str})
+    _write_csv_records(ORG_TREE_NODE_HULLS_CSV, ORG_TREE_NODE_HULL_COLUMNS, kept)
+
+
+def _delete_csv_node_hulls(period_id: str):
+    rows = _read_csv_records(ORG_TREE_NODE_HULLS_CSV, ORG_TREE_NODE_HULL_COLUMNS)
+    _write_csv_records(
+        ORG_TREE_NODE_HULLS_CSV,
+        ORG_TREE_NODE_HULL_COLUMNS,
+        [row for row in rows if row.get("period_id") != period_id],
+    )
+
+
+def _load_csv_index(group_id: str) -> list[dict]:
+    rows = [
+        row for row in _read_csv_records(ORG_TREE_PERIODS_CSV, ORG_TREE_PERIOD_COLUMNS)
+        if row.get("group_id") == group_id and _none_if_blank(row.get("period_id")) is not None
+    ]
+    return [_period_from_csv_record(row) for row in rows]
+
+
+def _save_csv_index(group_id: str, periods: list):
+    rows = _read_csv_records(ORG_TREE_PERIODS_CSV, ORG_TREE_PERIOD_COLUMNS)
+    kept = [row for row in rows if row.get("group_id") != group_id]
+    kept.extend(_period_to_csv_record(group_id, period) for period in (periods or []))
+    _write_csv_records(ORG_TREE_PERIODS_CSV, ORG_TREE_PERIOD_COLUMNS, kept)
+
+
+def _load_csv_tree_data(group_id: str, period_id: str) -> dict:
+    nodes = [
+        _node_from_csv_record(row)
+        for row in _read_csv_records(ORG_TREE_NODES_CSV, ORG_TREE_NODE_COLUMNS)
+        if row.get("period_id") == period_id
+    ]
+    edges = [
+        _edge_from_csv_record(row)
+        for row in _read_csv_records(ORG_TREE_EDGES_CSV, ORG_TREE_EDGE_COLUMNS)
+        if row.get("period_id") == period_id
+    ]
+    hulls_map = _load_csv_node_hulls(period_id)
+    for node in nodes:
+        nid = node.get("id")
+        if nid in hulls_map:
+            node["hulls"] = hulls_map[nid]
+    return {"nodes": nodes, "edges": edges}
+
+
+def _save_csv_tree_data(group_id: str, period_id: str, data: dict):
+    node_rows = _read_csv_records(ORG_TREE_NODES_CSV, ORG_TREE_NODE_COLUMNS)
+    kept_nodes = [row for row in node_rows if row.get("period_id") != period_id]
+    kept_nodes.extend(_node_to_csv_record(period_id, node) for node in (data.get("nodes") or []))
+    _write_csv_records(ORG_TREE_NODES_CSV, ORG_TREE_NODE_COLUMNS, kept_nodes)
+
+    edge_rows = _read_csv_records(ORG_TREE_EDGES_CSV, ORG_TREE_EDGE_COLUMNS)
+    kept_edges = [row for row in edge_rows if row.get("period_id") != period_id]
+    kept_edges.extend(_edge_to_csv_record(period_id, edge) for edge in (data.get("edges") or []))
+    _write_csv_records(ORG_TREE_EDGES_CSV, ORG_TREE_EDGE_COLUMNS, kept_edges)
+
+    _save_csv_node_hulls(period_id, data.get("nodes") or [])
+
+
+def _delete_csv_tree_data(group_id: str, period_id: str):
+    node_rows = _read_csv_records(ORG_TREE_NODES_CSV, ORG_TREE_NODE_COLUMNS)
+    _write_csv_records(
+        ORG_TREE_NODES_CSV,
+        ORG_TREE_NODE_COLUMNS,
+        [row for row in node_rows if row.get("period_id") != period_id],
+    )
+
+    edge_rows = _read_csv_records(ORG_TREE_EDGES_CSV, ORG_TREE_EDGE_COLUMNS)
+    _write_csv_records(
+        ORG_TREE_EDGES_CSV,
+        ORG_TREE_EDGE_COLUMNS,
+        [row for row in edge_rows if row.get("period_id") != period_id],
+    )
+
+    _delete_csv_node_hulls(period_id)
+
+
+def _csv_storage_mtime() -> float:
+    mtimes = []
+    for path in (ORG_TREE_PERIODS_CSV, ORG_TREE_NODES_CSV, ORG_TREE_EDGES_CSV, ORG_TREE_NODE_HULLS_CSV):
+        try:
+            mtimes.append(os.path.getmtime(path))
+        except OSError:
+            pass
+    return max(mtimes) if mtimes else 0
+
+
 def _period_label(period: dict) -> str:
     if not isinstance(period, dict):
         return "الفترة الأولى"
@@ -107,6 +360,15 @@ def _find_period(periods: list, period_id: str):
 
 def _load_index(group_name: str) -> list:
     group_id = _resolve_group_id(group_name)
+    if not _uses_json_storage(group_id):
+        periods = _load_csv_index(group_id)
+        if periods:
+            return [_period_for_storage(p) for p in periods if isinstance(p, dict) and p.get("id")]
+        legacy_path = S.db.legacy_group_path(group_id)
+        if os.path.exists(legacy_path):
+            return _migrate_legacy(group_id, legacy_path)
+        return []
+
     path = _index_path(group_id)
     if not os.path.exists(path):
         legacy_path = S.db.legacy_group_path(group_id)
@@ -119,6 +381,10 @@ def _load_index(group_name: str) -> list:
 
 def _save_index(group_name: str, periods: list):
     group_id = _resolve_group_id(group_name)
+    if not _uses_json_storage(group_id):
+        _save_csv_index(group_id, periods)
+        return
+
     d = _group_dir(group_id)
     os.makedirs(d, exist_ok=True)
     S.db.save_json_file(_index_path(group_id), periods)
@@ -129,7 +395,7 @@ def _migrate_legacy(group_name: str, legacy_path: str) -> list:
         data = S.db.load_json_file(legacy_path, {})
     except Exception:
         return []
-    period_id = str(uuid.uuid4())[:8]
+    period_id = _next_period_id()
     period = {
         "id": period_id,
         "jec_year": None,
@@ -137,16 +403,15 @@ def _migrate_legacy(group_name: str, legacy_path: str) -> list:
         "to_date": None,
     }
     group_id = _resolve_group_id(group_name)
-    os.makedirs(_group_dir(group_id), exist_ok=True)
     normalized = _normalize_tree_payload(data.get("nodes", []), data.get("edges", []))
     tree_data = {
         **data,
         "nodes": normalized["nodes"],
         "edges": normalized["edges"],
     }
-    S.db.save_json_file(_period_path(group_id, period_id), tree_data)
     periods = [period]
     _save_index(group_id, periods)
+    _save_tree_data(group_id, period_id, tree_data)
     try:
         os.remove(legacy_path)
     except Exception:
@@ -320,18 +585,24 @@ def _enrich_node_from_person(node: dict) -> dict:
     return _enrich_node_with_identity(node, pid, unregistered)
 
 
-def _period_cache_entry(path: str) -> dict:
+def _period_cache_entry(group_name: str, period_id: str) -> dict:
     data_version = _current_data_version()
-    try:
-        mtime = os.path.getmtime(path)
-    except OSError:
-        return {"nodes": [], "edges": [], "person_ids": set(), "unregistered_ids": set()}
+    group_id = _resolve_group_id(group_name)
+    if _uses_json_storage(group_id):
+        cache_key = _period_path(group_id, period_id)
+        try:
+            mtime = os.path.getmtime(cache_key)
+        except OSError:
+            return {"nodes": [], "edges": [], "person_ids": set(), "unregistered_ids": set()}
+    else:
+        cache_key = f"csv:{group_id}:{period_id}"
+        mtime = _csv_storage_mtime()
 
-    cached = _ORG_TREE_PERIOD_CACHE.get(path)
+    cached = _ORG_TREE_PERIOD_CACHE.get(cache_key)
     if cached and cached.get("mtime") == mtime and cached.get("data_version") == data_version:
         return cached
 
-    data = S.db.load_json_file(path, {"nodes": [], "edges": []})
+    data = _load_tree_data(group_id, period_id)
     enriched_nodes = []
     person_ids = set()
     unregistered_ids = set()
@@ -353,7 +624,7 @@ def _period_cache_entry(path: str) -> dict:
         "person_ids": person_ids,
         "unregistered_ids": unregistered_ids,
     }
-    _ORG_TREE_PERIOD_CACHE[path] = cached
+    _ORG_TREE_PERIOD_CACHE[cache_key] = cached
     return cached
 
 
@@ -424,11 +695,11 @@ def _load_history_trees(group_refs: list[str], person_id=None, unregistered_id=N
         group_name = _group_display_name(group_id)
 
         for period in periods:
-            path = _period_path(group_id, period.get("id"))
-            if not os.path.exists(path):
+            period_id = period.get("id")
+            if not _tree_period_exists(group_id, period_id):
                 continue
 
-            period_cache = _period_cache_entry(path)
+            period_cache = _period_cache_entry(group_id, period_id)
             if target_unregistered_id is not None:
                 if str(target_unregistered_id) not in period_cache["unregistered_ids"]:
                     continue
@@ -456,25 +727,55 @@ def _normalize_tree_payload(nodes: list, edges: list) -> dict:
     }
 
 
+def _load_tree_data(group_name: str, period_id: str) -> dict:
+    group_id = _resolve_group_id(group_name)
+    if _uses_json_storage(group_id):
+        return S.db.load_json_file(_period_path(group_id, period_id), {"nodes": [], "edges": []})
+    return _load_csv_tree_data(group_id, period_id)
+
+
+def _save_tree_data(group_name: str, period_id: str, data: dict):
+    group_id = _resolve_group_id(group_name)
+    if _uses_json_storage(group_id):
+        os.makedirs(_group_dir(group_id), exist_ok=True)
+        S.db.save_json_file(_period_path(group_id, period_id), data)
+        return
+    _save_csv_tree_data(group_id, period_id, data)
+
+
+def _tree_period_exists(group_name: str, period_id: str) -> bool:
+    group_id = _resolve_group_id(group_name)
+    if _uses_json_storage(group_id):
+        return os.path.exists(_period_path(group_id, period_id))
+    return _find_period(_load_index(group_id), period_id) is not None
+
+
+def _delete_tree_data(group_name: str, period_id: str):
+    group_id = _resolve_group_id(group_name)
+    if _uses_json_storage(group_id):
+        ppath = _period_path(group_id, period_id)
+        try:
+            if os.path.exists(ppath):
+                os.remove(ppath)
+        except Exception:
+            pass
+        return
+    _delete_csv_tree_data(group_id, period_id)
+
+
 def _migrate_all_org_tree_files():
     try:
         if not os.path.exists(ORG_TREES_DIR):
             return
-        known_group_ids = {opt["value"] for opt in S.youth_group_options()}
-        safe_to_group_id = {
-            S.safe_youth_group_key(opt["label"]): opt["value"]
-            for opt in S.youth_group_options()
-        }
 
         for group_dir in os.scandir(ORG_TREES_DIR):
             if not group_dir.is_dir():
                 continue
             current_name = group_dir.name
             canonical = _canonical_group_ref(current_name)
-            if canonical == GS_GROUP_ID:
-                target_group_id = GS_GROUP_ID
-            else:
-                target_group_id = current_name if current_name in known_group_ids else safe_to_group_id.get(current_name)
+            if canonical != GS_GROUP_ID:
+                continue
+            target_group_id = GS_GROUP_ID
             active_dir_path = group_dir.path
             if target_group_id and target_group_id != current_name:
                 target_path = os.path.join(ORG_TREES_DIR, target_group_id)
@@ -543,10 +844,9 @@ def register_org_tree_routes(app):
     def get_org_tree_period(group_name, period_id):
         periods = _load_index(group_name)
         period = _find_period(periods, period_id)
-        path = _period_path(group_name, period_id)
-        if not os.path.exists(path):
+        if not _tree_period_exists(group_name, period_id):
             return jsonify({"nodes": [], "edges": [], "period": _period_for_response(period) if period else None}), 404
-        cached = _period_cache_entry(path)
+        cached = _period_cache_entry(group_name, period_id)
         return jsonify({"nodes": cached["nodes"], "edges": cached["edges"], "period": _period_for_response(period) if period else None})
 
     @app.get("/api/org-tree/<path:group_name>")
@@ -555,10 +855,9 @@ def register_org_tree_routes(app):
         if period_id:
             periods = _load_index(group_name)
             period = _find_period(periods, period_id)
-            path = _period_path(group_name, period_id)
-            if not os.path.exists(path):
+            if not _tree_period_exists(group_name, period_id):
                 return jsonify({"nodes": [], "edges": [], "period": _period_for_response(period) if period else None, "periods": _periods_for_response(periods)})
-            cached = _period_cache_entry(path)
+            cached = _period_cache_entry(group_name, period_id)
             payload = {"nodes": cached["nodes"], "edges": cached["edges"], "period": _period_for_response(period) if period else None}
             payload["periods"] = _periods_for_response(periods)
             return jsonify(payload)
@@ -571,10 +870,9 @@ def register_org_tree_routes(app):
         if not active:
             active = sorted(periods, key=lambda p: p.get("from_date") or "", reverse=True)[0]
 
-        path = _period_path(group_name, active["id"])
-        if not os.path.exists(path):
+        if not _tree_period_exists(group_name, active["id"]):
             return jsonify({"nodes": [], "edges": [], "period": _period_for_response(active), "periods": _periods_for_response(periods)})
-        cached = _period_cache_entry(path)
+        cached = _period_cache_entry(group_name, active["id"])
         data = {"nodes": cached["nodes"], "edges": cached["edges"], "period": _period_for_response(active)}
         data["periods"] = _periods_for_response(periods)
         return jsonify(data)
@@ -588,8 +886,6 @@ def register_org_tree_routes(app):
         new_period_data = body.get("new_period")
         period = body.get("period")
         period_id = body.get("period_id") or (period.get("id") if isinstance(period, dict) else None)
-
-        os.makedirs(_group_dir(group_name), exist_ok=True)
 
         if new_period_data:
             candidate = {
@@ -607,7 +903,7 @@ def register_org_tree_routes(app):
                     if p.get("to_date") is None:
                         p["to_date"] = new_period_data.get("from_date") or str(date.today())
 
-            new_id = str(uuid.uuid4())[:8]
+            new_id = _next_period_id()
             new_period = {
                 "id": new_id,
                 "jec_year": new_period_data.get("jec_year"),
@@ -622,7 +918,7 @@ def register_org_tree_routes(app):
                 "nodes": normalized["nodes"],
                 "edges": normalized["edges"],
             }
-            S.db.save_json_file(_period_path(group_name, new_id), tree_data)
+            _save_tree_data(group_name, new_id, tree_data)
 
             return jsonify({"ok": True, "period": _period_for_response(new_period), "periods": _periods_for_response(periods)})
 
@@ -642,11 +938,11 @@ def register_org_tree_routes(app):
                 "nodes": normalized["nodes"],
                 "edges": normalized["edges"],
             }
-            S.db.save_json_file(_period_path(group_name, pid_str), tree_data)
+            _save_tree_data(group_name, pid_str, tree_data)
             period_payload = _find_period(periods, pid_str)
             return jsonify({"ok": True, "period": _period_for_response(period_payload), "periods": _periods_for_response(periods)})
 
-        new_id = str(uuid.uuid4())[:8]
+        new_id = _next_period_id()
         new_period = {
             "id": new_id,
             "jec_year": None,
@@ -660,7 +956,7 @@ def register_org_tree_routes(app):
             "nodes": normalized["nodes"],
             "edges": normalized["edges"],
         }
-        S.db.save_json_file(_period_path(group_name, new_id), tree_data)
+        _save_tree_data(group_name, new_id, tree_data)
         return jsonify({"ok": True, "period": _period_for_response(new_period), "periods": _periods_for_response(periods)})
 
     @app.route("/api/org-tree/<path:group_name>/period/<period_id>", methods=["PATCH"])
@@ -703,13 +999,7 @@ def register_org_tree_routes(app):
 
         periods = [p for p in periods if p["id"] != period_id]
         _save_index(group_name, periods)
-
-        ppath = _period_path(group_name, period_id)
-        try:
-            if os.path.exists(ppath):
-                os.remove(ppath)
-        except Exception:
-            pass
+        _delete_tree_data(group_name, period_id)
 
         return jsonify({"ok": True, "periods": _periods_for_response(periods)})
 

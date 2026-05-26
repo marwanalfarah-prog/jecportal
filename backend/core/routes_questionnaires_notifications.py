@@ -1,4 +1,3 @@
-import os
 import re
 import threading
 import uuid
@@ -7,7 +6,7 @@ from flask import jsonify, request
 
 from core import state as S
 from core.routes_auth import _current_user, _get_person_name, _load_auth, _require_admin
-from core.routes_org_tree import ORG_TREES_DIR
+from core.routes_org_tree import GS_GROUP_ID, _load_index, _load_tree_data
 from core.routes_promotions import _now_str
 
 
@@ -139,23 +138,15 @@ def _safe_yg(name: str) -> str:
 
 def _get_person_org_roles(person_type: str, person_id) -> list[tuple[str, str]]:
     results = []
-    if not os.path.exists(ORG_TREES_DIR):
-        return results
     pid_str = str(person_id)
-    for group_dir in os.scandir(ORG_TREES_DIR):
-        if not group_dir.is_dir():
-            continue
-        index_path = os.path.join(group_dir.path, 'index.json')
-        if not os.path.exists(index_path):
-            continue
-        periods = S.db.load_json_file(index_path, [])
+    group_ids = [opt["value"] for opt in S.youth_group_options()]
+    group_ids.append(GS_GROUP_ID)
+    for group_id in group_ids:
+        periods = _load_index(group_id)
         active = next((p for p in periods if not p.get('to_date')), None)
         if not active:
             continue
-        period_path = os.path.join(group_dir.path, f"{active['id']}.json")
-        if not os.path.exists(period_path):
-            continue
-        tree_data = S.db.load_json_file(period_path, {"nodes": [], "edges": []})
+        tree_data = _load_tree_data(group_id, active['id'])
         nodes = tree_data.get('nodes', [])
         for node in nodes:
             np_type = node.get('personType', '')
@@ -165,7 +156,7 @@ def _get_person_org_roles(person_type: str, person_id) -> list[tuple[str, str]]:
                     pass
                 role = node.get('role', '')
                 if role:
-                    results.append((group_dir.name, role))
+                    results.append((group_id, role))
     return results
 
 

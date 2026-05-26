@@ -100,8 +100,11 @@ function nameMatchesQuery(parts, qWordGroups) {
 }
 
 // ── ID gen ────────────────────────────────────────────────────────────────────
-let _id = 1
-const uid = () => `n${Date.now()}_${_id++}`
+// Start from a page-load timestamp offset (always ≥ 10_000_000) so new IDs
+// never collide with the sequential OTND00000001…OTND00000495 range in the DB.
+const _nodeIdBase = 10_000_000 + (Date.now() % 60_000_000)
+let _nodeIdSeq = 0
+const uid = () => `OTND${String(_nodeIdBase + _nodeIdSeq++).padStart(8, '0')}`
 
 // ── Node dimensions ───────────────────────────────────────────────────────────
 const NODE_MIN_W  = 160
@@ -2164,6 +2167,28 @@ function groupKeyLabel(key) {
   return key
 }
 
+const COUNCIL_HULL_NAME = 'مجلس الشبيبة'
+
+// Convert inCouncil/inGroup flags → hulls[] for API save
+function nodeToApi(node) {
+  const { inCouncil, inGroup, ...rest } = node
+  const hulls = []
+  if (effectiveInCouncil(node)) hulls.push(COUNCIL_HULL_NAME)
+  if (effectiveInGroup(node)) nodeGroupKeys(node).forEach(k => hulls.push(groupKeyLabel(k)))
+  return { ...rest, hulls }
+}
+
+// Convert hulls[] from API load → inCouncil/inGroup flags
+function nodeFromApi(node) {
+  const hulls = Array.isArray(node.hulls) ? node.hulls : []
+  const { hulls: _h, ...rest } = node
+  return {
+    ...rest,
+    inCouncil: hulls.includes(COUNCIL_HULL_NAME),
+    inGroup: hulls.some(h => h !== COUNCIL_HULL_NAME),
+  }
+}
+
 // Build a rounded convex hull SVG path from a set of [x,y] points
 function buildHullPath(pts) {
   if (pts.length < 3) return null
@@ -2270,13 +2295,15 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
     // No period_id → backend returns the active (open) period, or latest if all closed
     api.getOrgTree(selectedGroup)
       .then(data => {
-        const _ln = data.nodes || []; setNodes(_ln)
-        setEdges(sanitizeEdges(_ln, data.edges || []))
+        const _ln = (data.nodes || []).map(nodeFromApi)
+        const _le = sanitizeEdges(_ln, data.edges || [])
+        setNodes(_ln)
+        setEdges(_le)
         setCurrentPeriod(data.period || null)
         setPeriods(data.periods || [])
-        
         setDirty(false)
         setStructuralDirty(false)
+        applyTidy(_ln, _le)
       })
       .catch(() => {
         setNodes([])
@@ -2296,11 +2323,13 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
       const periodId = currentPeriod?.id
       api.getOrgTree(selectedGroup, periodId)
         .then(data => {
-          const refreshedNodes = data.nodes || []
+          const refreshedNodes = (data.nodes || []).map(nodeFromApi)
+          const refreshedEdges = sanitizeEdges(refreshedNodes, data.edges || [])
           setNodes(refreshedNodes)
-          setEdges(sanitizeEdges(refreshedNodes, data.edges || []))
+          setEdges(refreshedEdges)
           setCurrentPeriod(data.period || currentPeriod)
           setPeriods(data.periods || periods)
+          applyTidy(refreshedNodes, refreshedEdges)
         })
         .catch(() => {})
     }
@@ -2315,12 +2344,14 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
     setSuppressed(new Set())
     api.getOrgTree(selectedGroup, period.id)
       .then(data => {
-        const _ln2 = data.nodes || []; setNodes(_ln2)
-        setEdges(sanitizeEdges(_ln2, data.edges || []))
+        const _ln2 = (data.nodes || []).map(nodeFromApi)
+        const _le2 = sanitizeEdges(_ln2, data.edges || [])
+        setNodes(_ln2)
+        setEdges(_le2)
         setCurrentPeriod(period)
-        
         setDirty(false)
         setStructuralDirty(false)
+        applyTidy(_ln2, _le2)
       })
       .catch(() => {
         setNodes([])
@@ -2350,21 +2381,22 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
       const linkedNodes = await syncUnregisteredNodes(nodes, selectedGroup)
       const hasActivePeriod = currentPeriod && !currentPeriod.to_date
       const res = await api.putOrgTree(selectedGroup, {
-        nodes: linkedNodes,
+        nodes: linkedNodes.map(nodeToApi),
         edges,
         period_id: hasActivePeriod ? currentPeriod?.id : undefined,
         new_period: periodMeta,
         close_current: hasActivePeriod,
       })
       const data = await api.getOrgTree(selectedGroup)
-      setNodes(data.nodes || [])
-      setEdges(sanitizeEdges(data.nodes || [], data.edges || []))
+      const _savedNodes = (data.nodes || []).map(nodeFromApi)
+      setNodes(_savedNodes)
+      setEdges(sanitizeEdges(_savedNodes, data.edges || []))
       setCurrentPeriod(data.period || res.period || currentPeriod)
       setPeriods(data.periods || res.periods || periods)
       setDirty(false)
       setStructuralDirty(false)
       toast('تم الحفظ ✓', 'success')
-      applyTidy(data.nodes || linkedNodes, data.edges || edges)
+      applyTidy(_savedNodes, sanitizeEdges(_savedNodes, data.edges || []))
     } catch (err) {
       if (err.message?.includes('409')) {
         toast('تتداخل الفترة مع فترة موجودة', 'error')
@@ -2447,7 +2479,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
     setSaving(true)
     try {
       const linkedNodes = await syncUnregisteredNodes(nodes, selectedGroup)
-      const res = await api.putOrgTree(selectedGroup, { nodes: linkedNodes, edges, period_id: period?.id })
+      const res = await api.putOrgTree(selectedGroup, { nodes: linkedNodes.map(nodeToApi), edges, period_id: period?.id })
       setCurrentPeriod(res.period || period)
       setPeriods(res.periods || periods)
       setDirty(false)

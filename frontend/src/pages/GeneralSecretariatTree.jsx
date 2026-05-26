@@ -115,8 +115,9 @@ function nameMatchesQuery(parts, qWordGroups) {
 }
 
 // ── ID gen ────────────────────────────────────────────────────────────────────
-let _id = 1
-const uid = () => `n${Date.now()}_${_id++}`
+const _nodeIdBase = 10_000_000 + (Date.now() % 60_000_000)
+let _nodeIdSeq = 0
+const uid = () => `OTND${String(_nodeIdBase + _nodeIdSeq++).padStart(8, '0')}`
 
 // ── Node dimensions ───────────────────────────────────────────────────────────
 const NODE_MIN_W  = 160

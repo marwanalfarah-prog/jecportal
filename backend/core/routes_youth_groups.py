@@ -985,10 +985,9 @@ def _unregistered_member_rows(group_id: str) -> list[dict]:
 
 
 def _group_periods(group_id: str) -> list[dict]:
-    index_path = S.db.index_path(group_id)
-    if not os.path.exists(index_path):
-        return []
-    periods = S.db.load_json_file(index_path, [])
+    from core.routes_org_tree import _load_index
+
+    periods = _load_index(group_id)
     out = []
     for p in periods or []:
         if not isinstance(p, dict):

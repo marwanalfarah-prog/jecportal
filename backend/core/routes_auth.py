@@ -9,7 +9,7 @@ import pandas as pd
 from flask import jsonify, request, session
 
 from core import state as S
-from core.routes_org_tree import _extract_node_identity, _index_path, _period_path
+from core.routes_org_tree import _extract_node_identity, _load_index, _load_tree_data
 
 
 auth_lock = threading.Lock()
@@ -182,7 +182,12 @@ def _save_auth(data: dict):
             for u in data.get("users", [])
         ]
     }
-    S.db.save_auth(persisted)
+    try:
+        current = _current_user()
+        changed_by = (current or {}).get("username") or "admin"
+    except Exception:
+        changed_by = "admin"
+    S.db.save_auth(persisted, changed_by=changed_by)
     _invalidate_auth_cache()
 
 
@@ -323,10 +328,7 @@ def _get_council_access(person_type: str, pid, youth_groups: list) -> dict:
 
     for group_id in youth_groups:
         try:
-            index_path = _index_path(group_id)
-            if not os.path.exists(index_path):
-                continue
-            periods = S.db.load_json_file(index_path, [])
+            periods = _load_index(group_id)
             if not periods:
                 continue
 
@@ -334,10 +336,7 @@ def _get_council_access(person_type: str, pid, youth_groups: list) -> dict:
             if not active:
                 active = sorted(periods, key=lambda p: p.get('from_date') or '', reverse=True)[0]
 
-            period_file = _period_path(group_id, active['id'])
-            if not os.path.exists(period_file):
-                continue
-            tree = S.db.load_json_file(period_file, {"nodes": [], "edges": []})
+            tree = _load_tree_data(group_id, active['id'])
 
             for node in tree.get('nodes', []):
                 matched = False
