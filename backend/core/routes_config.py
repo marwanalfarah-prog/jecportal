@@ -88,6 +88,15 @@ def _clean_text(value):
     return text
 
 
+def _changed_by_from_current_user() -> str:
+    user = auth_exports["_current_user"]()
+    if not user:
+        return "system"
+    if user.get("role") == "admin":
+        return "admin"
+    return str(user.get("person_id", "system"))
+
+
 def _normalize_verse_id(value) -> str:
     return re.sub(r"\s+", "", _clean_text(value))
 
@@ -1434,7 +1443,7 @@ def register_config_routes(app):
         if not isinstance(body, dict):
             return jsonify({"error": "invalid payload"}), 400
 
-        changed_by = (auth_exports["_current_user"]() or {}).get("username", "admin")
+        changed_by = _changed_by_from_current_user()
 
         with S.lock:
             payload = _load_mottos_payload()
@@ -1470,7 +1479,7 @@ def register_config_routes(app):
         if not isinstance(body, dict):
             return jsonify({"error": "invalid payload"}), 400
 
-        changed_by = (auth_exports["_current_user"]() or {}).get("username", "admin")
+        changed_by = _changed_by_from_current_user()
 
         with S.lock:
             payload = _load_mottos_payload()
@@ -1511,7 +1520,7 @@ def register_config_routes(app):
         if err:
             return err
 
-        changed_by = (auth_exports["_current_user"]() or {}).get("username", "admin")
+        changed_by = _changed_by_from_current_user()
 
         with S.lock:
             payload = _load_mottos_payload()
@@ -1551,7 +1560,7 @@ def register_config_routes(app):
         if ext not in S.ALLOWED_EXTENSIONS:
             return jsonify({"error": "unsupported logo type"}), 400
 
-        changed_by = (auth_exports["_current_user"]() or {}).get("username", "admin")
+        changed_by = _changed_by_from_current_user()
 
         with S.lock:
             payload = _load_mottos_payload()
