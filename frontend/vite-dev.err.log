@@ -946,3 +946,55 @@ AggregateError [ECONNREFUSED]:
 AggregateError [ECONNREFUSED]: 
     at internalConnectMultiple (node:net:1134:18)
     at afterConnectMultiple (node:net:1715:7)
+[2m11:12:03 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/notifications[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m11:12:33 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/notifications[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m11:13:03 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/notifications[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m11:13:20 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/bible-reader/books[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m11:13:33 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/notifications[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m11:14:03 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/notifications[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m11:14:33 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/notifications[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m11:15:03 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/notifications[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m11:15:32 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/notifications[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m11:15:33 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/bible-reader/books[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m11:15:34 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/bible-reader/books[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m11:16:03 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/notifications[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m11:16:33 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/notifications[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)

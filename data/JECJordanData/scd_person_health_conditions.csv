@@ -1,0 +1,4 @@
+﻿person_id,condition_type,details,scd_active_from,scd_active_to,scd_currently_active_flag,scd_changed_by_user
+2485,allergy,الغبار والروائح,2025-06-10 14:36:18,,True,admin
+3002,allergy,الجو,2025-12-09 18:03:22,,True,admin
+2676,illness,مشكلة في النظر وتلبس نظارات,2025-09-27 18:32:17,,True,admin

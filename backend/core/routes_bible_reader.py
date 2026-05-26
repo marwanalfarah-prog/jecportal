@@ -198,7 +198,9 @@ def _load_book_payload(path: str) -> dict | None:
         return None
 
     chapters = raw.get("chapters") if isinstance(raw.get("chapters"), list) else []
+    introduction = _clean_text(raw.get("introduction"))
     return {
+        "introduction": introduction,
         "chapters": _normalize_chapters(chapters),
     }
 
@@ -222,6 +224,7 @@ def register_bible_reader_routes(app):
             chapter_count = len(payload.get("chapters", [])) if payload else 0
             meta["has_content"] = bool(file_path)
             meta["chapter_count"] = chapter_count
+            meta["has_introduction"] = bool(payload.get("introduction")) if payload else False
             books.append(meta)
 
         tree = _enriched_bible_books_tree(tree, files_by_id)
@@ -257,6 +260,7 @@ def register_bible_reader_routes(app):
             "ok": True,
             "book": {
                 **meta,
+                "introduction": payload.get("introduction", ""),
                 "chapters": payload.get("chapters", []),
             },
         })

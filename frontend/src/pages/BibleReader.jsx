@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, BookOpen, Hash } from 'lucide-react'
+import { Search, BookOpen, BookOpenText, Hash } from 'lucide-react'
 import { api } from '../api.js'
 import { EmptyState, ErrorState, LoadingState } from '../pageStates.jsx'
 import './BibleReader.css'
@@ -45,6 +45,13 @@ function getSectionHeadings(section) {
   }
 
   return out
+}
+
+function getIntroductionParagraphs(text) {
+  return String(text || '')
+    .split(/\n+/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
 }
 
 function escapeRegExp(value) {
@@ -422,6 +429,7 @@ export default function BibleReader({ toast, externalTarget }) {
   const activeBook = booksCacheRef.current[activeBookId] || null
   const chapters = Array.isArray(activeBook?.chapters) ? activeBook.chapters : []
   const activeChapter = chapters[activeChapterIndex] || null
+  const activeBookIntroduction = String(activeBook?.introduction || '').trim()
 
   const ensureBookLoaded = async (bookId) => {
     if (booksCacheRef.current[bookId]) return booksCacheRef.current[bookId]
@@ -860,11 +868,25 @@ export default function BibleReader({ toast, externalTarget }) {
               {activeBookId && chapters.length ? (
                 <div className="bible-tree-group">
                   <div className="bible-tree-group-label">فصول {activeBookLabel}</div>
+                  {activeBookIntroduction ? (
+                    <button
+                      type="button"
+                      className={`bible-intro-btn${viewMode === 'introduction' ? ' active' : ''}`}
+                      onClick={() => {
+                        setHighlightVerses([])
+                        setViewMode('introduction')
+                        setMultiChapterView(null)
+                      }}
+                    >
+                      <BookOpenText size={15} />
+                      <span>مقدمة السفر</span>
+                    </button>
+                  ) : null}
                   <div className="bible-ch-grid">
                     {chapters.map((chapter, index) => (
                       <button
                         key={`${activeBookId}-${chapter?.n}-${index}`}
-                        className={`bible-ch-btn${index === activeChapterIndex ? ' active' : ''}`}
+                        className={`bible-ch-btn${viewMode === 'chapter' && !multiChapterView && index === activeChapterIndex ? ' active' : ''}`}
                         onClick={() => {
                           setActiveChapterIndex(index)
                           setHighlightVerses([])
@@ -919,8 +941,12 @@ export default function BibleReader({ toast, externalTarget }) {
             <div className="bible-guide-header-note">
               ترتيب هرمي سريع بالأسماء والاختصارات
             </div>
+          ) : viewMode === 'introduction' && activeBookIntroduction ? (
+            <div className="bible-main-note">
+              مقدمة السفر
+            </div>
           ) : activeChapter ? (
-            <div style={{ fontSize: '0.84rem', color: 'var(--gray-500)' }}>
+            <div className="bible-main-note">
               الفصل {toArabicDigits(activeChapter?.n)}
             </div>
           ) : null}
@@ -941,6 +967,16 @@ export default function BibleReader({ toast, externalTarget }) {
               description="يتم تحميل الأسفار والبحث في الآيات والعناوين."
               minHeight={260}
             />
+          ) : viewMode === 'introduction' && activeBookIntroduction ? (
+            <article className="bible-introduction">
+              <div className="bible-introduction-kicker">مقدمة السفر</div>
+              <h2 className="bible-introduction-title">{activeBookLabel}</h2>
+              <div className="bible-introduction-copy">
+                {getIntroductionParagraphs(activeBookIntroduction).map((paragraph, index) => (
+                  <p key={`intro-${index}`}>{paragraph}</p>
+                ))}
+              </div>
+            </article>
           ) : viewMode === 'search' && searchResult ? (
             <>
               {!searchResult.total ? (

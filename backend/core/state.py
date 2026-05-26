@@ -15,7 +15,7 @@ from core.database import Database
 
 db = Database(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "app.py")))
 
-EXCEL_PATH = db.excel_path
+CSV_DIR = db.csv_dir
 PHOTOS_ROOT_DIR = db.photos_root_dir
 PROFILE_PHOTOS_DIR = db.profile_pictures_dir
 os.makedirs(PROFILE_PHOTOS_DIR, exist_ok=True)
@@ -24,7 +24,7 @@ SHEETS = [
     "persons", "nationality", "mobile_numbers", "mobile_number_family_relations", "personal_mobile_number_primary", "mobile_number_linked_jobs", "emails", "email_family_relations", "personal_email_primary", "email_linked_jobs", "social_media", "schools", "school_sections", "school_grades",
     "higher_education", "jobs", "timestamps", "responsibilities",
     "person_youth_group", "person_youth_group_age_history", "hobbies_skills", "person_health_conditions", "person_special_notes", "addresses", "person_titles", "person_school_system_sectors", "parishes", "churches", "youth_groups", "youth_group_social_media", "youth_group_social_media_ages", "youth_group_special_logos",
-    "nationality_iso_codes", "institution_logos", "title_options", "mottos", "motto_youth_groups",
+    "lkp_nationality_iso_codes", "institution_logos", "lkp_person_titles", "mottos", "motto_youth_groups",
 ]
 
 UNREG_SHEETS = [
@@ -57,10 +57,10 @@ SCHOOL_SECTION_SHEET = "school_sections"
 SCHOOL_SECTION_COLUMNS = [SCHOOL_RECORD_ID_COL, "section"]
 SCHOOL_GRADE_SHEET = "school_grades"
 SCHOOL_GRADE_COLUMNS = [SCHOOL_RECORD_ID_COL, "grade"]
-TITLE_OPTIONS_SHEET = "title_options"
+TITLE_OPTIONS_SHEET = "lkp_person_titles"
 TITLE_OPTIONS_COLUMNS = ["arabic_title", "english_title"]
 MOTTOS_SHEET = "mottos"
-MOTTOS_COLUMNS = ["motto_id", "title", "year_label", "application_from_date", "application_to_date", "application_is_present", "targets_jec_jordan", "bible_book_id", "bible_verse_raw", "logo_file_name", "created_at", "updated_at"]
+MOTTOS_COLUMNS = ["motto_id", "title", "year_label", "application_from_date", "application_to_date", "application_is_present", "targets_jec_jordan", "bible_book_id", "bible_section_start", "bible_section_end", "bible_verse_start", "bible_verse_end", "logo_file_name"]
 MOTTO_YOUTH_GROUPS_SHEET = "motto_youth_groups"
 MOTTO_YOUTH_GROUPS_COLUMNS = ["motto_id", "youth_group_id"]
 SCHOOL_LOGO_SHEET = "institution_logos"
@@ -177,7 +177,7 @@ YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_COLUMNS = [YOUTH_GROUP_SOCIAL_MEDIA_ID_COL, "
 YOUTH_GROUP_SPECIAL_LOGO_SHEET = "youth_group_special_logos"
 SPECIAL_LOGO_ID_COL = "special_logo_id"
 YOUTH_GROUP_SPECIAL_LOGO_COLUMNS = ["youth_group_id", SPECIAL_LOGO_ID_COL, "occasion", "start_date", "end_date", "logo_file_name", "is_active"]
-NATIONALITY_ISO_SHEET = "nationality_iso_codes"
+NATIONALITY_ISO_SHEET = "lkp_nationality_iso_codes"
 
 SCD_ACTIVE_FROM_COL = "scd_active_from"
 SCD_ACTIVE_TO_COL = "scd_active_to"
@@ -239,6 +239,36 @@ def _scd_ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
         if col not in df.columns:
             df[col] = True if col == SCD_CURRENTLY_ACTIVE_FLAG_COL else None
     return df
+
+
+def _scd_val_for_compare(v) -> str:
+    if v is None:
+        return ""
+    s = str(v).strip()
+    return "" if s in ("nan", "None", "NaT", "NaN", "<NA>") else s
+
+
+def _scd_rows_equal(a_rows: list[dict], b_rows: list[dict], cols: list[str]) -> bool:
+    """Return True when a_rows and b_rows have identical business data (order-independent)."""
+    def sig(row: dict) -> tuple:
+        return tuple(_scd_val_for_compare(row.get(c)) for c in cols)
+    return sorted(sig(r) for r in a_rows) == sorted(sig(r) for r in b_rows)
+
+
+def _scd_active_rows(df: pd.DataFrame, key_col: str, key_val: str) -> list[dict]:
+    """Active rows for a given key value as plain dicts (NaN → None)."""
+    active = _scd_filter_active(df)
+    if active.empty or key_col not in active.columns:
+        return []
+    return active[active[key_col].astype(str) == key_val].replace({pd.NA: None}).to_dict(orient="records")
+
+
+def _scd_active_satellite_rows(df: pd.DataFrame, rid_col: str, record_ids: set[str]) -> list[dict]:
+    """Active satellite rows for a set of parent record_ids as plain dicts."""
+    active = _scd_filter_active(df)
+    if active.empty or rid_col not in active.columns or not record_ids:
+        return []
+    return active[active[rid_col].astype(str).isin(record_ids)].replace({pd.NA: None}).to_dict(orient="records")
 
 
 def _scd_preserve_metadata(rows: list[dict], source_rows: list[dict], key_col: str) -> list[dict]:
@@ -304,7 +334,7 @@ def _console_print(message):
 def load():
     global store
     store = db.load_excel_sheets(SHEETS)
-    _console_print(f"✅ Loaded {len(store)} sheets from Excel.")
+    _console_print(f"✅ Loaded {len(store)} sheets from CSV.")
 
 
 def safe_youth_group_key(value: str | None) -> str:
@@ -1208,6 +1238,27 @@ def replace_mobile_number_rows(target_store: dict[str, pd.DataFrame], person_id,
     personal_primary_rows = personal_mobile_number_primary_rows_from_mobile_rows(payload_rows)
     linked_job_rows = mobile_number_linked_job_rows_from_mobile_rows(payload_rows)
 
+    existing_mobile = _scd_active_rows(target_store.get(MOBILE_NUMBER_SHEET, pd.DataFrame()), "person_id", person_key)
+    existing_rids = {
+        _normalize_mobile_number_record_id(r.get(MOBILE_NUMBER_RECORD_ID_COL))
+        for r in existing_mobile
+        if _normalize_mobile_number_record_id(r.get(MOBILE_NUMBER_RECORD_ID_COL))
+    }
+    if _scd_rows_equal(existing_mobile, mobile_rows, MOBILE_NUMBER_COLUMNS):
+        existing_family = _scd_active_satellite_rows(
+            target_store.get(MOBILE_NUMBER_FAMILY_RELATION_SHEET, pd.DataFrame()),
+            MOBILE_NUMBER_RECORD_ID_COL, existing_rids)
+        existing_prim = _scd_active_satellite_rows(
+            target_store.get(PERSONAL_MOBILE_NUMBER_PRIMARY_SHEET, pd.DataFrame()),
+            MOBILE_NUMBER_RECORD_ID_COL, existing_rids)
+        existing_lnk = _scd_active_satellite_rows(
+            target_store.get(MOBILE_NUMBER_LINKED_JOB_SHEET, pd.DataFrame()),
+            MOBILE_NUMBER_RECORD_ID_COL, existing_rids)
+        if (_scd_rows_equal(existing_family, family_rows, MOBILE_NUMBER_FAMILY_RELATION_COLUMNS) and
+                _scd_rows_equal(existing_prim, personal_primary_rows, PERSONAL_MOBILE_NUMBER_PRIMARY_COLUMNS) and
+                _scd_rows_equal(existing_lnk, linked_job_rows, MOBILE_NUMBER_LINKED_JOB_COLUMNS)):
+            return
+
     now = pd.Timestamp.now()
     new_scd = _scd_new_metadata(changed_by)
 
@@ -1834,6 +1885,21 @@ def replace_school_rows(target_store: dict[str, pd.DataFrame], person_id, rows, 
     school_section_rows = school_section_rows_from_school_rows(payload_rows)
     school_grade_rows = school_grade_rows_from_school_rows(payload_rows)
 
+    existing_schools = _scd_active_rows(target_store.get(SCHOOL_SHEET, pd.DataFrame()), "person_id", person_key)
+    existing_rids = {
+        _normalize_school_record_id(r.get(SCHOOL_RECORD_ID_COL))
+        for r in existing_schools
+        if _normalize_school_record_id(r.get(SCHOOL_RECORD_ID_COL))
+    }
+    if _scd_rows_equal(existing_schools, school_rows, SCHOOL_COLUMNS):
+        existing_secs = _scd_active_satellite_rows(
+            target_store.get(SCHOOL_SECTION_SHEET, pd.DataFrame()), SCHOOL_RECORD_ID_COL, existing_rids)
+        existing_grds = _scd_active_satellite_rows(
+            target_store.get(SCHOOL_GRADE_SHEET, pd.DataFrame()), SCHOOL_RECORD_ID_COL, existing_rids)
+        if (_scd_rows_equal(existing_secs, school_section_rows, SCHOOL_SECTION_COLUMNS) and
+                _scd_rows_equal(existing_grds, school_grade_rows, SCHOOL_GRADE_COLUMNS)):
+            return
+
     now = pd.Timestamp.now()
     new_scd = _scd_new_metadata(changed_by)
 
@@ -2246,6 +2312,27 @@ def replace_email_rows(target_store: dict[str, pd.DataFrame], person_id, rows, c
     person_key = str(normalized_person_id)
     prepared_rows = prepare_email_rows_for_person(target_store, person_id, rows)
     email_rows = [{col: row.get(col) for col in EMAIL_COLUMNS} for row in prepared_rows]
+    family_rows = email_family_relation_rows_from_email_rows(prepared_rows)
+    personal_primary_rows = personal_email_primary_rows_from_email_rows(prepared_rows)
+    linked_job_rows = email_linked_job_rows_from_email_rows(prepared_rows)
+
+    existing_emails = _scd_active_rows(target_store.get(EMAIL_SHEET, pd.DataFrame()), "person_id", person_key)
+    existing_rids = {
+        _normalize_email_record_id(r.get(EMAIL_RECORD_ID_COL))
+        for r in existing_emails
+        if _normalize_email_record_id(r.get(EMAIL_RECORD_ID_COL))
+    }
+    if _scd_rows_equal(existing_emails, email_rows, EMAIL_COLUMNS):
+        existing_family = _scd_active_satellite_rows(
+            target_store.get(EMAIL_FAMILY_RELATION_SHEET, pd.DataFrame()), EMAIL_RECORD_ID_COL, existing_rids)
+        existing_prim = _scd_active_satellite_rows(
+            target_store.get(PERSONAL_EMAIL_PRIMARY_SHEET, pd.DataFrame()), EMAIL_RECORD_ID_COL, existing_rids)
+        existing_lnk = _scd_active_satellite_rows(
+            target_store.get(EMAIL_LINKED_JOB_SHEET, pd.DataFrame()), EMAIL_RECORD_ID_COL, existing_rids)
+        if (_scd_rows_equal(existing_family, family_rows, EMAIL_FAMILY_RELATION_COLUMNS) and
+                _scd_rows_equal(existing_prim, personal_primary_rows, PERSONAL_EMAIL_PRIMARY_COLUMNS) and
+                _scd_rows_equal(existing_lnk, linked_job_rows, EMAIL_LINKED_JOB_COLUMNS)):
+            return
 
     now = pd.Timestamp.now()
     new_scd = _scd_new_metadata(changed_by)
@@ -2269,7 +2356,6 @@ def replace_email_rows(target_store: dict[str, pd.DataFrame], person_id, rows, c
         emails_df = pd.concat([emails_df, pd.DataFrame([{**r, **new_scd} for r in email_rows])], ignore_index=True)
     target_store[EMAIL_SHEET] = emails_df
 
-    family_rows = email_family_relation_rows_from_email_rows(prepared_rows)
     family_df = _scd_ensure_columns(target_store.get(EMAIL_FAMILY_RELATION_SHEET, pd.DataFrame()).copy())
     if not family_df.empty and EMAIL_RECORD_ID_COL in family_df.columns and existing_record_ids:
         active_fam_mask = (
@@ -2284,7 +2370,6 @@ def replace_email_rows(target_store: dict[str, pd.DataFrame], person_id, rows, c
         family_df = pd.concat([family_df, pd.DataFrame([{**r, **new_scd} for r in family_rows])], ignore_index=True)
     target_store[EMAIL_FAMILY_RELATION_SHEET] = family_df
 
-    personal_primary_rows = personal_email_primary_rows_from_email_rows(prepared_rows)
     personal_primary_df = _scd_ensure_columns(target_store.get(PERSONAL_EMAIL_PRIMARY_SHEET, pd.DataFrame()).copy())
     if not personal_primary_df.empty and EMAIL_RECORD_ID_COL in personal_primary_df.columns and existing_record_ids:
         active_prim_mask = (
@@ -2299,7 +2384,6 @@ def replace_email_rows(target_store: dict[str, pd.DataFrame], person_id, rows, c
         personal_primary_df = pd.concat([personal_primary_df, pd.DataFrame([{**r, **new_scd} for r in personal_primary_rows])], ignore_index=True)
     target_store[PERSONAL_EMAIL_PRIMARY_SHEET] = personal_primary_df
 
-    linked_job_rows = email_linked_job_rows_from_email_rows(prepared_rows)
     linked_jobs_df = _scd_ensure_columns(target_store.get(EMAIL_LINKED_JOB_SHEET, pd.DataFrame()).copy())
     if not linked_jobs_df.empty and EMAIL_RECORD_ID_COL in linked_jobs_df.columns and existing_record_ids:
         active_lnk_mask = (
@@ -2581,6 +2665,10 @@ def replace_job_rows(target_store: dict[str, pd.DataFrame], person_id, rows, cha
     normalized_person_id = _normalize_person_id(person_id)
     person_key = str(normalized_person_id)
     prepared_rows, id_map = prepare_job_rows_for_person(target_store, person_id, rows)
+
+    existing_jobs = _scd_active_rows(target_store.get(JOB_SHEET, pd.DataFrame()), "person_id", person_key)
+    if _scd_rows_equal(existing_jobs, prepared_rows, JOB_BASE_COLUMNS):
+        return id_map
 
     now = pd.Timestamp.now()
     new_scd = _scd_new_metadata(changed_by)
@@ -3725,7 +3813,7 @@ def save():
     _coerce_person_id_columns(store)
     db.save_excel_sheets(store)
     invalidate_enriched_cache()
-    _console_print("💾 Saved to Excel.")
+    _console_print("💾 Saved to CSV.")
 
 
 def df_to_json(df: pd.DataFrame):
@@ -4109,13 +4197,19 @@ def merge_person_school_system_sectors(persons_df: pd.DataFrame | None, sector_d
 
 
 def replace_person_title(target_store: dict[str, pd.DataFrame], person_id, title_value, changed_by: str = "system"):
+    normalized_person_id = _normalize_person_id(person_id)
+    person_key = str(normalized_person_id)
+    title = _normalize_text(title_value)
+
+    incoming = [{"person_id": normalized_person_id, "title": title}] if normalized_person_id not in (None, "") and title else []
+    existing = _scd_active_rows(target_store.get(PERSON_TITLE_SHEET, pd.DataFrame()), "person_id", person_key)
+    if _scd_rows_equal(existing, incoming, PERSON_TITLE_COLUMNS):
+        return
+
     now = pd.Timestamp.now()
     new_scd = _scd_new_metadata(changed_by)
 
     current_df = _scd_ensure_columns(target_store.get(PERSON_TITLE_SHEET, pd.DataFrame()).copy())
-    normalized_person_id = _normalize_person_id(person_id)
-    person_key = str(normalized_person_id)
-
     if not current_df.empty and "person_id" in current_df.columns:
         active_mask = (
             (current_df["person_id"].apply(lambda v: str(_normalize_person_id(v))) == person_key) &
@@ -4126,22 +4220,27 @@ def replace_person_title(target_store: dict[str, pd.DataFrame], person_id, title
             current_df.loc[active_mask, SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
             current_df.loc[active_mask, SCD_CHANGED_BY_USER_COL] = changed_by
 
-    title = _normalize_text(title_value)
-    if normalized_person_id not in (None, "") and title:
-        new_row = pd.DataFrame([{**{"person_id": normalized_person_id, "title": title}, **new_scd}])
+    if incoming:
+        new_row = pd.DataFrame([{**incoming[0], **new_scd}])
         current_df = pd.concat([current_df, new_row], ignore_index=True)
 
     target_store[PERSON_TITLE_SHEET] = current_df
 
 
 def replace_person_school_system_sector(target_store: dict[str, pd.DataFrame], person_id, sector_value, changed_by: str = "system"):
+    normalized_person_id = _normalize_person_id(person_id)
+    person_key = str(normalized_person_id)
+    sector = _normalize_text(sector_value)
+
+    incoming = [{"person_id": normalized_person_id, "school_system_sector": sector}] if normalized_person_id not in (None, "") and sector else []
+    existing = _scd_active_rows(target_store.get(PERSON_SCHOOL_SYSTEM_SECTOR_SHEET, pd.DataFrame()), "person_id", person_key)
+    if _scd_rows_equal(existing, incoming, PERSON_SCHOOL_SYSTEM_SECTOR_COLUMNS):
+        return
+
     now = pd.Timestamp.now()
     new_scd = _scd_new_metadata(changed_by)
 
     current_df = _scd_ensure_columns(target_store.get(PERSON_SCHOOL_SYSTEM_SECTOR_SHEET, pd.DataFrame()).copy())
-    normalized_person_id = _normalize_person_id(person_id)
-    person_key = str(normalized_person_id)
-
     if not current_df.empty and "person_id" in current_df.columns:
         active_mask = (
             (current_df["person_id"].apply(lambda v: str(_normalize_person_id(v))) == person_key) &
@@ -4152,9 +4251,8 @@ def replace_person_school_system_sector(target_store: dict[str, pd.DataFrame], p
             current_df.loc[active_mask, SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
             current_df.loc[active_mask, SCD_CHANGED_BY_USER_COL] = changed_by
 
-    sector = _normalize_text(sector_value)
-    if normalized_person_id not in (None, "") and sector:
-        new_row = pd.DataFrame([{**{"person_id": normalized_person_id, "school_system_sector": sector}, **new_scd}])
+    if incoming:
+        new_row = pd.DataFrame([{**incoming[0], **new_scd}])
         current_df = pd.concat([current_df, new_row], ignore_index=True)
 
     target_store[PERSON_SCHOOL_SYSTEM_SECTOR_SHEET] = current_df

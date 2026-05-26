@@ -1,0 +1,371 @@
+﻿person_id,job_id,job_title,employer_name,start_date,end_date,employment_state,scd_active_from,scd_active_to,scd_currently_active_flag,scd_changed_by_user
+7,JB00001,Technical Coordinator / Technical Officer,Run Jordan,,,current,2025-01-31 11:12:46,,True,admin
+8,JB00002,Credit Risk Specialist,بنك القاهرة عمان,,,current,2025-01-31 11:12:47,,True,admin
+14,JB00003,Bank Employee,بنك الإتحاد,,,current,2025-01-31 11:13:00,,True,admin
+17,JB00005,Accountant,مدرسة المخلص الإنجيليّة الأسقفيّة - الزرقاء,,,current,2025-01-31 11:13:03,,True,admin
+21,JB00007,Management & Businesses Consultant,Agile Consulting,,,current,2025-01-31 11:13:09,,True,admin
+22,JB00008,Branch Manager,الإتحاد الأردني لشركات التأمين,,,current,2025-01-31 11:13:09,,True,admin
+23,JB00009,Alcoholic Beverages Distributor,شركة الاستثمارات العامة,,,current,2025-01-31 11:13:09,,True,admin
+24,JB00010,Reservations Manager,بلازا للسياحة,,,current,2025-01-31 11:13:12,,True,admin
+25,JB00011,Architect,HS Group,,,current,2025-01-31 11:13:12,,True,admin
+26,JB00012,Call Center,ويلز,,,current,2025-01-31 11:13:13,,True,admin
+29,JB00013,Teacher,كلّية دي لا سال - الفرير,,,current,2025-01-31 11:13:15,,True,admin
+32,JB00014,Data Entry & Patient Reception,مركز الرأفة الطبي,,,current,2025-01-31 11:13:19,,True,admin
+33,JB00015,Data Entry,مجوهرات كرم امسيح - قسم الألماس,,,current,2025-01-31 11:13:20,,True,admin
+45,JB00017,IT Officer,المجموعة العربيّة الأوروبيّة للتأمين,,,current,2025-01-31 11:13:29,,True,admin
+51,JB00018,Lawyer,مكتب المحامي فادي حدادين,,,current,2025-01-31 11:13:36,,True,admin
+54,JB00019,Restaurant Manager,,,,current,2025-01-31 11:13:42,,True,admin
+56,JB00020,Sales Engineer,شركة توفيق غرغور وأولاده,,,current,2025-01-31 11:13:44,,True,admin
+57,JB00021,Financial Analyst,Philip Morris International,,,current,2025-01-31 11:13:45,,True,admin
+68,JB00024,Teacher,مدارس بطريركيّة الروم الأرثوذكس,,,current,2025-01-31 11:13:52,,True,admin
+80,JB00025,Private Tutor,,,,current,2025-01-31 11:14:12,,True,admin
+82,JB00026,Accountant,الشركة التقنيّة لتشكيل اللفائف المعدنيّة,,,current,2025-01-31 11:14:14,,True,admin
+86,JB00027,Data Associate - French,Amazon,,,current,2025-01-31 11:14:17,,True,admin
+89,JB00028,Cashier,مشروبي,,,current,2025-01-31 11:14:22,,True,admin
+93,JB00030,Business Owner,مؤسسة الدواليب للخدمات اللوجستيّة,,,current,2025-01-31 11:14:26,,True,admin
+94,JB00031,Teacher,مدارس بطريركيّة الروم الأرثوذكس,,,current,2025-01-31 11:14:27,,True,admin
+96,JB00032,Blacksmith,,,,current,2025-01-31 11:14:27,,True,admin
+103,JB00034,,Private Business,,,current,2025-01-31 11:14:33,,True,admin
+104,JB00035,Teacher,مدرسة راهبات الورديّة - إربد,,,current,2025-01-31 11:14:34,,True,admin
+111,JB00038,Project Officer,World Vision,,,current,2025-01-31 11:14:40,,True,admin
+113,JB00040,ENT Doctor,مستشفيات الخدمات الطبيّة الملكيّة,,,current,2025-01-31 11:14:41,,True,admin
+115,JB00041,Employee,محل مشروبات روحية,,,current,2025-01-31 11:14:42,,True,admin
+118,JB00042,Electrical Technician,مؤسسة هبة الهندسيّة,,,current,2025-01-31 11:14:45,,True,admin
+122,JB00043,Pharmacist (Part-Time),,,,current,2025-01-31 11:14:45,,True,admin
+126,JB00045,Cashier,مطعم ركن المختلف,,,current,2025-01-31 11:14:47,,True,admin
+130,JB00047,Customer Service Officer,البنك الأردني الكويتي,,,current,2025-01-31 11:14:51,,True,admin
+134,JB00048,Teacher,مدارس البطريركيّة اللاتينيّة - الزرقاء الشمالي,,,current,2025-01-31 11:14:54,,True,admin
+139,JB00051,Sales Representative,الشركة الدوليّة للصياغة والمجوهرات,,,current,2025-01-31 11:14:58,,True,admin
+142,JB00052,Marketing,JFDZ,,,current,2025-01-31 11:14:59,,True,admin
+144,JB00053,Trainee Lawyer,,,,current,2025-01-31 11:15:00,,True,admin
+148,JB00055,Quality Assurance / Business Analyst,ESKADENIA Software,,,current,2025-01-31 11:15:06,,True,admin
+153,JB00056,Hairdresser,,,,current,2025-01-31 11:15:09,,True,admin
+156,JB00057,Cheques Processor,بنك الإسكان,,,current,2025-01-31 11:15:14,,True,admin
+164,JB00059,Optometrist,ألفا للبصريات,,,current,2025-01-31 11:15:20,,True,admin
+168,JB00061,Teller,بنك الإسكان,,,current,2025-01-31 11:15:28,,True,admin
+177,JB00063,Customer Service Officer,Concentrix,,,current,2025-01-31 11:15:37,,True,admin
+191,JB00065,Quality Control Engineer,شركة باطون المملكة - Kingdom Concrete Company,,,current,2025-01-31 11:15:45,,True,admin
+196,JB00067,Electric & Hybrid Vehicle Maintenance Technician,شركة باجس لصيانة المركبات,,,current,2025-01-31 11:15:48,,True,admin
+200,JB00069,Customer Service Officer,بنك الإسكان,,,current,2025-01-31 11:15:53,,True,admin
+201,JB00070,Reception,النادي الأرثوذكسي,,,current,2025-01-31 11:15:55,,True,admin
+202,JB00071,Delivery,Talabat,,,current,2025-01-31 11:15:55,,True,admin
+212,JB00072,Outbound Documentation with Export Team,Pacific International Lines,,,current,2025-01-31 11:16:03,,True,admin
+214,JB00073,Private Driver,,,,current,2025-01-31 11:16:08,,True,admin
+218,JB00074,Teacher,,,,current,2025-01-31 11:16:13,,True,admin
+229,JB00077,Site Engineer,دار الهندسة,,,current,2025-01-31 11:16:24,,True,admin
+231,JB00078,Employee,مجموعة الخليج للتأمين,,,current,2025-01-31 11:16:25,,True,admin
+239,JB00080,Teacher,مدارس الروم الأرثوذكسيّة الدوليّة,,,current,2025-01-31 11:16:41,,True,admin
+242,JB00081,HR & Admin Supervisor,Orient Group,,,current,2025-01-31 11:16:44,,True,admin
+247,JB00082,Airline Ticketing Officer,شركة دكتور ترافل للسياحة والسفر,,,current,2025-01-31 11:16:51,,True,admin
+249,JB00083,Operations Coordinator,Talabat,,,current,2025-01-31 11:16:52,,True,admin
+250,JB00084,Sales Representative,الشركة الأمريكيّة للتأمين - MetLife Insurance,,,current,2025-01-31 11:16:58,,True,admin
+251,JB00085,Employee,مكتب المهندس حسام قموه لتقدير العقارات,,,current,2025-01-31 11:16:59,,True,admin
+252,JB00086,Carpenter,شركة الأثاث واللوازم,,,current,2025-01-31 11:16:59,,True,admin
+260,JB00089,Daily Wage Worker,British Council,,,current,2025-01-31 11:17:12,,True,admin
+262,JB00090,Teacher,مدارس البطريركيّة اللاتينيّة,,,current,2025-01-31 11:17:15,,True,admin
+266,JB00093,Christian Religion Education Teacher,مدرسة ثيودور شنلر,,,current,2025-01-31 11:17:20,,True,admin
+275,JB00095,Trainee Lawyer,رباح وشرايحة,,,current,2025-01-31 11:17:50,,True,admin
+279,JB00097,Junior BIM Engineer,ISAT Total Support,,,current,2025-01-31 11:18:03,,True,admin
+282,JB00098,,كراج السعادة - الوحدات,,,current,2025-01-31 11:18:08,,True,admin
+285,JB00099,IT Infrastructure Specialist,البنك العربي,,,current,2025-01-31 11:18:16,,True,admin
+286,JB00100,Waiter,مطعم,,,current,2025-01-31 11:18:19,,True,admin
+287,JB00101,Goldsmith,مجوهرات كرم امسيح,,,current,2025-01-31 11:18:21,,True,admin
+289,JB00102,Promoter,JT International Jordan Ltd,,,current,2025-01-31 11:18:21,,True,admin
+291,JB00103,Civil Servant,القوات المسلّحة الأردنيّة - الجيش العربي - التعبئة (خدمة العلم والإعفاءات),,,current,2025-01-31 11:18:24,,True,admin
+297,JB00104,Daily Wage Worker,,,,current,2025-01-31 11:18:44,,True,admin
+312,JB00106,,مدرسة راهبات الورديّة - جبل عمان,,,current,2025-01-31 11:20:18,,True,admin
+317,JB00109,Accountant,Ayoub Group,,,current,2025-01-31 11:23:09,,True,admin
+319,JB00111,Office Manager,شركة مزايا القانونيّة,,,current,2025-01-31 11:24:08,,True,admin
+321,JB00112,Employee,مدرسة راهبات الورديّة - الشميساني,,,current,2025-01-31 11:25:23,,True,admin
+322,JB00113,,Crystel,,,current,2025-01-31 11:26:59,,True,admin
+324,JB00114,Senior Accountant,Net Logistics,,,current,2025-01-31 11:33:32,,True,admin
+325,JB00115,Bank Employee,البنك العربي,,,current,2025-01-31 11:37:13,,True,admin
+326,JB00116,Customer Service Officer,بنك الإسكان,,,current,2025-01-31 11:38:46,,True,admin
+330,JB00117,Employee,IKEA,,,current,2025-01-31 12:24:41,,True,admin
+333,JB00118,Accountant,الشركة العربيّة للتجارة والصناعات الغذائيّة - الوادي / ساديا,,,current,2025-01-31 13:33:50,,True,admin
+355,JB00119,Flight Attendant,سلاح الجو الملكي,,,current,2025-01-31 19:39:59,,True,admin
+356,JB00120,Al-Rahma Gardens Supervisor,Caritas,,,current,2025-01-31 19:40:14,,True,admin
+357,JB00121,Teller,البنك الأهلي,,,current,2025-01-31 19:40:50,,True,admin
+369,JB00122,Radiology Technician,,,,current,2025-01-31 20:22:58,,True,admin
+373,JB00123,Events Coordinator,Communication Craftsmen - COMCRA,,,current,2025-01-31 20:53:11,,True,admin
+374,JB00124,Data Entry & Administrative Support,Spirit of Life for Holy Water - Baptism Site of Jesus Christ,,,current,2025-01-31 20:55:47,,True,admin
+378,JB00125,Content Moderator,Concentrix,,,current,2025-01-31 22:12:10,,True,admin
+379,JB00126,,Caritas,,,current,2025-01-31 22:13:50,,True,admin
+380,JB00127,Account Manager,Fifty Five Solutions & Consulting,,,current,2025-01-31 22:15:40,,True,admin
+383,JB00128,Dentist,وزارة الصحة,,,current,2025-01-31 22:37:46,,True,admin
+386,JB00129,Teacher,مدارس البطريركيّة اللاتينيّة - المفرق,,,current,2025-01-31 22:46:40,,True,admin
+398,JB00131,Barista,Al Sadara,,,current,2025-02-01 11:50:03,,True,admin
+413,JB00133,Customer Service Officer,CsMena,,,current,2025-02-01 13:23:12,,True,admin
+414,JB00134,Daily Wage Worker,,,,current,2025-02-01 13:27:37,,True,admin
+415,JB00135,,شركة الترابط للطعام والشراب,,,current,2025-02-01 13:32:37,,True,admin
+420,JB00136,Consultant & Trainer,,,,current,2025-02-01 13:54:41,,True,admin
+435,JB00137,Pharmacist,,,,current,2025-02-01 14:18:44,,True,admin
+481,JB00138,Senior Technical Sales Engineer,"Rimon Chemical Co, LTD",,,current,2025-02-01 15:26:13,,True,admin
+505,JB00141,Facilitator,Hello Future Organization and International Rescue Committee Organization,,,current,2025-02-01 16:23:59,,True,admin
+512,JB00142,Music Teacher,مدرسة,,,current,2025-02-01 17:06:02,,True,admin
+557,JB00143,Math Teacher,كلّية سيّدة الناصرة,,,current,2025-02-01 21:13:52,,True,admin
+574,JB00144,IT Network Specialist,البنك العربي,,,current,2025-02-01 21:49:58,,True,admin
+585,JB00145,Heavy Machinery Supervisor & Operator,شركة الاستثمارات العامة,,,current,2025-02-01 22:40:07,,True,admin
+603,JB00147,Tour Guide,,,,current,2025-02-01 23:45:03,,True,admin
+609,JB00148,Security & Control Systems Engineer for Queen Alia International Airport,Energy International Corporation,,,current,2025-02-02 08:35:34,,True,admin
+610,JB00149,Secretary,كنيسة القديس بولس الرسول - الجبيهة,,,current,2025-02-02 10:15:37,,True,admin
+613,JB00151,Sales Unit Manager,دلتا للتامين,,,current,2025-02-02 10:24:42,,True,admin
+617,JB00152,Customer Service Officer,بنك المؤسسة العربيّة المصرفيّة,,,current,2025-02-02 10:30:54,,True,admin
+618,JB00153,,شركة رمضان أبو لبة,,,current,2025-02-02 10:32:34,,True,admin
+647,JB00154,Content Moderator Advisor,Concentrix,,,current,2025-02-02 12:05:00,,True,admin
+663,JB00155,Bank Employee,بنك الإتحاد,,,current,2025-02-02 15:45:21,,True,admin
+706,JB00157,Sales Representative,Advanced,,,current,2025-02-03 14:35:24,,True,admin
+729,JB00158,Bank Employee,بنك الاستثمار العربي الأردني,,,current,2025-02-03 17:08:31,,True,admin
+736,JB00159,,مؤسسة فادي حبش للإلكترونيات والستالايت,,,current,2025-02-03 18:37:02,,True,admin
+742,JB00160,,Caritas,,,current,2025-02-03 20:15:43,,True,admin
+749,JB00161,Barista,فورن ركس,,,current,2025-02-04 02:39:21,,True,admin
+750,JB00162,,شركة الوضوح التام,,,current,2025-02-04 06:00:27,,True,admin
+769,JB00163,,بنك الإسكان,,,current,2025-02-04 15:30:45,,True,admin
+796,JB00164,Flight Attendant,الملكيّة الأردنيّة للطيران,,,current,2025-02-05 22:11:19,,True,admin
+800,JB00165,Field Officer – Zaatari Camp,الجمعيّة العلميّة الملكيّة,,,current,2025-02-05 23:22:43,,True,admin
+801,JB00166,Mechanical Design Engineer,MISCo,,,current,2025-02-06 01:42:19,,True,admin
+812,JB00167,Network Engineer,Estarta,,,current,2025-02-07 13:24:51,,True,admin
+815,JB00168,Barista,Adani Corner,,,current,2025-02-07 14:23:28,,True,admin
+824,JB00169,Nurse,وزارة الصحة - مستشفى السلط الجديد,,,current,2025-02-08 21:35:45,,True,admin
+828,JB00170,,Private Sector,,,current,2025-02-09 02:25:44,,True,admin
+834,JB00171,Customer Service Officer,البنك الأهلي,,,current,2025-02-10 08:57:48,,True,admin
+836,JB00172,Reception (Part-Time),فندق مدينة الفسيفساء,,,current,2025-02-10 13:44:22,,True,admin
+847,JB00173,Retired Bank Employee,البنك العربي,,,current,2025-02-10 14:45:01,,True,admin
+859,JB00174,Homeroom Teacher,مدارس البطريركيّة اللاتينيّة,,,current,2025-02-11 11:31:05,,True,admin
+860,JB00175,Insurance Officer,الشرق الأوسط للتامين - قسم حوادث السيارات,,,current,2025-02-11 11:32:59,,True,admin
+863,JB00176,Secretary,Access to Arabia,,,current,2025-02-12 09:20:17,,True,admin
+867,JB00177,Air Force Engineer (Military),سلاح الجو الملكي,,,current,2025-02-12 22:57:23,,True,admin
+875,JB00178,,Freelance,,,current,2025-02-13 16:02:45,,True,admin
+968,JB00181,Customer Service Officer,Aramex,,,current,2025-02-18 13:33:25,,True,admin
+975,JB00182,Sales Manager,شركة نجوم إيلاف الصناعيّة,,,current,2025-02-18 13:46:02,,True,admin
+985,JB00183,English Teacher,مدارس بطريركيّة الروم الأرثوذكس,,,current,2025-02-18 15:08:05,,True,admin
+988,JB00184,Tile Worker,,,,current,2025-02-18 18:08:19,,True,admin
+990,JB00185,Supply Chain & Logistics Manager,Burgan Drug Store,,,current,2025-02-18 19:16:15,,True,admin
+998,JB00186,Accountant,أبو سلطان هدف الأول - حنينا,,,current,2025-02-18 22:37:54,,True,admin
+1052,JB00187,,صالون سمرا للسيدات,,,current,2025-02-20 20:47:40,,True,admin
+1055,JB00188,Electronics Technician,طلال أبو غزالة للتكنولوجيا,,,current,2025-02-21 17:44:07,,True,admin
+1057,JB00189,HR & Office Manager,بدائع المستقبل,,,current,2025-02-21 18:26:27,,True,admin
+1064,JB00192,Data Documentation & Sales Support Officer – Import & Export,Manaseer Logistics & Clearance Company,,,current,2025-02-21 22:04:16,,True,admin
+1065,JB00193,Employee,Sky High Playground,,,current,2025-02-21 22:07:23,,True,admin
+1066,JB00194,Pharmacist (Regulatory Affairs Junior Coordinator),شركة عمان للأدوية والتجارة (مستودع أداتكو),,,current,2025-02-21 22:38:31,,True,admin
+1067,JB00195,Salesforce Technical Lead,Saveto Group – Regional Office,,,current,2025-02-21 22:59:56,,True,admin
+1068,JB00196,Administrative Officer,Private Sector,,,current,2025-02-21 23:16:04,,True,admin
+1070,JB00197,Childcare Specialist,Sky High Playground,,,current,2025-02-22 10:48:20,,True,admin
+1105,JB00198,Intern,المدينة الطبيّة,,,current,2025-02-22 18:02:15,,True,admin
+1121,JB00199,Reception,,,,current,2025-02-22 23:57:41,,True,admin
+1123,JB00200,Airside Operation Officer,Airport International Group,,,current,2025-02-23 10:49:17,,True,admin
+1124,JB00201,Taekwondo Coach,مركز الشلول - نادي الحصن الرياضي,,,current,2025-02-23 11:22:23,,True,admin
+1129,JB00202,Employee Benefits Operations Officer,الشركة الأمريكيّة للتأمين - MetLife Insurance,,,current,2025-02-23 14:49:46,,True,admin
+1132,JB00203,Project Manager,شركة القيود للاستثمار,,,current,2025-02-23 14:55:49,,True,admin
+1134,JB00204,Teacher,مدارس البطريركيّة اللاتينيّة,,,current,2025-02-23 15:06:49,,True,admin
+1151,JB00205,Referral Officer,Caritas,,,current,2025-02-23 17:07:15,,True,admin
+1157,JB00206,Computer Engineering - Technical Support,Manaseer Oil & Gas - Head Office,,,current,2025-02-23 19:27:20,,True,admin
+1194,JB00207,Customer Service Officer,Aramex,,,current,2025-02-24 15:35:46,,True,admin
+1197,JB00208,Reception,مستشفى راهبات الوردية - إربد,,,current,2025-02-24 18:57:34,,True,admin
+1199,JB00209,Trainee Lawyer,رباح وشرايحة,,,current,2025-02-24 20:50:30,,True,admin
+1207,JB00210,Branch Manager,La Roche,,,current,2025-02-25 00:56:23,,True,admin
+1208,JB00211,Payroll Salaries Transactions Team Leader,بنك الاستثمار العربي الأردني,,,current,2025-02-25 10:20:48,,True,admin
+1230,JB00212,,شركة الدب القطبي,,,current,2025-02-27 17:08:53,,True,admin
+1231,JB00213,,شركة الدب القطبي,,,current,2025-02-27 17:13:25,,True,admin
+1250,JB00214,Barista,Qahwa BLK,,,current,2025-02-28 19:29:06,,True,admin
+1261,JB00215,,البنك الأهلي - Ahli777,,,current,2025-03-01 18:53:40,,True,admin
+1265,JB00217,Dental Technician,Glow Dental Lab,,,current,2025-03-01 19:41:21,,True,admin
+1273,JB00218,ICT Teacher,مدرسة راهبات الورديّة - جبل عمان,,,current,2025-03-04 12:56:36,,True,admin
+1278,JB00220,Cash Management Officer,البنك الأهلي,,,current,2025-03-04 16:07:26,,True,admin
+1279,JB00221,Energy Engineer,المحطة للطاقة,,,current,2025-03-04 16:24:29,,True,admin
+1280,JB00222,Quality Assurance Engineer,Medimpact International,,,current,2025-03-04 16:42:03,,True,admin
+1285,JB00223,Sales Representative,Orange,,,current,2025-03-07 15:32:29,,True,admin
+1287,JB00224,Office Manager,الأمانة العامة للشبيبة المسيحية / النيابة البطريركيّة اللاتينيّة,,,current,2025-03-08 21:44:17,,True,admin
+1288,JB00225,Teaching & Research Assistant,جامعة كولن,,,current,2025-03-08 23:50:47,,True,admin
+1290,JB00226,"MEAL Officer (Monitoring, Evaluation, Accountability & Learning)",Caritas,,,current,2025-03-09 12:51:26,,True,admin
+1291,JB00227,Food & Beverage Coordinator,فندق فيرمونت - عمان,,,current,2025-03-09 13:07:10,,True,admin
+1293,JB00228,Peritoneal Dialysis Specialist Nurse at Prince Hamza Hospital,Arab Medical Industries / Baxter International Inc.,,,current,2025-03-09 13:14:30,,True,admin
+1295,JB00229,Christian Religion Education Teacher,مدرسة راهبات الورديّة,,,current,2025-03-09 14:58:31,,True,admin
+1306,JB00230,Employee - King Hussein International Airport / Aqaba,ناشونال لخدمات المطار,,,current,2025-03-09 16:38:22,,True,admin
+1307,JB00231,IT Infrastructure Engineer,STS,,,current,2025-03-09 19:40:48,,True,admin
+1309,JB00232,Referral Officer,Caritas,,,current,2025-03-09 22:06:37,,True,admin
+1312,JB00234,Associate Agent,Quadrabay,,,current,2025-03-10 11:49:16,,True,admin
+1318,JB00235,Project Manager,المعهد الملكي للدراسات الدينيّة,,,current,2025-03-10 15:20:29,,True,admin
+1359,JB00237,,محل كفتيريا,,,current,2025-03-10 17:14:56,,True,admin
+1363,JB00238,Arabic Teacher,مدارس البطريركيّة اللاتينيّة - الزرقاء الجنوبي,,,current,2025-03-10 17:40:05,,True,admin
+1364,JB00239,Teacher,كلّية تراسانطة,,,current,2025-03-10 17:49:24,,True,admin
+1369,JB00240,Bank Employee,بنك الإتحاد,,,current,2025-03-10 19:44:44,,True,admin
+1372,JB00241,Tourism Officer,مركز زوار كنيسة قطع رأس يوحنا المعمدان - مادبا,,,current,2025-03-10 20:07:45,,True,admin
+1390,JB00242,Marketing & Design Specialist,جامعة عمان الأهليّة,,,current,2025-03-11 10:48:01,,True,admin
+1397,JB00243,Corporate & Institutional Banking Officer,بنك الأردن,,,current,2025-03-11 11:04:16,,True,admin
+1403,JB00245,,شركة جريسات لقطع غيار سيارات تويوتا الاصليّة,,,current,2025-03-11 11:42:29,,True,admin
+1416,JB00246,Daily Wage Worker,Ra Creatives Production House,,,current,2025-03-11 13:44:35,,True,admin
+1440,JB00247,Sales Representative,الشركة الأردنيّة المتميّزة للتوزيع والوكالات,,,current,2025-03-11 16:45:09,,True,admin
+1463,JB00248,,القوات المسلّحة الأردنيّة - الجيش العربي,,,current,2025-03-12 16:48:29,,True,admin
+1494,JB00249,Training Coordinator,كنيسة مار يوسف - جبل عمان,,,current,2025-03-13 00:29:53,,True,admin
+1498,JB00250,Head of Corporate Finance Unit,البنك الأهلي - شركة الأهلي للتمويل,,,current,2025-03-13 12:19:35,,True,admin
+1499,JB00251,Content Support Officer,Jo Academy,,,current,2025-03-13 12:21:13,,True,admin
+1501,JB00252,Project Coordinator,"Michael & Son Services, VA",,,current,2025-03-13 12:46:43,,True,admin
+1503,JB00253,,McDonalds,,,current,2025-03-13 13:13:03,,True,admin
+1564,JB00254,,البنك الأهلي - Ahli777,,,current,2025-03-14 10:04:26,,True,admin
+1565,JB00255,Sales Representative,مؤسسة بيت جالا التجاريّة,,,current,2025-03-14 10:40:55,,True,admin
+1571,JB00257,Architect,Yazeed and Farah Architects,,,current,2025-03-14 16:35:14,,True,admin
+1653,JB00259,,وزارة النفط,,,current,2025-03-16 13:00:31,,True,admin
+1655,JB00260,Daily Wage Worker,TaxiF,,,current,2025-03-16 13:21:01,,True,admin
+1743,JB00261,Software Engineer,24online,,,current,2025-03-17 07:46:58,,True,admin
+1766,JB00262,Dentist,مركز الدكتورة لوريس قمر,,,current,2025-03-17 18:44:42,,True,admin
+1824,JB00263,Pharmacist,صيدلية طارق,,,current,2025-03-19 08:21:04,,True,admin
+1832,JB00264,Barista,Qahwa BLK,,,current,2025-03-19 15:13:01,,True,admin
+1843,JB00266,Packaging Officer,شركة معامل النسر للتقطير,,,current,2025-03-19 23:48:38,,True,admin
+1845,JB00267,Marketing & Social Media,Freelance,,,current,2025-03-20 11:41:34,,True,admin
+1846,JB00268,Ticketing & Reservation,Fly Dubai - Green Meadows Travel / Naoiri Group,,,current,2025-03-20 12:20:37,,True,admin
+1847,JB00269,Bank Employee,البنك الأردني الكويتي,,,current,2025-03-20 12:22:27,,True,admin
+1849,JB00270,Beauty Advisor (Part-Time),Dr. Safi Group,,,current,2025-03-20 12:25:24,,True,admin
+1850,JB00271,Daily Wage Worker,Huda Lighting,,,current,2025-03-20 12:36:05,,True,admin
+1924,JB00273,Reception,سراج,,,current,2025-03-20 23:30:35,,True,admin
+1937,JB00274,Science Teacher,المدرسة المعمدانيّة,,,current,2025-03-21 18:47:34,,True,admin
+1986,JB00276,Volunteer,,,,current,2025-03-22 19:13:10,,True,admin
+2008,JB00277,Fitness Trainer,,,,current,2025-03-22 20:53:15,,True,admin
+2027,JB00278,Nurse,مستشفى هاشم بن عبدلله الثاني,,,current,2025-03-24 17:30:35,,True,admin
+2033,JB00279,Daily Wage Worker,,,,current,2025-03-24 17:57:57,,True,admin
+2115,JB00280,,Amazon,,,current,2025-03-29 12:47:51,,True,admin
+2218,JB00282,Clear Aligner Specialist - Education Specialist,Eon Dental,,,current,2025-04-02 21:05:39,,True,admin
+2219,JB00283,Employee,مستودع أدوية الخالد,,,current,2025-04-02 21:38:11,,True,admin
+2220,JB00284,Behavioral Therapist,المسار لخدمات تطور الطفل,,,current,2025-04-03 11:11:53,,True,admin
+2221,JB00285,Talent Management Section Head,Airport International Group,,,current,2025-04-03 11:20:40,,True,admin
+2222,JB00286,Cyber Security Engineer,المركز الوطني للأمن السيبراني,,,current,2025-04-03 11:22:31,,True,admin
+2232,JB00287,Supply Chain Consultant,PwC,,,current,2025-04-05 09:51:11,,True,admin
+2269,JB00288,Architect,العمرانيّة,,,current,2025-04-18 19:52:40,,True,admin
+2270,JB00289,Bank Employee,كابيتال بنك,,,current,2025-04-18 23:45:23,,True,admin
+2305,JB00292,Teacher,مدرسة ذوقان الهنداوي,,,current,2025-04-28 19:10:37,,True,admin
+2449,JB00293,Sales Representative,أبو وديع لتجارة الجملة,,,current,2025-05-28 10:03:30,,True,admin
+2503,JB00294,Community Support Officer,UNHCR,,,current,2025-06-14 17:37:20,,True,admin
+2510,JB00295,Salon Worker,,,,current,2025-06-14 20:12:33,,True,admin
+2525,JB00296,,شركة النسر العربي للتأمين,,,current,2025-06-16 18:15:35,,True,admin
+2528,JB00297,Intern,,,,current,2025-06-16 19:05:35,,True,admin
+2531,JB00298,Bank Employee,البنك العربي,,,current,2025-06-18 21:13:55,,True,admin
+2532,JB00299,Freelancer,Freelance,,,current,2025-06-18 21:29:15,,True,admin
+2534,JB00300,Teacher,,,,current,2025-06-19 00:50:52,,True,admin
+2535,JB00301,Factory Administrator,لافارج الباطون في الأردن,,,current,2025-06-19 07:46:18,,True,admin
+2538,JB00303,Teacher,,,,current,2025-06-19 16:33:51,,True,admin
+2551,JB00304,Teacher,كلّية دي لا سال - الفرير,,,current,2025-06-25 11:53:01,,True,admin
+2552,JB00305,Accountant,مجموعة حداد,,,current,2025-06-25 12:59:08,,True,admin
+2558,JB00306,Photographer,Studio,,,current,2025-06-26 12:10:00,,True,admin
+2572,JB00307,Bank Employee,البنك العربي,,,current,2025-07-09 19:42:17,,True,admin
+2579,JB00308,Dialysis Nurse,مستودع الثائر للأدوية,,,current,2025-07-16 10:40:31,,True,admin
+2623,JB00309,Daily Wage Worker,Kangaroo,,,current,2025-09-10 20:53:09,,True,admin
+2643,JB00310,,Secrets Cake,,,current,2025-09-12 18:32:40,,True,admin
+2645,JB00311,Teacher,Modern Montessori School,,,current,2025-09-13 14:42:50,,True,admin
+2649,JB00312,Supply Chain Officer,Wadi Finan Group,,,current,2025-09-15 21:57:49,,True,admin
+2650,JB00313,Teacher,المدرسة المعمدانيّة,,,current,2025-09-15 22:15:16,,True,admin
+2730,JB00314,Music Teacher,مدرسة الشويفات الدوليّة,,,current,2025-10-30 14:37:52,,True,admin
+2731,JB00315,,International Computer Systems,,,current,2025-10-30 14:48:03,,True,admin
+2812,JB00316,Credit Review Officer,البنك الأهلي,,,current,2025-11-01 17:44:14,,True,admin
+2837,JB00317,Teacher,,,,current,2025-11-02 15:32:31,,True,admin
+2843,JB00318,Teacher,وزارة التربية والتعليم,,,current,2025-11-02 15:57:35,,True,admin
+2878,JB00319,Bid Officer,Intrasoft,,,current,2025-11-04 10:39:05,,True,admin
+2884,JB00320,,تصميم داخلي عبدون,,,current,2025-11-04 12:53:27,,True,admin
+2885,JB00321,,Private Sector,,,current,2025-11-04 13:26:56,,True,admin
+2919,JB00322,Daily Wage Worker,,,,current,2025-11-05 19:24:23,,True,admin
+2922,JB00323,Electric Power Engineer,Electric Power Engineers,,,current,2025-11-05 21:21:05,,True,admin
+2994,JB00324,,Private Business,,,current,2025-11-13 22:42:51,,True,admin
+3009,JB00325,Daily Wage Worker,,,,current,2026-01-23 12:38:16,,True,admin
+3010,JB00326,Supply Chain Engineer,JT International Jordan Ltd,,,current,2026-01-23 14:52:14,,True,admin
+3014,JB00327,(Part-Time),حمادة,,,current,2026-01-23 15:17:51,,True,admin
+3023,JB00328,,Private Business,,,current,2026-01-23 20:57:49,,True,admin
+3025,JB00329,Business Owner,,,,current,2026-01-24 05:39:15,,True,admin
+3030,JB00330,Fitness Trainer,,,,current,2026-01-24 17:04:22,,True,admin
+3038,JB00331,Tourism Officer,نجد وشهد للفسيفساء,,,current,2026-01-24 20:00:53,,True,admin
+3039,JB00332,Sales Representative,البنك العربي,,,current,2026-01-24 20:30:17,,True,admin
+3040,JB00333,Daily Wage Worker,,,,current,2026-01-24 21:33:30,,True,admin
+3047,JB00334,Logistics,SCS,,,current,2026-01-25 11:40:53,,True,admin
+3051,JB00335,HR,مجموعة نادر,,,current,2026-01-25 13:54:04,,True,admin
+3066,JB00336,Content Moderator Advisor,Concentrix,,,current,2026-01-25 19:57:46,,True,admin
+3067,JB00337,Medical Intern,مستشفيات الخدمات الطبيّة الملكيّة - مدينة الحسين الطبيّة,,,current,2026-01-25 22:47:05,,True,admin
+3068,JB00338,Accountant,مجموعة ازاديا للاتصالات والتكنولوجيا,,,current,2026-01-25 22:51:28,,True,admin
+3069,JB00339,University Professor,جامعة البلقاء التطبيقيّة,,,current,2026-01-25 22:59:13,,True,admin
+3071,JB00340,Lawyer,,,,current,2026-01-26 14:16:17,,True,admin
+3073,JB00341,Medical Intern,,,,current,2026-01-26 14:47:06,,True,admin
+3076,JB00342,Teacher,مدارس البطريركيّة اللاتينيّة - الزرقاء الجنوبي,,,current,2026-01-26 16:26:28,,True,admin
+3079,JB00344,Data Entry,شركة الشرق الأوسط,,,current,2026-01-26 18:05:39,,True,admin
+3080,JB00345,Reception,شركة المال للتمويل,,,current,2026-01-26 19:00:27,,True,admin
+3082,JB00346,Accountant,شركة عجلون,,,current,2026-01-26 19:07:22,,True,admin
+3090,JB00347,Chef,النادي الأرثوذكسي,,,current,2026-01-30 08:18:05,,True,admin
+805,JB00348,Senior Pharmacist,Caritas,,,current,2025-02-06 13:23:06,,True,admin
+1255,JB00349,,JAP,,,current,2025-03-01 14:25:20,,True,admin
+245,JB00350,Electric Power Engineer,IVY,,,current,2025-01-31 11:16:48,,True,admin
+1281,JB00351,Senior Operations Executive,IBC,,,current,2025-03-05 08:22:07,,True,admin
+1253,JB00352,Bank Employee,بنك الإتحاد,,,current,2025-03-01 12:50:05,,True,admin
+1272,JB00354,Senior Account Executive,GlobeMed Jordan,,,current,2025-03-04 12:51:54,,True,admin
+680,JB00355,Retail & Store Manager,ملح وزيت,,,current,2025-02-03 02:09:11,,True,admin
+1391,JB00356,Designer,Freelance,,,current,2025-03-11 10:52:37,,True,admin
+1405,JB00357,Secretary,مجموعة حداد للتسويق - شركة نانت للتجارة,,,current,2025-03-11 11:43:48,,True,admin
+594,JB00359,Sales Secretary,Centro Mada Amman by Rotana Hotels,,,current,2025-02-01 22:59:31,,True,admin
+1050,JB00362,Manager,شبيبة ستور,0025-07-01,,current,2025-02-20 16:54:29,,True,admin
+1833,JB00265,Bank Employee,بنك الأردن,,,current,2025-03-19 15:15:48,,True,admin
+19,JB00006,Procurement Operations Officer,الحكمة للأدوية,,,current,2025-01-31 11:13:04,,True,admin
+483,JB00139,,عيادة أسنان,,,current,2025-02-01 15:39:32,,True,admin
+71,JB00358,,Mateen-UNICEF,,,current,2025-01-31 11:13:56,,True,admin
+197,JB00068,Quality Control Supervisor & Laboratory Technician,شركة الاستثمارات العامة,,,current,2025-01-31 11:15:50,,True,admin
+412,JB00132,Quality Assurance Officer,البنك الاستثماري,,,current,2025-02-01 13:19:33,,True,admin
+43,JB00016,Data Assistant,Amazon,,,current,2025-01-31 11:13:28,,True,admin
+258,JB00088,Customer Service Officer,Money for Finance,,,current,2025-01-31 11:17:10,,True,admin
+1058,JB00190,Group’s Coordinator - Reservations,Movenpick Cluster,,,current,2025-02-21 20:59:58,,True,admin
+1274,JB00219,Secretary,دير الآباء اليسوعيين,,,current,2025-03-04 13:01:58,,True,admin
+169,JB00062,Nursery Teacher,المدرسة الوطنيّة الارثوذكسيّة,,,current,2025-01-31 11:15:32,,True,admin
+1621,JB00258,Cyber Security Engineer,ScanWave,,,current,2025-03-15 20:14:08,,True,admin
+1061,JB00191,"Marketing Representative, History Teacher","Logistaas, Asamiah International School",,,current,2025-02-21 21:32:01,,True,admin
+66,JB00023,Supply Chain & Procurement Officer,Al-Behar Group,,,current,2025-01-31 11:13:50,,True,admin
+498,JB00140,Insurance Coordinator,شركة برزان لحلول التكنولوجيا,,,current,2025-02-01 16:05:19,,True,admin
+1851,JB00272,Accountant,فندق الليوان,,,current,2025-03-20 12:51:00,,True,admin
+590,JB00146,Electronics Engineer,Besomi Electronics,,,current,2025-02-01 22:43:40,,True,admin
+105,JB00036,Math Teacher,مدرسة الأهليّة والمطران,,,current,2025-01-31 11:14:35,,True,admin
+112,JB00039,Dental Assistant,,,,current,2025-01-31 11:14:40,,True,admin
+187,JB00064,,Manaseer Oil & Gas,,,current,2025-01-31 11:15:44,,True,admin
+2217,JB00281,Sales Engineer,Thunder Supply,,,current,2025-04-02 20:56:43,,True,admin
+98,JB00033,Quality Assurance,مجموعة الخليج للتأمين,,,current,2025-01-31 11:14:28,,True,admin
+128,JB00046,Software Developer,Aramex,,,current,2025-01-31 11:14:50,,True,admin
+1310,JB00233,Biomedical Engineer,AJi Group,,,current,2025-03-09 22:09:10,,True,admin
+110,JB00037,,Caritas,,,current,2025-01-31 11:14:39,,True,admin
+15,JB00004,External Auditor,مكتب مدماك لتدقيق الحسابات,,,current,2025-01-31 11:13:01,,True,admin
+167,JB00060,Engineer,وزارة المياه,,,current,2025-01-31 11:15:27,,True,admin
+195,JB00066,,Amazon,,,current,2025-01-31 11:15:47,,True,admin
+298,JB00105,Sales Engineer,شركة توفيق غرغور وأولاده,,,current,2025-01-31 11:18:44,,True,admin
+221,JB00075,Engineer,مؤسسة هبة الهندسيّة,,,current,2025-01-31 11:16:14,,True,admin
+91,JB00029,Factory Worker,شركه لصناعة الشوكولاتة,,,current,2025-01-31 11:14:25,,True,admin
+2303,JB00290,Account Officer,Windsor Brokers Ltd.,,,current,2025-04-28 00:04:55,,True,admin
+264,JB00092,IT Support Officer,شركة معامل النسر للتقطير,,,current,2025-01-31 11:17:17,,True,admin
+1264,JB00216,Project Manager,ركين للمقاولات,,,current,2025-03-01 19:37:37,,True,admin
+145,JB00054,Bank Employee,بنك الإتحاد,,,current,2025-01-31 11:15:01,,True,admin
+315,JB00108,Employee,شركة معامل النسر للتقطير,,,current,2025-01-31 11:22:37,,True,admin
+391,JB00130,Employee,شركة معامل النسر للتقطير,,,current,2025-02-01 08:43:18,,True,admin
+137,JB00049,Lab Analyst,Philip Morris International,,,current,2025-01-31 11:14:57,,True,admin
+263,JB00091,Accountant,شركة الموارس الزراعيّة,,,current,2025-01-31 11:17:16,,True,admin
+611,JB00150,Office Manager,شركة نفاع للمحاماة,,,current,2025-02-02 10:18:23,,True,admin
+1982,JB00275,Secretary,شركة جوهرة إبن النفيس,,,current,2025-03-22 19:04:27,,True,admin
+163,JB00058,Data Entry & Photographer,مكتب معالي الدكتور صخر دودين للاستشارات الهندسيّة,,,current,2025-01-31 11:15:20,,True,admin
+705,JB00156,Daily Wage Worker,,,,current,2025-02-03 14:23:56,,True,admin
+233,JB00079,Business Owner,,,,current,2025-01-31 11:16:28,,True,admin
+223,JB00076,Restaurant Manager,Buffalo Wings and Rings,,,previous,2025-01-31 11:16:16,,True,admin
+223,JB00363,Training Manager,Chixter & Pizza Maker,,,previous,2025-01-31 11:16:16,,True,admin
+2304,JB00291,Senior Associate Trade Finance,كابيتال بنك,,,current,2025-04-28 18:12:07,,True,admin
+1400,JB00244,Full Stack Developer & DevOps,ESKADENIA Software,,,current,2025-03-11 11:25:56,,True,admin
+1400,JB00364,Full Stack Developer and Technical Support Engineer,ESKADENIA Software,,,previous,2025-03-11 11:25:56,,True,admin
+1256,JB00365,Barista,Qahwa BLK,,,previous,2025-03-01 14:46:42,,True,admin
+966,JB00180,Finance Department Intern,الجامعة الأمريكيّة في مادبا,,,current,2025-02-18 13:31:59,,True,admin
+124,JB00044,Back Bar,Romero Group,,,current,2025-01-31 11:14:47,,True,admin
+278,JB00096,Senior CNC Machine Technician,المركز الأردني للتصميم والتطوير - JODDB,,,current,2025-01-31 11:18:02,,True,admin
+1569,JB00256,Planning Engineer,مياهنا,,,current,2025-03-14 12:41:23,,True,admin
+59,JB00022,Senior Accountant,Berlitz Language Center,,,current,2025-01-31 11:13:46,,True,admin
+267,JB00094,Senior Operations Manager,MCS Mada Cargo Services,,,current,2025-01-31 11:17:21,,True,admin
+267,JB00366,Operations Manager,MCS Mada Cargo Services,,,previous,2025-01-31 11:17:21,,True,admin
+1308,JB00367,Daily Wage Worker,,,,previous,2025-03-09 20:05:01,,True,admin
+318,JB00110,Secretary,روضة وهبة تماري,,,current,2025-01-31 11:23:15,,True,admin
+965,JB00353,Logistics Senior Officer,الشركة المركزيّة للتجارة والمركبات,,,current,2025-02-18 13:29:59,,True,admin
+313,JB00107,Content Moderator,CsMena,,,current,2025-01-31 11:21:26,,True,admin
+253,JB00087,Chief Intellectual Property Officer,طلال ابو غزالة للملكيّة الفكريّة,,,current,2025-01-31 11:17:01,,True,admin
+1347,JB00236,Pharmacist,,,,current,2025-03-10 15:59:32,,True,admin
+918,JB00179,Executive Operations Manager,Estarta,,,current,2025-02-16 15:32:27,,True,admin
+918,JB00368,Tech Incident Management,,,,previous,2025-02-16 15:32:27,,True,admin
+138,JB00050,Marketing Manager,شركة أنكل أوساكا للحلويات,,,current,2025-01-31 11:14:58,,True,admin
+211,JB00369,,Amazon,,,previous,2025-01-31 11:16:02,,True,admin
+211,JB00370,,Smart Buy,,,previous,2025-01-31 11:16:02,,True,admin
+2537,JB00302,Sales Representative,مجموعة نقل,,,current,2025-06-19 15:42:54,,True,admin
+3077,JB00343,Patents Administrator,Saba & Co. Intellectual Property,,,current,2026-01-26 16:51:49,,True,admin
+948,JB00360,Artificial Intelligence Associate,كابيتال بنك,2025-07-01,,current,2025-02-17 13:17:50,,True,admin
+948,JB00361,Data Science Intern,مدفوعاتكم,2024-06-30,2025-02-28,previous,2025-02-17 13:17:50,,True,admin

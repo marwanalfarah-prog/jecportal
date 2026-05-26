@@ -225,6 +225,35 @@ details[open] > .bible-tree-summary::before {
   color: var(--gray-400);
 }
 
+.bible-intro-btn {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid rgba(45, 89, 134, 0.16);
+  border-radius: 8px;
+  background: rgba(45, 89, 134, 0.06);
+  color: var(--navy);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-body);
+  font-size: 0.86rem;
+  font-weight: 800;
+  transition: all var(--transition);
+}
+
+.bible-intro-btn:hover {
+  border-color: var(--gold);
+  background: rgba(201, 150, 60, 0.1);
+}
+
+.bible-intro-btn.active {
+  border-color: var(--gold);
+  background: var(--gold);
+  color: var(--white);
+}
+
 .bible-ch-grid {
   --bible-ch-gap: 6px;
   --bible-ch-height: 34px;
@@ -313,6 +342,11 @@ details[open] > .bible-tree-summary::before {
   color: var(--navy);
   font-weight: 800;
   font-size: 1.02rem;
+}
+
+.bible-main-note {
+  color: var(--gray-500);
+  font-size: 0.84rem;
 }
 
 .bible-guide-header-note {
@@ -440,6 +474,43 @@ details[open] > .bible-tree-summary::before {
 .bible-guide-book-row-abbr {
   color: #44414b;
   font-weight: 800;
+}
+
+.bible-introduction {
+  width: min(100%, 820px);
+  margin: 0 auto;
+  padding: 4px 0 12px;
+}
+
+.bible-introduction-kicker {
+  color: var(--gold);
+  font-family: var(--font-head);
+  font-size: 0.86rem;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.bible-introduction-title {
+  color: var(--navy);
+  font-family: var(--font-head);
+  font-size: 1.18rem;
+  line-height: 1.6;
+  margin: 0 0 14px;
+}
+
+.bible-introduction-copy {
+  color: var(--gray-700);
+  font-size: 1rem;
+  line-height: 2.05;
+  text-align: justify;
+}
+
+.bible-introduction-copy p {
+  margin: 0 0 14px;
+}
+
+.bible-introduction-copy p:last-child {
+  margin-bottom: 0;
 }
 
 .bible-section-title {

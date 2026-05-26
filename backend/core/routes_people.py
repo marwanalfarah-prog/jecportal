@@ -703,6 +703,26 @@ def replace_profile_sub_rows(store: dict, pid, sheet, rows, *, compare_as_string
     if sheet == S.PERSON_YOUTH_GROUP_SHEET:
         membership_rows = S.normalize_person_youth_group_rows(rows)
         history_rows = S.person_youth_group_age_history_rows_from_membership_rows(rows, membership_rows)
+
+        # Early return if nothing changed
+        pid_key = str(pid)
+        existing_memberships = S._scd_active_rows(
+            store.get(sheet, pd.DataFrame()), "person_id", pid_key)
+        existing_pyg_rids = {
+            str(r.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL))
+            for r in existing_memberships
+            if r.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL)
+        }
+        pyg_cols = [c for c in store.get(sheet, pd.DataFrame()).columns if c not in S.SCD_METADATA_COLUMNS]
+        incoming_with_pid = [{**row, "person_id": pid} for row in membership_rows]
+        if S._scd_rows_equal(existing_memberships, incoming_with_pid, pyg_cols or list(S.PERSON_YOUTH_GROUP_COLUMNS)):
+            existing_hist = S._scd_active_satellite_rows(
+                store.get(S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame()),
+                S.PERSON_YOUTH_GROUP_RECORD_ID_COL, existing_pyg_rids)
+            hist_cols = [c for c in store.get(S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame()).columns if c not in S.SCD_METADATA_COLUMNS]
+            if S._scd_rows_equal(existing_hist, history_rows, hist_cols or [S.PERSON_YOUTH_GROUP_RECORD_ID_COL, "age_group", "start_date", "end_date"]):
+                return
+
         now = pd.Timestamp.now()
         new_scd = S._scd_new_metadata(changed_by)
 
@@ -744,6 +764,15 @@ def replace_profile_sub_rows(store: dict, pid, sheet, rows, *, compare_as_string
     rows = normalize_profile_rows(sheet, rows)
     if sheet in _SCD_LOGICAL_SHEETS:
         df = S._scd_ensure_columns(store.get(sheet, pd.DataFrame()))
+
+        # Early return if nothing changed
+        pid_str = str(pid)
+        existing = S._scd_active_rows(df, "person_id", pid_str)
+        biz_cols = [c for c in df.columns if c not in S.SCD_METADATA_COLUMNS]
+        rows_with_pid = [{**row, "person_id": pid} for row in rows]
+        if S._scd_rows_equal(existing, rows_with_pid, biz_cols):
+            return
+
         if "person_id" in df.columns:
             if compare_as_string:
                 active_mask = (df["person_id"].astype(str) == str(pid)) & (df[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)

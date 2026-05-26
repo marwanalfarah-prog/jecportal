@@ -2,7 +2,6 @@ import hashlib
 import os
 import re
 import threading
-import zipfile
 from copy import deepcopy
 
 import numpy as np
@@ -20,19 +19,21 @@ _auth_cache_token: tuple[float | None, float | None] | None = None
 
 
 def _auth_cache_file_token() -> tuple[float | None, float | None]:
-    excel_mtime = None
+    from core.database import workbook_sheet_name
+    auth_csv_mtime = None
     legacy_mtime = None
     try:
-        if os.path.exists(S.db.excel_path):
-            excel_mtime = os.path.getmtime(S.db.excel_path)
+        auth_csv = os.path.join(S.db.csv_dir, f"{workbook_sheet_name(S.db.auth_sheet)}.csv")
+        if os.path.exists(auth_csv):
+            auth_csv_mtime = os.path.getmtime(auth_csv)
     except OSError:
-        excel_mtime = None
+        auth_csv_mtime = None
     try:
         if os.path.exists(S.db.legacy_auth_path):
             legacy_mtime = os.path.getmtime(S.db.legacy_auth_path)
     except OSError:
         legacy_mtime = None
-    return (excel_mtime, legacy_mtime)
+    return (auth_csv_mtime, legacy_mtime)
 
 
 def _invalidate_auth_cache():
@@ -86,7 +87,7 @@ def _load_auth() -> dict:
 
     try:
         raw = S.db.load_auth()
-    except zipfile.BadZipFile:
+    except OSError:
         cached_payload = None
         with _auth_cache_lock:
             if _auth_cache_data is not None:

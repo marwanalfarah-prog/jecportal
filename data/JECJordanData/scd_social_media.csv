@@ -1,0 +1,4 @@
+﻿person_id,platform,url,is_primary,scd_active_from,scd_active_to,scd_currently_active_flag,scd_changed_by_user
+948,facebook,https://www.facebook.com/marwan.a.farah,True,2025-02-17 13:17:50,,True,admin
+948,instagram,https://www.instagram.com/marwanalfarah03/?hl=en,True,2025-02-17 13:17:50,,True,admin
+948,linkedin,https://www.linkedin.com/in/marwan-alfarah/,True,2025-02-17 13:17:50,,True,admin

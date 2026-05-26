@@ -587,9 +587,6 @@ def _normalize_motto(raw_motto: dict, existing: dict | None = None, touch_update
     if len(bible_references) > 1:
         bible_references = [bible_references[0]]
 
-    created_at = _clean_text(current.get("created_at")) or _now_iso()
-    existing_updated = _clean_text(current.get("updated_at") or row.get("updated_at"))
-    updated_at = _now_iso() if touch_updated else (existing_updated or created_at)
     logo_file_name = _clean_text(current.get("logo_file_name") or row.get("logo_file_name"))
 
     return {
@@ -602,8 +599,6 @@ def _normalize_motto(raw_motto: dict, existing: dict | None = None, touch_update
         "targets": targets,
         "bible_references": bible_references,
         "logo_file_name": logo_file_name,
-        "created_at": created_at,
-        "updated_at": updated_at,
     }
 
 
@@ -705,8 +700,8 @@ def _is_motto_applicable_to_groups(row: dict, group_ids: list[str], include_jec_
 
 
 def _load_mottos_from_sheets() -> dict:
-    mottos_df = S.store.get(S.MOTTOS_SHEET, pd.DataFrame()).copy()
-    yg_df = S.store.get(S.MOTTO_YOUTH_GROUPS_SHEET, pd.DataFrame()).copy()
+    mottos_df = S._scd_filter_active(S.store.get(S.MOTTOS_SHEET, pd.DataFrame()).copy())
+    yg_df = S._scd_filter_active(S.store.get(S.MOTTO_YOUTH_GROUPS_SHEET, pd.DataFrame()).copy())
 
     yg_map: dict[str, list[str]] = {}
     if not yg_df.empty:
@@ -723,10 +718,24 @@ def _load_mottos_from_sheets() -> dict:
             if not mid:
                 continue
             book_id = _clean_text(row.get("bible_book_id"))
-            verse_raw = _clean_text(row.get("bible_verse_raw"))
             bible_references = []
-            if book_id and verse_raw:
-                bible_references = [{"book": {"book_id": book_id}, "verse": {"raw": verse_raw}}]
+            try:
+                sec_start = _clean_text(row.get("bible_section_start"))
+                sec_end   = _clean_text(row.get("bible_section_end"))
+                vs_start  = _clean_text(row.get("bible_verse_start"))
+                vs_end    = _clean_text(row.get("bible_verse_end"))
+                if book_id and sec_start and vs_start:
+                    sc = int(sec_start)
+                    ec = int(sec_end) if sec_end else sc
+                    vv_s = vs_start
+                    vv_e = vs_end if vs_end else vv_s
+                    segment = {
+                        "start": {"chapter": sc, "verse": vv_s},
+                        "end":   {"chapter": ec, "verse": vv_e},
+                    }
+                    bible_references = [{"book": {"book_id": book_id}, "verse": {"segments": [segment], "all_segments_structured": True}}]
+            except (ValueError, TypeError):
+                pass
             mottos.append({
                 "motto_id": mid,
                 "title": _clean_text(row.get("title")),
@@ -740,54 +749,154 @@ def _load_mottos_from_sheets() -> dict:
                 },
                 "bible_references": bible_references,
                 "logo_file_name": _clean_text(row.get("logo_file_name")),
-                "created_at": _clean_text(row.get("created_at")),
-                "updated_at": _clean_text(row.get("updated_at")),
             })
     return {"mottos": mottos}
 
 
-def _save_mottos_to_sheets(payload: dict) -> None:
+def _motto_flat_row(item: dict) -> dict:
+    """Convert a normalized motto dict into the flat CSV row dict (no SCD columns)."""
+    targets = item.get("targets") if isinstance(item.get("targets"), dict) else {}
+    bible_refs = item.get("bible_references") if isinstance(item.get("bible_references"), list) else []
+    bible_book_id = ""
+    bible_section_start = ""
+    bible_section_end = ""
+    bible_verse_start = ""
+    bible_verse_end = ""
+    if bible_refs:
+        ref = bible_refs[0]
+        book = ref.get("book") if isinstance(ref.get("book"), dict) else {}
+        bible_book_id = _clean_text(book.get("book_id")) or ""
+        verse = ref.get("verse") if isinstance(ref.get("verse"), dict) else {}
+        segments = verse.get("segments") if isinstance(verse.get("segments"), list) else []
+        if segments:
+            seg = segments[0]
+            s = seg.get("start") if isinstance(seg.get("start"), dict) else {}
+            e = seg.get("end") if isinstance(seg.get("end"), dict) else {}
+            bible_section_start = str(s["chapter"]) if s.get("chapter") else ""
+            bible_section_end   = str(e["chapter"]) if e.get("chapter") else ""
+            bible_verse_start   = str(s["verse"])   if s.get("verse")   else ""
+            bible_verse_end     = str(e["verse"])   if e.get("verse")   else ""
+    return {
+        "motto_id": _clean_text(item.get("motto_id")) or "",
+        "title": _clean_text(item.get("title")) or "",
+        "year_label": _clean_text(item.get("year_label")) or "",
+        "application_from_date": _clean_text(item.get("application_from_date")) or "",
+        "application_to_date": _clean_text(item.get("application_to_date")) or "",
+        "application_is_present": bool(item.get("application_is_present") or False),
+        "targets_jec_jordan": bool(targets.get("jec_jordan") or False),
+        "bible_book_id": bible_book_id,
+        "bible_section_start": bible_section_start,
+        "bible_section_end": bible_section_end,
+        "bible_verse_start": bible_verse_start,
+        "bible_verse_end": bible_verse_end,
+        "logo_file_name": _clean_text(item.get("logo_file_name")) or "",
+    }
+
+
+def _save_mottos_to_sheets(payload: dict, changed_by: str = "admin") -> None:
+    """SCD-aware save. Uses close-and-insert per motto; only touches motto_youth_groups when targets change."""
     rows = payload.get("mottos") if isinstance(payload, dict) else []
     if not isinstance(rows, list):
         rows = []
 
-    motto_rows = []
-    yg_rows = []
+    now = pd.Timestamp.now()
+
+    # Build incoming data maps indexed by motto_id
+    new_motto_data: dict[str, dict] = {}
+    new_yg_data: dict[str, list[str]] = {}
     for item in rows:
         mid = _clean_text(item.get("motto_id"))
         if not mid:
             continue
+        new_motto_data[mid] = _motto_flat_row(item)
         targets = item.get("targets") if isinstance(item.get("targets"), dict) else {}
-        bible_refs = item.get("bible_references") if isinstance(item.get("bible_references"), list) else []
-        bible_book_id = ""
-        bible_verse_raw = ""
-        if bible_refs:
-            ref = bible_refs[0]
-            book = ref.get("book") if isinstance(ref.get("book"), dict) else {}
-            bible_book_id = _clean_text(book.get("book_id")) or ""
-            verse = ref.get("verse") if isinstance(ref.get("verse"), dict) else {}
-            bible_verse_raw = _verse_reference_text(verse) or ""
-        motto_rows.append({
-            "motto_id": mid,
-            "title": _clean_text(item.get("title")) or "",
-            "year_label": _clean_text(item.get("year_label")) or "",
-            "application_from_date": _clean_text(item.get("application_from_date")) or "",
-            "application_to_date": _clean_text(item.get("application_to_date")) or "",
-            "application_is_present": bool(item.get("application_is_present") or False),
-            "targets_jec_jordan": bool(targets.get("jec_jordan") or False),
-            "bible_book_id": bible_book_id,
-            "bible_verse_raw": bible_verse_raw,
-            "logo_file_name": _clean_text(item.get("logo_file_name")) or "",
-            "created_at": _clean_text(item.get("created_at")) or "",
-            "updated_at": _clean_text(item.get("updated_at")) or "",
+        new_yg_data[mid] = sorted({
+            _clean_text(gid) for gid in (targets.get("youth_groups") or []) if _clean_text(gid)
         })
-        for gid in (targets.get("youth_groups") or []):
-            gid_clean = _clean_text(gid)
-            if gid_clean:
-                yg_rows.append({"motto_id": mid, "youth_group_id": gid_clean})
 
-    S.store[S.MOTTOS_SHEET] = pd.DataFrame(motto_rows if motto_rows else [], columns=S.MOTTOS_COLUMNS)
-    S.store[S.MOTTO_YOUTH_GROUPS_SHEET] = pd.DataFrame(yg_rows if yg_rows else [], columns=S.MOTTO_YOUTH_GROUPS_COLUMNS)
+    # ── MOTTOS SHEET ──────────────────────────────────────────────────────────
+    mottos_df = S._scd_ensure_columns(S.store.get(S.MOTTOS_SHEET, pd.DataFrame()).copy())
+    active_m_df, inactive_m_df = S._scd_split(mottos_df)
+
+    old_active_mottos: dict[str, dict] = {}
+    if not active_m_df.empty:
+        for _, row in active_m_df.iterrows():
+            mid = _clean_text(row.get("motto_id"))
+            if mid:
+                old_active_mottos[mid] = row.to_dict()
+
+    final_mottos: list[dict] = list(inactive_m_df.replace({pd.NA: None}).to_dict(orient="records")) if not inactive_m_df.empty else []
+
+    for mid, new_row in new_motto_data.items():
+        old_row = old_active_mottos.get(mid)
+        if old_row is None:
+            final_mottos.append({**new_row, **S._scd_new_metadata(changed_by)})
+        else:
+            unchanged = all(
+                S._scd_val_for_compare(old_row.get(c)) == S._scd_val_for_compare(new_row.get(c))
+                for c in S.MOTTOS_COLUMNS
+            )
+            if unchanged:
+                final_mottos.append(old_row)
+            else:
+                closed = dict(old_row)
+                closed[S.SCD_ACTIVE_TO_COL] = now
+                closed[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+                final_mottos.append(closed)
+                final_mottos.append({**new_row, **S._scd_new_metadata(changed_by)})
+
+    # Close active mottos not present in payload (soft delete)
+    for mid, old_row in old_active_mottos.items():
+        if mid not in new_motto_data:
+            closed = dict(old_row)
+            closed[S.SCD_ACTIVE_TO_COL] = now
+            closed[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+            final_mottos.append(closed)
+
+    mottos_cols = S.MOTTOS_COLUMNS + [c for c in S.SCD_METADATA_COLUMNS if c not in S.MOTTOS_COLUMNS]
+    S.store[S.MOTTOS_SHEET] = pd.DataFrame(final_mottos if final_mottos else [], columns=mottos_cols)
+
+    # ── MOTTO_YOUTH_GROUPS SHEET ──────────────────────────────────────────────
+    yg_df = S._scd_ensure_columns(S.store.get(S.MOTTO_YOUTH_GROUPS_SHEET, pd.DataFrame()).copy())
+    active_yg_df, inactive_yg_df = S._scd_split(yg_df)
+
+    old_active_yg: dict[str, list[dict]] = {}
+    if not active_yg_df.empty:
+        for _, row in active_yg_df.iterrows():
+            mid = _clean_text(row.get("motto_id"))
+            if mid:
+                old_active_yg.setdefault(mid, []).append(row.to_dict())
+
+    final_yg: list[dict] = list(inactive_yg_df.replace({pd.NA: None}).to_dict(orient="records")) if not inactive_yg_df.empty else []
+
+    for mid, new_gids in new_yg_data.items():
+        old_rows = old_active_yg.get(mid, [])
+        old_gids = sorted({
+            _clean_text(r.get("youth_group_id")) for r in old_rows if _clean_text(r.get("youth_group_id"))
+        })
+        if old_gids == new_gids:
+            final_yg.extend(old_rows)
+        else:
+            for old_row in old_rows:
+                closed = dict(old_row)
+                closed[S.SCD_ACTIVE_TO_COL] = now
+                closed[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+                final_yg.append(closed)
+            for gid in new_gids:
+                final_yg.append({"motto_id": mid, "youth_group_id": gid, **S._scd_new_metadata(changed_by)})
+
+    # Close yg rows for mottos being soft-deleted
+    for mid in old_active_yg:
+        if mid not in new_motto_data:
+            for old_row in old_active_yg[mid]:
+                closed = dict(old_row)
+                closed[S.SCD_ACTIVE_TO_COL] = now
+                closed[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+                final_yg.append(closed)
+
+    yg_cols = S.MOTTO_YOUTH_GROUPS_COLUMNS + [c for c in S.SCD_METADATA_COLUMNS if c not in S.MOTTO_YOUTH_GROUPS_COLUMNS]
+    S.store[S.MOTTO_YOUTH_GROUPS_SHEET] = pd.DataFrame(final_yg if final_yg else [], columns=yg_cols)
+
     S.db.save_excel_sheets(S.store)
 
 
@@ -802,7 +911,7 @@ def _load_mottos_payload() -> dict:
     return {"mottos": normalized}
 
 
-def _save_mottos_payload(payload: dict) -> dict:
+def _save_mottos_payload(payload: dict, changed_by: str = "admin") -> dict:
     rows = payload.get("mottos") if isinstance(payload, dict) else []
     if not isinstance(rows, list):
         rows = []
@@ -813,7 +922,7 @@ def _save_mottos_payload(payload: dict) -> dict:
             continue
         normalized.append(item)
     result = {"mottos": normalized}
-    _save_mottos_to_sheets(result)
+    _save_mottos_to_sheets(result, changed_by=changed_by)
     for legacy_path in (_mottos_path(), _legacy_mottos_path()):
         if os.path.exists(legacy_path):
             try:
@@ -826,7 +935,7 @@ def _save_mottos_payload(payload: dict) -> dict:
 def _list_mottos_serialized() -> list[dict]:
     payload = _load_mottos_payload()
     rows = payload.get("mottos", [])
-    rows_sorted = sorted(rows, key=lambda x: _clean_text(x.get("updated_at")) or "", reverse=True)
+    rows_sorted = sorted(rows, key=lambda x: _clean_text(x.get("year_label")) or "", reverse=True)
     return [_serialize_motto(row) for row in rows_sorted]
 
 
@@ -1325,6 +1434,8 @@ def register_config_routes(app):
         if not isinstance(body, dict):
             return jsonify({"error": "invalid payload"}), 400
 
+        changed_by = (auth_exports["_current_user"]() or {}).get("username", "admin")
+
         with S.lock:
             payload = _load_mottos_payload()
             motto = _normalize_motto(body, touch_updated=True)
@@ -1344,7 +1455,7 @@ def register_config_routes(app):
                 return jsonify({"error": year_message}), 400
 
             payload["mottos"].append(motto)
-            saved = _save_mottos_payload(payload)
+            saved = _save_mottos_payload(payload, changed_by=changed_by)
 
         created = next((row for row in saved.get("mottos", []) if row.get("motto_id") == motto.get("motto_id")), motto)
         return jsonify({"ok": True, "motto": _serialize_motto(created)})
@@ -1358,6 +1469,8 @@ def register_config_routes(app):
         body = request.json or {}
         if not isinstance(body, dict):
             return jsonify({"error": "invalid payload"}), 400
+
+        changed_by = (auth_exports["_current_user"]() or {}).get("username", "admin")
 
         with S.lock:
             payload = _load_mottos_payload()
@@ -1387,7 +1500,7 @@ def register_config_routes(app):
 
             rows[idx] = updated
             payload["mottos"] = rows
-            saved = _save_mottos_payload(payload)
+            saved = _save_mottos_payload(payload, changed_by=changed_by)
 
         saved_row = next((row for row in saved.get("mottos", []) if row.get("motto_id") == rows[idx].get("motto_id")), rows[idx])
         return jsonify({"ok": True, "motto": _serialize_motto(saved_row)})
@@ -1398,6 +1511,8 @@ def register_config_routes(app):
         if err:
             return err
 
+        changed_by = (auth_exports["_current_user"]() or {}).get("username", "admin")
+
         with S.lock:
             payload = _load_mottos_payload()
             rows = payload.get("mottos", [])
@@ -1407,7 +1522,7 @@ def register_config_routes(app):
                 return jsonify({"error": "motto not found"}), 404
 
             payload["mottos"] = filtered
-            _save_mottos_payload(payload)
+            _save_mottos_payload(payload, changed_by=changed_by)
 
             for ext in S.ALLOWED_EXTENSIONS:
                 logo_path = os.path.join(MOTTO_LOGOS_DIR, f"{motto_id}.{ext}")
@@ -1436,6 +1551,8 @@ def register_config_routes(app):
         if ext not in S.ALLOWED_EXTENSIONS:
             return jsonify({"error": "unsupported logo type"}), 400
 
+        changed_by = (auth_exports["_current_user"]() or {}).get("username", "admin")
+
         with S.lock:
             payload = _load_mottos_payload()
             rows = payload.get("mottos", [])
@@ -1461,7 +1578,7 @@ def register_config_routes(app):
             }, existing=rows[idx], touch_updated=True)
             rows[idx] = updated
             payload["mottos"] = rows
-            _save_mottos_payload(payload)
+            _save_mottos_payload(payload, changed_by=changed_by)
 
         return jsonify({
             "ok": True,
