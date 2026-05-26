@@ -1885,7 +1885,7 @@ function TagField({ items, valueKey, onAdd, onRemove, placeholder, options = [] 
   )
 }
 
-function NationalityRowsEditor({ rows, onChange, options = [], lookup = null, placeholder = 'أضف جنسية…' }) {
+function NationalityRowsEditor({ rows, onChange, options = [], lookup = null, placeholder = 'أضف جنسية…', validationIssue = null }) {
   const normalizedRows = normalizeNationalityRows(rows, { lookup })
   const [open, setOpen] = useState(false)
   const [custom, setCustom] = useState(false)
@@ -1961,19 +1961,31 @@ function NationalityRowsEditor({ rows, onChange, options = [], lookup = null, pl
     <div className="profile-nationality-editor">
       {normalizedRows.length > 0 ? (
         <div className="profile-nationality-grid profile-nationality-editor-list">
-          {normalizedRows.map((row, index) => (
-            <article key={`${row.nationality || 'nationality-row'}-${index}`} className="profile-nationality-card profile-nationality-editor-card">
-              <div className="profile-nationality-card-head profile-nationality-editor-card-head">
-                <div className="profile-nationality-card-title profile-nationality-editor-card-title">
-                  {renderNationalityLabel(row, { fallbackIcon: '🌍', gap: 8 })}
+          {normalizedRows.map((row, index) => {
+            const targetId = `nationality.${index}`
+            const errorMessage = validationMessageForTarget(validationIssue, targetId)
+
+            return (
+              <article
+                key={`${row.nationality || 'nationality-row'}-${index}`}
+                className="profile-nationality-card profile-nationality-editor-card"
+                style={errorMessage ? PROFILE_VALIDATION_RING_STYLE : undefined}
+                data-validation-id={targetId}
+                tabIndex={-1}
+              >
+                <div className="profile-nationality-card-head profile-nationality-editor-card-head">
+                  <div className="profile-nationality-card-title profile-nationality-editor-card-title">
+                    {renderNationalityLabel(row, { fallbackIcon: '🌍', gap: 8 })}
+                  </div>
+                  <button type="button" className="btn btn-ghost btn-sm profile-nationality-editor-remove" onClick={() => removeRow(index)}>
+                    <Trash2 size={14} />
+                    حذف
+                  </button>
                 </div>
-                <button type="button" className="btn btn-ghost btn-sm profile-nationality-editor-remove" onClick={() => removeRow(index)}>
-                  <Trash2 size={14} />
-                  حذف
-                </button>
-              </div>
-            </article>
-          ))}
+                <ValidationMessage message={errorMessage} />
+              </article>
+            )
+          })}
         </div>
       ) : (
         <div className="profile-nationality-editor-empty">
@@ -2043,7 +2055,7 @@ function NationalityRowsEditor({ rows, onChange, options = [], lookup = null, pl
   )
 }
 
-function PhoneNumbersEditor({ rows, onChange, jobRows = [] }) {
+function PhoneNumbersEditor({ rows, onChange, jobRows = [], validationIssue = null }) {
   const jobOptions = extractJobOptions(jobRows)
   const validJobIds = jobOptions.map((option) => option.value)
   const normalizedRows = normalizeMobileNumberRows(rows, { validJobIds })
@@ -2113,8 +2125,15 @@ function PhoneNumbersEditor({ rows, onChange, jobRows = [] }) {
         const isPrimaryPersonal = typeMeta.baseType === 'personal' && Boolean(row.is_primary)
         const canChoosePrimary = typeMeta.baseType === 'personal' && personalRowCount > 1 && !isPrimaryPersonal
         const highlightPrimary = typeMeta.baseType === 'personal' && personalRowCount > 1 && isPrimaryPersonal
+        const targetId = `mobile_numbers.${index}`
+        const errorMessage = validationMessageForTarget(validationIssue, targetId)
         return (
-          <div key={row.mobile_number_record_id || `phone-row-${index}`} style={profileEditorCardStyle(highlightPrimary)}>
+          <div
+            key={row.mobile_number_record_id || `phone-row-${index}`}
+            style={{ ...profileEditorCardStyle(highlightPrimary), ...(errorMessage ? PROFILE_VALIDATION_RING_STYLE : {}) }}
+            data-validation-id={targetId}
+            tabIndex={-1}
+          >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
               <div
                 style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: canChoosePrimary ? 'pointer' : 'default' }}
@@ -2232,6 +2251,7 @@ function PhoneNumbersEditor({ rows, onChange, jobRows = [] }) {
                 </div>
               ) : null}
             </div>
+            <ValidationMessage message={errorMessage} />
           </div>
         )
       })}
@@ -2240,7 +2260,7 @@ function PhoneNumbersEditor({ rows, onChange, jobRows = [] }) {
   )
 }
 
-function EmailsEditor({ rows, onChange, jobRows = [] }) {
+function EmailsEditor({ rows, onChange, jobRows = [], validationIssue = null }) {
   const jobOptions = extractJobOptions(jobRows)
   const validJobIds = jobOptions.map((option) => option.value)
   const normalizedRows = normalizeEmailRows(rows, { validJobIds })
@@ -2301,8 +2321,15 @@ function EmailsEditor({ rows, onChange, jobRows = [] }) {
         const isPrimaryPersonal = typeMeta.normalized === 'personal' && Boolean(row.is_primary)
         const canChoosePrimary = typeMeta.normalized === 'personal' && personalRowCount > 1 && !isPrimaryPersonal
         const highlightPrimary = typeMeta.normalized === 'personal' && personalRowCount > 1 && isPrimaryPersonal
+        const targetId = `emails.${index}`
+        const errorMessage = validationMessageForTarget(validationIssue, targetId)
         return (
-          <div key={row.email_record_id || `email-row-${index}`} style={profileEditorCardStyle(highlightPrimary)}>
+          <div
+            key={row.email_record_id || `email-row-${index}`}
+            style={{ ...profileEditorCardStyle(highlightPrimary), ...(errorMessage ? PROFILE_VALIDATION_RING_STYLE : {}) }}
+            data-validation-id={targetId}
+            tabIndex={-1}
+          >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
               <div
                 style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: canChoosePrimary ? 'pointer' : 'default' }}
@@ -2400,6 +2427,7 @@ function EmailsEditor({ rows, onChange, jobRows = [] }) {
                 )}
               </div>
             </div>
+            <ValidationMessage message={errorMessage} />
           </div>
         )
       })}
@@ -2409,7 +2437,7 @@ function EmailsEditor({ rows, onChange, jobRows = [] }) {
   )
 }
 
-function SocialMediaEditor({ rows, onChange }) {
+function SocialMediaEditor({ rows, onChange, validationIssue = null }) {
   const normalizedRows = normalizeSocialMediaRows(rows)
 
   const commit = (nextRows) => onChange(normalizeSocialMediaRows(nextRows))
@@ -2437,8 +2465,15 @@ function SocialMediaEditor({ rows, onChange }) {
         const platformRowCount = countSocialPlatformRows(normalizedRows, row.platform)
         const canChoosePrimary = platformRowCount > 1 && !row.is_primary
         const highlightPrimary = platformRowCount > 1 && Boolean(row.is_primary)
+        const targetId = `social_media.${index}`
+        const errorMessage = validationMessageForTarget(validationIssue, targetId)
         return (
-          <div key={`social-row-${index}`} style={profileEditorCardStyle(highlightPrimary)}>
+          <div
+            key={`social-row-${index}`}
+            style={{ ...profileEditorCardStyle(highlightPrimary), ...(errorMessage ? PROFILE_VALIDATION_RING_STYLE : {}) }}
+            data-validation-id={targetId}
+            tabIndex={-1}
+          >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
               <div
                 style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', cursor: canChoosePrimary ? 'pointer' : 'default' }}
@@ -2497,6 +2532,7 @@ function SocialMediaEditor({ rows, onChange }) {
                 />
               </label>
             </div>
+            <ValidationMessage message={errorMessage} />
           </div>
         )
       })}
@@ -2597,7 +2633,7 @@ function CompactMultiSelect({ options, selected, onChange, placeholder = 'اخت
   )
 }
 
-function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches = {}, graduatedFromSchools = false, onGraduatedChange, schoolSystem = '', schoolSystemOptions = [], onSchoolSystemChange, schoolSystemSector = '', onSchoolSystemSectorChange, schoolFinalGpa = '', onSchoolFinalGpaChange }) {
+function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches = {}, graduatedFromSchools = false, onGraduatedChange, schoolSystem = '', schoolSystemOptions = [], onSchoolSystemChange, schoolSystemSector = '', onSchoolSystemSectorChange, schoolFinalGpa = '', onSchoolFinalGpaChange, validationIssue = null }) {
   const normalizedRows = normalizeSchoolRows(rows, { graduatedFromSchools })
   const [open, setOpen] = useState(false)
   const [custom, setCustom] = useState(false)
@@ -2630,6 +2666,7 @@ function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches =
     : sectorPath.type === 'الفرع' && sectorPath.branch
       ? (JORDAN_SCHOOL_SYSTEM_BRANCH_OPTIONS[sectorPath.branch] || [])
       : []
+  const schoolFinalGpaError = validationMessageForTarget(validationIssue, 'person.school_final_gpa')
 
   const handleSchoolSystemChange = (value) => {
     const normalizedValue = normalizeSchoolSystemValue(value)
@@ -2786,24 +2823,38 @@ function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches =
         </div>
       ) : null}
       {graduatedFromSchools ? (
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>المعدل النهائي للمدرسة</span>
-          <input
-            className="combo-input"
-            value={schoolFinalGpa}
-            placeholder="مثال: 92.4 أو 3.75/4"
-            onChange={(event) => onSchoolFinalGpaChange && onSchoolFinalGpaChange(normalizeFinalGpaValue(event.target.value))}
-          />
-        </label>
+        <div style={{ display: 'grid', gap: 6 }}>
+          <label
+            style={{ display: 'flex', flexDirection: 'column', gap: 4, ...(schoolFinalGpaError ? PROFILE_VALIDATION_WRAPPER_STYLE : {}) }}
+            data-validation-id="person.school_final_gpa"
+            tabIndex={-1}
+          >
+            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>المعدل النهائي للمدرسة</span>
+            <input
+              className="combo-input"
+              value={schoolFinalGpa}
+              placeholder="مثال: 92.4 أو 3.75/4"
+              onChange={(event) => onSchoolFinalGpaChange && onSchoolFinalGpaChange(normalizeFinalGpaValue(event.target.value))}
+            />
+          </label>
+          <ValidationMessage message={schoolFinalGpaError} />
+        </div>
       ) : null}
       {normalizedRows.map((row, index) => {
         const configuredSections = schoolBranchesForName(schoolBranches, row.school)
         const sectionOptions = configuredSections.includes(row.section) || !row.section
           ? configuredSections
           : [...configuredSections, row.section]
+        const targetId = `schools.${index}`
+        const errorMessage = validationMessageForTarget(validationIssue, targetId)
 
         return (
-          <div key={row.school_record_id || `school-row-${index}`} style={PROFILE_EDITOR_SURFACE_STYLE}>
+          <div
+            key={row.school_record_id || `school-row-${index}`}
+            style={{ ...PROFILE_EDITOR_SURFACE_STYLE, ...(errorMessage ? PROFILE_VALIDATION_RING_STYLE : {}) }}
+            data-validation-id={targetId}
+            tabIndex={-1}
+          >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{row.school || '—'}</div>
@@ -2877,6 +2928,7 @@ function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches =
                 />
               </label>
             </div>
+            <ValidationMessage message={errorMessage} />
           </div>
         )
       })}
@@ -2939,7 +2991,7 @@ function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches =
   )
 }
 
-function HigherEducationRowsEditor({ rows, onChange, universityOptions = [], majorOptions = [], degreeOptions = [] }) {
+function HigherEducationRowsEditor({ rows, onChange, universityOptions = [], majorOptions = [], degreeOptions = [], validationIssue = null }) {
   const normalizedRows = normalizeHigherEducationRows(rows)
   const [open, setOpen] = useState(false)
   const [custom, setCustom] = useState(false)
@@ -3043,9 +3095,16 @@ function HigherEducationRowsEditor({ rows, onChange, universityOptions = [], maj
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {normalizedRows.map((row, index) => {
         const stateLabel = higherEducationStateLabel(row.state)
+        const targetId = `higher_education.${index}`
+        const errorMessage = validationMessageForTarget(validationIssue, targetId)
 
         return (
-          <div key={`higher-education-row-${index}`} style={PROFILE_EDITOR_SURFACE_STYLE}>
+          <div
+            key={`higher-education-row-${index}`}
+            style={{ ...PROFILE_EDITOR_SURFACE_STYLE, ...(errorMessage ? PROFILE_VALIDATION_RING_STYLE : {}) }}
+            data-validation-id={targetId}
+            tabIndex={-1}
+          >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{row.university_college || '—'}</div>
@@ -3123,6 +3182,7 @@ function HigherEducationRowsEditor({ rows, onChange, universityOptions = [], maj
                 </label>
               ) : null}
             </div>
+            <ValidationMessage message={errorMessage} />
           </div>
         )
       })}
@@ -3185,7 +3245,7 @@ function HigherEducationRowsEditor({ rows, onChange, universityOptions = [], maj
   )
 }
 
-function JobRowsEditor({ rows, onChange, jobTitleOptions = [], companyOptions = [] }) {
+function JobRowsEditor({ rows, onChange, jobTitleOptions = [], companyOptions = [], validationIssue = null }) {
   const normalizedRows = normalizeJobRows(rows)
   const [open, setOpen] = useState(false)
   const [custom, setCustom] = useState(false)
@@ -3282,9 +3342,16 @@ function JobRowsEditor({ rows, onChange, jobTitleOptions = [], companyOptions = 
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       {normalizedRows.map((row, index) => {
         const stateLabel = jobStateLabel(row.state)
+        const targetId = `jobs.${index}`
+        const errorMessage = validationMessageForTarget(validationIssue, targetId)
 
         return (
-          <div key={row.job_id || `job-row-${index}`} style={PROFILE_EDITOR_SURFACE_STYLE}>
+          <div
+            key={row.job_id || `job-row-${index}`}
+            style={{ ...PROFILE_EDITOR_SURFACE_STYLE, ...(errorMessage ? PROFILE_VALIDATION_RING_STYLE : {}) }}
+            data-validation-id={targetId}
+            tabIndex={-1}
+          >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{jobRowLabel(row, index)}</div>
@@ -3346,6 +3413,7 @@ function JobRowsEditor({ rows, onChange, jobTitleOptions = [], companyOptions = 
                 />
               </label>
             </div>
+            <ValidationMessage message={errorMessage} />
           </div>
         )
       })}
@@ -3408,7 +3476,7 @@ function JobRowsEditor({ rows, onChange, jobTitleOptions = [], companyOptions = 
   )
 }
 
-function ResponsibilityRowsEditor({ rows, onChange, youthGroupOptions = [], responsibilityOptions = [], activeJecYear = '', resolveYouthGroupLabel = (value) => value }) {
+function ResponsibilityRowsEditor({ rows, onChange, youthGroupOptions = [], responsibilityOptions = [], activeJecYear = '', resolveYouthGroupLabel = (value) => value, validationIssue = null }) {
   const normalizedRows = normalizeResponsibilityRows(rows, { activeJecYear })
 
   const commit = (nextRows) => onChange(normalizeResponsibilityRows(nextRows, { activeJecYear }))
@@ -3456,9 +3524,16 @@ function ResponsibilityRowsEditor({ rows, onChange, youthGroupOptions = [], resp
         const rowYouthGroupOptions = currentYouthGroupId && !youthGroupOptions.some((option) => String(option?.value || '').trim() === currentYouthGroupId)
           ? [...youthGroupOptions, { value: currentYouthGroupId, label: resolveYouthGroupLabel(currentYouthGroupId) || currentYouthGroupId }]
           : youthGroupOptions
+        const targetId = `responsibilities.${index}`
+        const errorMessage = validationMessageForTarget(validationIssue, targetId)
 
         return (
-          <div key={`responsibility-row-${index}`} style={PROFILE_EDITOR_SURFACE_STYLE}>
+          <div
+            key={`responsibility-row-${index}`}
+            style={{ ...PROFILE_EDITOR_SURFACE_STYLE, ...(errorMessage ? PROFILE_VALIDATION_RING_STYLE : {}) }}
+            data-validation-id={targetId}
+            tabIndex={-1}
+          >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{title}</div>
@@ -3546,6 +3621,7 @@ function ResponsibilityRowsEditor({ rows, onChange, youthGroupOptions = [], resp
                 </label>
               </div>
             </div>
+            <ValidationMessage message={errorMessage} />
           </div>
         )
       })}
@@ -3664,7 +3740,7 @@ function collectArchivableYouthGroupIds({ memberships, fallbackMemberships = [],
   return activeGroupIds.length ? activeGroupIds : collectGroupIds(fallbackMemberships)
 }
 
-function AddressRowsEditor({ rows, onChange, governorateOptions, locationOnly = false }) {
+function AddressRowsEditor({ rows, onChange, governorateOptions, locationOnly = false, validationIssue = null }) {
   const normalizedRows = normalizeAddressEditorRows(rows)
   const primaryIndex = normalizedRows.findIndex(row => row.is_primary)
   const targetIndex = primaryIndex >= 0 ? primaryIndex : 0
@@ -3752,12 +3828,14 @@ function AddressRowsEditor({ rows, onChange, governorateOptions, locationOnly = 
     <div className="am-address-stack">
       {renderedRows.map((row, index) => {
         const actualIndex = resolveIndex(index)
+        const targetId = `addresses.${actualIndex}`
+        const errorMessage = validationMessageForTarget(validationIssue, targetId)
         const addressSummary = [row?.address, row?.city, row?.governorate, row?.country]
           .map(value => String(value || '').trim())
           .filter(Boolean)
           .join('، ')
         return (
-        <div key={index} className="am-address-card">
+        <div key={index} className="am-address-card" style={errorMessage ? PROFILE_VALIDATION_RING_STYLE : undefined} data-validation-id={targetId} tabIndex={-1}>
           <div className="am-address-card-header">
             <div>
               <div className="am-address-card-title">{locationOnly ? 'موقع المنزل' : `عنوان ${index + 1}`}</div>
@@ -3846,6 +3924,7 @@ function AddressRowsEditor({ rows, onChange, governorateOptions, locationOnly = 
               )}
             </div>
           </div>
+          <ValidationMessage message={errorMessage} />
         </div>
       )})}
       {!locationOnly && <button type="button" className="add-row-btn" onClick={addRow}><Plus size={14} /> إضافة عنوان</button>}
@@ -3854,71 +3933,92 @@ function AddressRowsEditor({ rows, onChange, governorateOptions, locationOnly = 
 }
 
 // ── Inline field variants ─────────────────────────────────────────────────────
-function InlineField({ label, value, onChange, dir = 'rtl' }) {
+function InlineField({ label, value, onChange, dir = 'rtl', error = '', targetId = '' }) {
+  const hasError = Boolean(error)
   return (
     <div className="info-row">
       <span className="info-key">{label}</span>
-      <div className="editable-inline" style={{ flex: 1 }}>
-        <input
-          value={value || ''}
-          onChange={e => onChange(e.target.value)}
-          placeholder="—"
-          dir={dir}
-          style={dir === 'ltr' ? { direction: 'ltr', textAlign: 'left' } : undefined}
-        />
-        <Pencil size={12} className="edit-icon" />
+      <div style={{ flex: 1, display: 'grid', gap: 6 }}>
+        <div className="editable-inline" style={hasError ? PROFILE_VALIDATION_WRAPPER_STYLE : undefined} data-validation-id={targetId || undefined} tabIndex={targetId ? -1 : undefined}>
+          <input
+            value={value || ''}
+            onChange={e => onChange(e.target.value)}
+            placeholder="—"
+            dir={dir}
+            style={dir === 'ltr' ? { direction: 'ltr', textAlign: 'left' } : undefined}
+          />
+          <Pencil size={12} className="edit-icon" />
+        </div>
+        <ValidationMessage message={error} />
       </div>
     </div>
   )
 }
 
-function InlineComboField({ label, value, onChange, options, dir = 'rtl' }) {
+function InlineComboField({ label, value, onChange, options, dir = 'rtl', error = '', targetId = '' }) {
+  const hasError = Boolean(error)
   return (
     <div className="info-row">
       <span className="info-key">{label}</span>
-      <div style={{ flex: 1 }}>
-        <ComboDropdown value={value} onChange={onChange} options={options} dir={dir} />
+      <div style={{ flex: 1, display: 'grid', gap: 6 }}>
+        <div style={hasError ? PROFILE_VALIDATION_WRAPPER_STYLE : undefined} data-validation-id={targetId || undefined} tabIndex={targetId ? -1 : undefined}>
+          <ComboDropdown value={value} onChange={onChange} options={options} dir={dir} />
+        </div>
+        <ValidationMessage message={error} />
       </div>
     </div>
   )
 }
 
-function InlineSelectField({ label, value, onChange, options, dir = 'rtl' }) {
+function InlineSelectField({ label, value, onChange, options, dir = 'rtl', error = '', targetId = '' }) {
+  const hasError = Boolean(error)
   return (
     <div className="info-row">
       <span className="info-key">{label}</span>
-      <div style={{ flex: 1 }}>
-        <SelectDropdown value={value} onChange={onChange} options={options} dir={dir} />
+      <div style={{ flex: 1, display: 'grid', gap: 6 }}>
+        <div style={hasError ? PROFILE_VALIDATION_WRAPPER_STYLE : undefined} data-validation-id={targetId || undefined} tabIndex={targetId ? -1 : undefined}>
+          <SelectDropdown value={value} onChange={onChange} options={options} dir={dir} />
+        </div>
+        <ValidationMessage message={error} />
       </div>
     </div>
   )
 }
 
-function InlineYearField({ label, value, onChange, fromYear = 1960 }) {
+function InlineYearField({ label, value, onChange, fromYear = 1960, error = '', targetId = '' }) {
+  const hasError = Boolean(error)
   return (
     <div className="info-row">
       <span className="info-key">{label}</span>
-      <div style={{ flex: 1 }}>
-        <YearPicker value={value} onChange={onChange} fromYear={fromYear} />
+      <div style={{ flex: 1, display: 'grid', gap: 6 }}>
+        <div style={hasError ? PROFILE_VALIDATION_WRAPPER_STYLE : undefined} data-validation-id={targetId || undefined} tabIndex={targetId ? -1 : undefined}>
+          <YearPicker value={value} onChange={onChange} fromYear={fromYear} />
+        </div>
+        <ValidationMessage message={error} />
       </div>
     </div>
   )
 }
 
-function InlineBirthDateField({ label, day, month, legacyValue, onChange }) {
+function InlineBirthDateField({ label, day, month, legacyValue, onChange, error = '', targetId = '' }) {
+  const hasError = Boolean(error)
   return (
     <div className="info-row">
       <span className="info-key">{label}</span>
-      <div style={{ flex: 1 }}>
-        <BirthDatePicker day={day} month={month} legacyValue={legacyValue} onChange={onChange} />
+      <div style={{ flex: 1, display: 'grid', gap: 6 }}>
+        <div style={hasError ? PROFILE_VALIDATION_WRAPPER_STYLE : undefined} data-validation-id={targetId || undefined} tabIndex={targetId ? -1 : undefined}>
+          <BirthDatePicker day={day} month={month} legacyValue={legacyValue} onChange={onChange} />
+        </div>
+        <ValidationMessage message={error} />
       </div>
     </div>
   )
 }
 
-function InlineDobField({ label, year, day, month, legacyValue, onChange, fromYear = 1960 }) {
+function InlineDobField({ label, year, day, month, legacyValue, onChange, fromYear = 1960, error = '', targetId = '' }) {
   const [monthState, setMonthState] = useState('')
   const [dayState, setDayState] = useState('')
+  const hasError = Boolean(error)
 
   useEffect(() => {
     const normalizedDay = toDatePart(day, 1, 31)
@@ -3952,47 +4052,50 @@ function InlineDobField({ label, year, day, month, legacyValue, onChange, fromYe
   return (
     <div className="info-row">
       <span className="info-key">{label}</span>
-      <div style={{ flex: 1 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '88px minmax(0, 1fr) 110px', gap: 8, alignItems: 'end' }}>
-          <div style={partStyle}>
-            <div style={titleStyle}>اليوم</div>
-            <select
-              className="combo-trigger"
-              style={{ cursor: 'pointer' }}
-              value={dayState}
-              onChange={e => emit({ nextDay: e.target.value })}
-            >
-              <option value="">—</option>
-              {days.map(value => <option key={value} value={String(value)}>{value}</option>)}
-            </select>
-          </div>
-          <div style={partStyle}>
-            <div style={titleStyle}>الشهر</div>
-            <select
-              className="combo-trigger"
-              style={{ cursor: 'pointer' }}
-              value={monthState}
-              onChange={e => emit({ nextMonth: e.target.value })}
-            >
-              <option value="">—</option>
-              {MONTHS.map(item => (
-                <option key={item.num} value={String(item.num)}>{item.num}</option>
-              ))}
-            </select>
-          </div>
-          <div style={partStyle}>
-            <div style={titleStyle}>السنة</div>
-            <select
-              className="combo-trigger"
-              style={{ cursor: 'pointer' }}
-              value={normalizedYear}
-              onChange={e => emit({ nextYear: e.target.value })}
-            >
-              <option value="">—</option>
-              {years.map(value => <option key={value} value={String(value)}>{value}</option>)}
-            </select>
+      <div style={{ flex: 1, display: 'grid', gap: 6 }}>
+        <div style={hasError ? PROFILE_VALIDATION_WRAPPER_STYLE : undefined} data-validation-id={targetId || undefined} tabIndex={targetId ? -1 : undefined}>
+          <div style={{ display: 'grid', gridTemplateColumns: '88px minmax(0, 1fr) 110px', gap: 8, alignItems: 'end' }}>
+            <div style={partStyle}>
+              <div style={titleStyle}>اليوم</div>
+              <select
+                className="combo-trigger"
+                style={{ cursor: 'pointer' }}
+                value={dayState}
+                onChange={e => emit({ nextDay: e.target.value })}
+              >
+                <option value="">—</option>
+                {days.map(value => <option key={value} value={String(value)}>{value}</option>)}
+              </select>
+            </div>
+            <div style={partStyle}>
+              <div style={titleStyle}>الشهر</div>
+              <select
+                className="combo-trigger"
+                style={{ cursor: 'pointer' }}
+                value={monthState}
+                onChange={e => emit({ nextMonth: e.target.value })}
+              >
+                <option value="">—</option>
+                {MONTHS.map(item => (
+                  <option key={item.num} value={String(item.num)}>{item.num}</option>
+                ))}
+              </select>
+            </div>
+            <div style={partStyle}>
+              <div style={titleStyle}>السنة</div>
+              <select
+                className="combo-trigger"
+                style={{ cursor: 'pointer' }}
+                value={normalizedYear}
+                onChange={e => emit({ nextYear: e.target.value })}
+              >
+                <option value="">—</option>
+                {years.map(value => <option key={value} value={String(value)}>{value}</option>)}
+              </select>
+            </div>
           </div>
         </div>
+        <ValidationMessage message={error} />
       </div>
     </div>
   )
@@ -4538,7 +4641,7 @@ function YouthMembershipCompactCard({ row, title, badge, logoUrl, logoAlt }) {
   )
 }
 
-function YouthMembershipEditor({ rows, onChange, youthGroupOptions, allowHigherAgeGroups = false }) {
+function YouthMembershipEditor({ rows, onChange, youthGroupOptions, allowHigherAgeGroups = false, validationIssue = null }) {
   const normalizedRows = normalizeYouthMembershipRows(rows)
   const ageGroupOptions = MEMBERSHIP_AGE_GROUPS_DESC.map((value) => ({ value, label: value }))
 
@@ -4608,8 +4711,17 @@ function YouthMembershipEditor({ rows, onChange, youthGroupOptions, allowHigherA
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>
-      {normalizedRows.map((row, index) => (
-        <div key={`membership-${index}`} style={{ ...PROFILE_EDITOR_SURFACE_STYLE, display: 'grid', gap: 12 }}>
+      {normalizedRows.map((row, index) => {
+        const targetId = `person_youth_group.${index}`
+        const errorMessage = validationMessageForTarget(validationIssue, targetId)
+
+        return (
+        <div
+          key={`membership-${index}`}
+          style={{ ...PROFILE_EDITOR_SURFACE_STYLE, ...(errorMessage ? PROFILE_VALIDATION_RING_STYLE : {}), display: 'grid', gap: 12 }}
+          data-validation-id={targetId}
+          tabIndex={-1}
+        >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 700, color: 'var(--navy)' }}>{row.current_age_group || 'بدون فئة حالية'}</span>
@@ -4652,28 +4764,39 @@ function YouthMembershipEditor({ rows, onChange, youthGroupOptions, allowHigherA
                 }) || option.value === historyRow.age_group
               ))
 
+              const historyTargetId = `person_youth_group.${index}.age_group_history.${historyIndex}`
+              const historyErrorMessage = validationMessageForTarget(validationIssue, historyTargetId)
+
               return (
-              <div key={`membership-${index}-history-${historyIndex}`} style={{ ...PROFILE_EDITOR_INSET_STYLE, display: 'grid', gridTemplateColumns: 'minmax(150px, 1fr) minmax(140px, 1fr) minmax(140px, 1fr) auto', gap: 8, alignItems: 'end' }}>
-                <label style={{ display: 'grid', gap: 6 }}>
-                  <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--gray-500)' }}>الفئة العمرية</span>
-                  <SelectDropdown value={historyRow.age_group} onChange={(value) => updateHistoryRow(index, historyIndex, 'age_group', value)} options={availableAgeGroupOptions} />
-                </label>
-                <label style={{ display: 'grid', gap: 6 }}>
-                  <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--gray-500)' }}>من</span>
-                  <input className="combo-input" type="date" value={historyRow.start_date || ''} onChange={(event) => updateHistoryRow(index, historyIndex, 'start_date', event.target.value)} />
-                </label>
-                <label style={{ display: 'grid', gap: 6 }}>
-                  <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--gray-500)' }}>إلى</span>
-                  <input className="combo-input" type="date" value={historyRow.end_date || ''} disabled={disableEndDate} onChange={(event) => updateHistoryRow(index, historyIndex, 'end_date', event.target.value)} />
-                </label>
-                <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => removeHistoryRow(index, historyIndex)}>
-                  حذف
-                </button>
+              <div key={`membership-${index}-history-${historyIndex}`} style={{ display: 'grid', gap: 8 }}>
+                <div
+                  style={{ ...PROFILE_EDITOR_INSET_STYLE, ...(historyErrorMessage ? PROFILE_VALIDATION_RING_STYLE : {}), display: 'grid', gridTemplateColumns: 'minmax(150px, 1fr) minmax(140px, 1fr) minmax(140px, 1fr) auto', gap: 8, alignItems: 'end' }}
+                  data-validation-id={historyTargetId}
+                  tabIndex={-1}
+                >
+                  <label style={{ display: 'grid', gap: 6 }}>
+                    <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--gray-500)' }}>الفئة العمرية</span>
+                    <SelectDropdown value={historyRow.age_group} onChange={(value) => updateHistoryRow(index, historyIndex, 'age_group', value)} options={availableAgeGroupOptions} />
+                  </label>
+                  <label style={{ display: 'grid', gap: 6 }}>
+                    <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--gray-500)' }}>من</span>
+                    <input className="combo-input" type="date" value={historyRow.start_date || ''} onChange={(event) => updateHistoryRow(index, historyIndex, 'start_date', event.target.value)} />
+                  </label>
+                  <label style={{ display: 'grid', gap: 6 }}>
+                    <span style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--gray-500)' }}>إلى</span>
+                    <input className="combo-input" type="date" value={historyRow.end_date || ''} disabled={disableEndDate} onChange={(event) => updateHistoryRow(index, historyIndex, 'end_date', event.target.value)} />
+                  </label>
+                  <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => removeHistoryRow(index, historyIndex)}>
+                    حذف
+                  </button>
+                </div>
+                <ValidationMessage message={historyErrorMessage} />
               </div>
             )}) : <ViewEmptyState text="أضف الفئات التي مرّ بها العضو داخل هذه الشبيبة" />}
           </div>
+          <ValidationMessage message={errorMessage} />
         </div>
-      ))}
+      )})}
 
       <button type="button" className="add-row-btn" onClick={addMembershipRow}><Plus size={14} /> إضافة شبيبة</button>
     </div>
@@ -6049,14 +6172,216 @@ function ConfirmDialog({ open, title, message, confirmLabel, confirmClass, onCon
   )
 }
 
+const UNSAVED_PROFILE_CHANGES_MESSAGE = 'لديك تعديلات غير محفوظة. إذا تابعت الآن فستفقد هذه التعديلات. هل تريد المتابعة؟'
+
+function cloneProfileSnapshot(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value))
+}
+
+const PROFILE_VALIDATION_FIELD_TARGETS = {
+  'الاسم الأول بالعربية': { tab: 'info', targetId: 'person.ar_first_name' },
+  'الاسم الثاني بالعربية': { tab: 'info', targetId: 'person.ar_second_name' },
+  'الاسم الثالث بالعربية': { tab: 'info', targetId: 'person.ar_third_name' },
+  'اسم العائلة بالعربية': { tab: 'info', targetId: 'person.ar_last_name' },
+  'الاسم الأول بالإنجليزية': { tab: 'info', targetId: 'person.en_first_name' },
+  'الاسم الثاني بالإنجليزية': { tab: 'info', targetId: 'person.en_second_name' },
+  'الاسم الثالث بالإنجليزية': { tab: 'info', targetId: 'person.en_third_name' },
+  'اسم العائلة بالإنجليزية': { tab: 'info', targetId: 'person.en_last_name' },
+  'اسم الأم الأول بالعربية': { tab: 'info', targetId: 'person.mother_ar_first_name' },
+  'اسم الأم الثاني بالعربية': { tab: 'info', targetId: 'person.mother_ar_second_name' },
+  'اسم الأم الأخير بالعربية': { tab: 'info', targetId: 'person.mother_ar_last_name' },
+  'اسم الأم الأول بالإنجليزية': { tab: 'info', targetId: 'person.mother_en_first_name' },
+  'اسم الأم الثاني بالإنجليزية': { tab: 'info', targetId: 'person.mother_en_second_name' },
+  'اسم الأم الأخير بالإنجليزية': { tab: 'info', targetId: 'person.mother_en_last_name' },
+}
+
+const PROFILE_VALIDATION_ADDRESS_FIELD_KEYS = {
+  'الدولة': 'country',
+  'المحافظة / الولاية': 'governorate',
+  'المدينة': 'city',
+  'العنوان التفصيلي': 'address',
+}
+
+const PROFILE_VALIDATION_DATE_SECTIONS = {
+  'المدرسة': { tab: 'edu', prefix: 'schools' },
+  'التعليم الجامعي': { tab: 'edu', prefix: 'higher_education' },
+  'الوظائف': { tab: 'work', prefix: 'jobs' },
+  'المسؤوليات': { tab: 'youth', prefix: 'responsibilities' },
+}
+
+const PROFILE_VALIDATION_DATE_FIELDS = {
+  'تاريخ البداية': 'start_date',
+  'تاريخ النهاية': 'end_date',
+}
+
+const PROFILE_VALIDATION_RING_STYLE = {
+  borderColor: '#ef4444',
+  boxShadow: '0 0 0 3px rgba(239,68,68,0.12)',
+}
+
+const PROFILE_VALIDATION_WRAPPER_STYLE = {
+  border: '1px solid #ef4444',
+  borderRadius: 14,
+  padding: 4,
+  boxShadow: '0 0 0 3px rgba(239,68,68,0.12)',
+}
+
+function resolveProfileValidationIssue(message) {
+  const text = String(message || '').trim()
+  if (!text) return null
+
+  for (const [label, issue] of Object.entries(PROFILE_VALIDATION_FIELD_TARGETS)) {
+    if (text.startsWith(`${label} يجب أن يحتوي`)) {
+      return { ...issue, message: text }
+    }
+  }
+
+  if (text === 'تاريخ الميلاد يجب أن يحتوي السنة والشهر واليوم وأن يكون تاريخًا صالحًا.' || text === 'تاريخ الميلاد غير صالح.') {
+    return { tab: 'info', targetId: 'person.birth_date', message: text }
+  }
+
+  if (text === 'الجنس يجب أن يكون ذكر أو أنثى فقط.') {
+    return { tab: 'info', targetId: 'person.gender', message: text }
+  }
+
+  if (text === 'المعدل المدرسي يجب أن يكون رقمًا صحيحًا أو عشريًا.') {
+    return { tab: 'edu', targetId: 'person.school_final_gpa', message: text }
+  }
+
+  let match = text.match(/^الجنسية #(\d+) يجب أن يحتوي/)
+  if (match) {
+    return { tab: 'info', targetId: `nationality.${Math.max(0, parseInt(match[1], 10) - 1)}`, message: text }
+  }
+
+  match = text.match(/^رقم الهاتف #(\d+) غير صالح\./)
+  if (match) {
+    return { tab: 'info', targetId: `mobile_numbers.${Math.max(0, parseInt(match[1], 10) - 1)}`, message: text }
+  }
+
+  match = text.match(/^البريد الإلكتروني #(\d+) غير صالح\.$/)
+  if (match) {
+    return { tab: 'info', targetId: `emails.${Math.max(0, parseInt(match[1], 10) - 1)}`, message: text }
+  }
+
+  match = text.match(/^رابط التواصل الاجتماعي #(\d+) غير صالح\.$/)
+  if (match) {
+    return { tab: 'info', targetId: `social_media.${Math.max(0, parseInt(match[1], 10) - 1)}`, message: text }
+  }
+
+  match = text.match(/^العنوان #(\d+): (.+) يجب أن يكون بالعربية أو بالإنجليزية فقط دون خلط بين اللغتين\.$/)
+  if (match) {
+    const rowIndex = Math.max(0, parseInt(match[1], 10) - 1)
+    const fieldKey = PROFILE_VALIDATION_ADDRESS_FIELD_KEYS[match[2]]
+    return {
+      tab: 'address',
+      targetId: fieldKey ? `addresses.${rowIndex}.${fieldKey}` : `addresses.${rowIndex}`,
+      message: text,
+    }
+  }
+
+  match = text.match(/^(المدرسة|التعليم الجامعي|الوظائف|المسؤوليات) #(\d+): (تاريخ البداية|تاريخ النهاية) يجب أن يكون تاريخًا صالحًا\.$/)
+  if (match) {
+    const section = PROFILE_VALIDATION_DATE_SECTIONS[match[1]]
+    const fieldKey = PROFILE_VALIDATION_DATE_FIELDS[match[3]]
+    const rowIndex = Math.max(0, parseInt(match[2], 10) - 1)
+    if (section && fieldKey) {
+      return { tab: section.tab, targetId: `${section.prefix}.${rowIndex}.${fieldKey}`, message: text }
+    }
+  }
+
+  match = text.match(/^المعدل الجامعي #(\d+) يجب أن يكون رقمًا صحيحًا أو عشريًا\.$/)
+  if (match) {
+    return { tab: 'edu', targetId: `higher_education.${Math.max(0, parseInt(match[1], 10) - 1)}.final_gpa`, message: text }
+  }
+
+  if (text === 'لا يمكن اختيار نفس الشبيبة أكثر من مرة داخل العضويات.') {
+    return { tab: 'youth', targetId: 'person_youth_group.1.youth_group_id', message: text }
+  }
+
+  match = text.match(/^تكرار الفئة العمرية '.+' داخل الشبيبة #(\d+) يتطلب تحديد تاريخ بداية أو نهاية لكل تكرار إضافي\.$/)
+  if (match) {
+    return { tab: 'youth', targetId: `person_youth_group.${Math.max(0, parseInt(match[1], 10) - 1)}.age_group_history.1`, message: text }
+  }
+
+  match = text.match(/^سجل الفئة العمرية #(\d+) داخل الشبيبة #(\d+): (تاريخ البداية|تاريخ النهاية) يجب أن يكون تاريخًا صالحًا\.$/)
+  if (match) {
+    const historyIndex = Math.max(0, parseInt(match[1], 10) - 1)
+    const membershipIndex = Math.max(0, parseInt(match[2], 10) - 1)
+    const fieldKey = PROFILE_VALIDATION_DATE_FIELDS[match[3]]
+    return {
+      tab: 'youth',
+      targetId: fieldKey
+        ? `person_youth_group.${membershipIndex}.age_group_history.${historyIndex}.${fieldKey}`
+        : `person_youth_group.${membershipIndex}.age_group_history.${historyIndex}`,
+      message: text,
+    }
+  }
+
+  if (text === 'مسؤولية الشبيبة يجب أن تطابق إحدى عضويات الشخص في الشبيبة.') {
+    return { tab: 'youth', targetId: 'responsibilities.0.youth_group_id', message: text }
+  }
+
+  if (text.includes('العنوان #')) return { tab: 'address', targetId: 'addresses.0', message: text }
+  if (text.includes('الشبيبة')) return { tab: 'youth', targetId: 'person_youth_group.0', message: text }
+  if (text.includes('الوظائف')) return { tab: 'work', targetId: 'jobs.0', message: text }
+  if (text.includes('التعليم الجامعي') || text.includes('المعدل الجامعي') || text.includes('المعدل المدرسي') || text.includes('المدرسة')) {
+    return { tab: 'edu', targetId: 'schools.0', message: text }
+  }
+  if (text.includes('رقم الهاتف') || text.includes('البريد الإلكتروني') || text.includes('التواصل الاجتماعي') || text.includes('الجنسية')) {
+    return { tab: 'info', targetId: 'mobile_numbers.0', message: text }
+  }
+
+  return null
+}
+
+function isValidationIssueForTarget(validationIssue, targetId) {
+  const issueTargetId = String(validationIssue?.targetId || '').trim()
+  const normalizedTargetId = String(targetId || '').trim()
+  if (!issueTargetId || !normalizedTargetId) return false
+  return issueTargetId === normalizedTargetId || issueTargetId.startsWith(`${normalizedTargetId}.`)
+}
+
+function validationMessageForTarget(validationIssue, targetId) {
+  return isValidationIssueForTarget(validationIssue, targetId) ? validationIssue.message : ''
+}
+
+function findValidationTargetElement(targetId) {
+  if (!targetId || typeof document === 'undefined') return null
+  const nodes = Array.from(document.querySelectorAll('[data-validation-id]'))
+  let currentTargetId = String(targetId).trim()
+
+  while (currentTargetId) {
+    const found = nodes.find((node) => node.getAttribute('data-validation-id') === currentTargetId)
+    if (found) return found
+    const lastDotIndex = currentTargetId.lastIndexOf('.')
+    if (lastDotIndex === -1) break
+    currentTargetId = currentTargetId.slice(0, lastDotIndex)
+  }
+
+  return null
+}
+
+function ValidationMessage({ message }) {
+  if (!message) return null
+  return (
+    <div className="am-field-error">
+      <AlertCircle size={13} style={{ flexShrink: 0 }} /> {message}
+    </div>
+  )
+}
+
 // ── Main profile page ─────────────────────────────────────────────────────────
-export default function Profile({ personId, isUnregistered, onBack, toast, orgContext, onViewProfile, onPromoted, currentUser, readOnly = false }) {
+export default function Profile({ personId, isUnregistered, onBack, toast, orgContext, onViewProfile, onPromoted, currentUser, readOnly = false, onUnsavedChangesChange }) {
   const [data, setData]           = useState(null)
   const [photo, setPhoto]         = useState(null)
   const [loadError, setLoadError] = useState('')
   const [loading, setLoading]     = useState(true)
   const [saving, setSaving]       = useState(false)
   const [isEditing, setIsEditing] = useState(false)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  const [validationErrors, setValidationErrors] = useState([])
+  const [validationIssue, setValidationIssue] = useState(null)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [promoting, setPromoting] = useState(false)
   const [activeTab, setActiveTab] = useState('info')
@@ -6068,15 +6393,11 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   const [schoolLogoEntries, setSchoolLogoEntries] = useState([])
   const [nationalityIsoLookup, setNationalityIsoLookup] = useState(() => new Map())
   const [confirm, setConfirm]     = useState(null) // { action: 'delete' | 'archive' | 'promote' }
-  const saveTimeout = useRef(null)
   const loadRequestId = useRef(0)
-  const pendingSaveData = useRef(null)
-  const saveInFlight = useRef(false)
-  const activeSavePromise = useRef(Promise.resolve())
-  const isUnmounted = useRef(false)
   const filtersLoaded = useRef(false)
   const editMetaLoaded = useRef(false)
   const dataRef = useRef(null)
+  const savedDataRef = useRef(null)
   const lastArchivableMemberships = useRef([])
   const isViewerAdmin = currentUser?.role === 'admin'
   const isViewingOwnProfile =
@@ -6176,11 +6497,39 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     editMetaLoaded.current = false
   }, [personId, isUnregistered])
 
-  useEffect(() => () => {
-    isUnmounted.current = true
-    clearTimeout(saveTimeout.current)
-    pendingSaveData.current = null
-  }, [])
+  useEffect(() => {
+    if (!isEditing || !hasUnsavedChanges) return undefined
+
+    const handleBeforeUnload = (event) => {
+      event.preventDefault()
+      event.returnValue = ''
+      return ''
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [hasUnsavedChanges, isEditing])
+
+  useEffect(() => {
+    if (!onUnsavedChangesChange) return undefined
+    onUnsavedChangesChange(Boolean(isEditing && hasUnsavedChanges))
+    return () => onUnsavedChangesChange(false)
+  }, [hasUnsavedChanges, isEditing, onUnsavedChangesChange])
+
+  useEffect(() => {
+    if (!validationIssue?.targetId) return undefined
+
+    const frameId = window.requestAnimationFrame(() => {
+      const target = findValidationTargetElement(validationIssue.targetId)
+      if (!target) return
+      target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' })
+      if (typeof target.focus === 'function') {
+        target.focus({ preventScroll: true })
+      }
+    })
+
+    return () => window.cancelAnimationFrame(frameId)
+  }, [activeTab, validationIssue])
 
   useEffect(() => {
     dataRef.current = data
@@ -6266,13 +6615,16 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   useEffect(() => {
     const requestId = ++loadRequestId.current
     let cancelled = false
-    clearTimeout(saveTimeout.current)
-    pendingSaveData.current = null
     dataRef.current = null
+    savedDataRef.current = null
     lastArchivableMemberships.current = []
     setSaving(false)
     setLoading(true)
     setLoadError('')
+    setHasUnsavedChanges(false)
+    setSaveError('')
+    setValidationErrors([])
+    setValidationIssue(null)
     setData(null)
     setPhoto(null)
     // Both registered and unregistered return the same shape:
@@ -6340,14 +6692,22 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       d.responsibilities = normalizeResponsibilityRows(d.responsibilities, {})
       d.addresses = normalizeAddressEditorRows(d.addresses, { ensureRow: false })
       d.person = personData
+      savedDataRef.current = cloneProfileSnapshot(d)
       setLoadError('')
+      setValidationErrors([])
+      setValidationIssue(null)
       setData(d)
       setPhoto(d.photo ?? null)
       setLoading(false)
     }).catch((error) => {
       if (cancelled || loadRequestId.current !== requestId) return
+      savedDataRef.current = null
       setData(null)
       setPhoto(null)
+      setHasUnsavedChanges(false)
+      setSaveError('')
+      setValidationErrors([])
+      setValidationIssue(null)
       setLoadError(getApiErrorMessage(error, 'تعذّر تحميل الملف الشخصي'))
       setLoading(false)
     })
@@ -6402,72 +6762,76 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     await api.updatePerson(personId, payload)
   }
 
-  async function commitQueuedSave() {
-    if (saveInFlight.current) {
-      return activeSavePromise.current
-    }
-    if (!pendingSaveData.current) {
-      if (!isUnmounted.current) setSaving(false)
+  const discardUnsavedChanges = useCallback(() => {
+    const snapshot = cloneProfileSnapshot(savedDataRef.current)
+    dataRef.current = snapshot
+    setData(snapshot)
+    setHasUnsavedChanges(false)
+    setSaveError('')
+    setValidationErrors([])
+    setValidationIssue(null)
+  }, [])
+
+  const confirmDiscardUnsavedChanges = useCallback(({ discard = false } = {}) => {
+    if (!isEditing || !hasUnsavedChanges) return true
+    const confirmed = window.confirm(UNSAVED_PROFILE_CHANGES_MESSAGE)
+    if (!confirmed) return false
+    if (discard) discardUnsavedChanges()
+    return true
+  }, [discardUnsavedChanges, hasUnsavedChanges, isEditing])
+
+  async function handleSave() {
+    if (!dataRef.current || saving || !hasUnsavedChanges) return true
+
+    setSaving(true)
+    setSaveError('')
+    try {
+      await persistProfile(dataRef.current)
+      savedDataRef.current = cloneProfileSnapshot(dataRef.current)
+      setHasUnsavedChanges(false)
+      setValidationErrors([])
+      setValidationIssue(null)
+      toast('تم حفظ التعديلات', 'success')
       return true
-    }
+    } catch (error) {
+      const responseErrors = Array.isArray(error?.data?.errors)
+        ? error.data.errors.map((item) => String(item || '').trim()).filter(Boolean)
+        : String(error?.data?.error || '').trim()
+          ? [String(error.data.error).trim()]
+          : []
+      const primaryIssue = responseErrors.length ? resolveProfileValidationIssue(responseErrors[0]) : null
 
-    const nextData = pendingSaveData.current
-    pendingSaveData.current = null
-    saveInFlight.current = true
-    if (!isUnmounted.current) setSaving(true)
+      setValidationErrors(responseErrors)
+      setValidationIssue(primaryIssue)
 
-    const task = (async () => {
-      let saveSucceeded = true
-      try {
-        await persistProfile(nextData)
-      } catch (error) {
-        saveSucceeded = false
-        toast(getApiErrorMessage(error, 'خطأ في الحفظ'), 'error')
-      } finally {
-        saveInFlight.current = false
-        if (pendingSaveData.current) {
-          void commitQueuedSave()
-        } else if (!isUnmounted.current) {
-          setSaving(false)
-        }
+      if (primaryIssue?.tab) {
+        setActiveTab(primaryIssue.tab)
       }
 
-      return saveSucceeded
-    })()
-
-    activeSavePromise.current = task
-    return task
-  }
-
-  function scheduleAutoSave(newData) {
-    clearTimeout(saveTimeout.current)
-    pendingSaveData.current = newData
-    if (!isUnmounted.current) setSaving(true)
-    saveTimeout.current = setTimeout(() => {
-      saveTimeout.current = null
-      void commitQueuedSave()
-    }, 1200)
-  }
-
-  async function flushPendingSave() {
-    clearTimeout(saveTimeout.current)
-    saveTimeout.current = null
-    if (pendingSaveData.current) {
-      return commitQueuedSave()
+      if (responseErrors.length) {
+        setSaveError('')
+        toast('يرجى تصحيح الحقول المظللة ثم إعادة الحفظ', 'error')
+      } else {
+        const message = getApiErrorMessage(error, 'خطأ في الحفظ')
+        setSaveError(message)
+        toast(message, 'error')
+      }
+      return false
+    } finally {
+      setSaving(false)
     }
-    if (saveInFlight.current) {
-      return activeSavePromise.current
-    }
-    return true
   }
 
   const update = useCallback((changes) => {
+    setHasUnsavedChanges(true)
+    setSaveError('')
+    setValidationErrors([])
+    setValidationIssue(null)
     setData((prev) => {
       if (!prev) return prev
       const resolvedChanges = typeof changes === 'function' ? changes(prev) : changes
       const nd = { ...prev, ...resolvedChanges }
       dataRef.current = nd
-      scheduleAutoSave(nd)
       return nd
     })
   }, [])
@@ -6536,8 +6900,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   const handlePromoteConfirm = async () => {
     setPromoting(true)
     try {
-      const saveSucceeded = await flushPendingSave()
-      if (!saveSucceeded) return
+      if (!confirmDiscardUnsavedChanges({ discard: true })) return
       const res = await api.promoteUnregistered(personId)
       setConfirm(null)
       onPromoted && onPromoted(res.person_id)
@@ -6550,8 +6913,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
 
   const handleDeleteConfirm = async () => {
     try {
-      const saveSucceeded = await flushPendingSave()
-      if (!saveSucceeded) return
+      if (!confirmDiscardUnsavedChanges({ discard: true })) return
       if (isUnregistered) {
         await api.deleteUnregistered(personId)
       } else {
@@ -6568,8 +6930,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
 
   const handleArchiveConfirm = async () => {
     try {
-      const saveSucceeded = await flushPendingSave()
-      if (!saveSucceeded) return
+      if (!confirmDiscardUnsavedChanges({ discard: true })) return
 
       const youthGroupIds = collectArchivableYouthGroupIds({
         memberships: dataRef.current?.person_youth_group,
@@ -6604,9 +6965,20 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   }
 
   const handleBack = async () => {
-    const saveSucceeded = await flushPendingSave()
-    if (!saveSucceeded) return
+    if (!confirmDiscardUnsavedChanges({ discard: true })) return
     onBack()
+  }
+
+  const handleEditToggle = () => {
+    if (!isEditing) {
+      setSaveError('')
+      setIsEditing(true)
+      return
+    }
+
+    if (!confirmDiscardUnsavedChanges({ discard: true })) return
+    setSaveError('')
+    setIsEditing(false)
   }
 
   if (loading || (isEditing && canEnterEditMode && !filtersResolved)) return <div className="loading-center"><div className="spinner" /></div>
@@ -7105,14 +7477,25 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
           {canEnterEditMode && (
             <button
               className={`btn btn-sm profile-edit-toggle ${isEditing ? 'btn-ghost is-active' : 'btn-primary'}`}
-              onClick={() => setIsEditing((current) => !current)}
+              onClick={handleEditToggle}
               style={{ display: 'flex', alignItems: 'center', gap: 6 }}
             >
               <Pencil size={14} /> {isEditing ? 'إنهاء التحرير' : 'تعديل الملف'}
             </button>
           )}
+          {isEditing && (
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={handleSave}
+              disabled={saving || !hasUnsavedChanges}
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <Check size={14} /> {saving ? 'جارٍ الحفظ…' : 'حفظ التعديلات'}
+            </button>
+          )}
           {isEditing && <span className="profile-edit-mode-pill"><Pencil size={12} /> وضع التحرير</span>}
-          {isEditing && saving && <span className="profile-saving-indicator" style={{ fontSize: '0.82rem', color: 'var(--gray-400)' }}>جارٍ الحفظ…</span>}
+          {isEditing && hasUnsavedChanges && !saving && <span className="profile-saving-indicator" style={{ fontSize: '0.82rem', color: 'var(--red)' }}>توجد تغييرات غير محفوظة</span>}
+          {isEditing && !hasUnsavedChanges && !saving && <span className="profile-saving-indicator" style={{ fontSize: '0.82rem', color: 'var(--gray-400)' }}>كل التغييرات محفوظة</span>}
           {canFullyEditProfile && isUnregistered && (
             <button
               className="btn btn-gold btn-sm"
@@ -7142,6 +7525,23 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
           </button>}
         </div>
       </div>
+
+      {isEditing && saveError && (
+        <div className="am-field-error" style={{ marginBottom: 16 }}>
+          <AlertCircle size={13} style={{ flexShrink: 0 }} /> {saveError}
+        </div>
+      )}
+
+      {isEditing && validationErrors.length > 0 && (
+        <div style={{ marginBottom: 16, border: '1px solid #fecaca', borderRadius: 'var(--radius-md)', background: '#fef2f2', padding: '12px 14px', display: 'grid', gap: 8 }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: '#991b1b', fontWeight: 700 }}>
+            <AlertCircle size={15} /> يرجى تصحيح هذه الأخطاء قبل الحفظ
+          </div>
+          <ul style={{ margin: 0, paddingInlineStart: 20, color: '#991b1b', display: 'grid', gap: 4 }}>
+            {validationErrors.map((message, index) => <li key={`${message}-${index}`}>{message}</li>)}
+          </ul>
+        </div>
+      )}
 
       {/* Unregistered banner */}
       {isUnregistered && (
@@ -7439,35 +7839,37 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                   <div className="profile-name-section">
                     <div className="profile-name-section-title">الاسم بالعربية</div>
                     <InlineSelectField label="اللقب" value={person?.title} onChange={updateArabicTitle} options={personTitleOptions(person?.title)} />
-                    <InlineComboField label="الاسم الأول"   value={person?.ar_first_name}  onChange={v => updateField('ar_first_name', v)}  options={opts('ar_first_name')} />
-                    <InlineComboField label="الاسم الثاني"  value={person?.ar_second_name} onChange={v => updateField('ar_second_name', v)} options={opts('ar_second_name')} />
-                    <InlineComboField label="الاسم الثالث"  value={person?.ar_third_name}  onChange={v => updateField('ar_third_name', v)}  options={opts('ar_third_name')} />
-                    <InlineComboField label="اسم العائلة"   value={person?.ar_last_name}   onChange={v => updateField('ar_last_name', v)}   options={opts('ar_last_name')} />
+                    <InlineComboField label="الاسم الأول" value={person?.ar_first_name} onChange={v => updateField('ar_first_name', v)} options={opts('ar_first_name')} error={validationMessageForTarget(validationIssue, 'person.ar_first_name')} targetId="person.ar_first_name" />
+                    <InlineComboField label="الاسم الثاني" value={person?.ar_second_name} onChange={v => updateField('ar_second_name', v)} options={opts('ar_second_name')} error={validationMessageForTarget(validationIssue, 'person.ar_second_name')} targetId="person.ar_second_name" />
+                    <InlineComboField label="الاسم الثالث" value={person?.ar_third_name} onChange={v => updateField('ar_third_name', v)} options={opts('ar_third_name')} error={validationMessageForTarget(validationIssue, 'person.ar_third_name')} targetId="person.ar_third_name" />
+                    <InlineComboField label="اسم العائلة" value={person?.ar_last_name} onChange={v => updateField('ar_last_name', v)} options={opts('ar_last_name')} error={validationMessageForTarget(validationIssue, 'person.ar_last_name')} targetId="person.ar_last_name" />
                     <div className="profile-name-section-title" style={{ marginTop: 12 }}>اسم الأم</div>
-                    <InlineComboField label="الاسم الأول" value={person?.mother_ar_first_name} onChange={v => updateField('mother_ar_first_name', v)} options={opts('mother_ar_first_name')} />
-                    <InlineComboField label="الاسم الثاني" value={person?.mother_ar_second_name} onChange={v => updateField('mother_ar_second_name', v)} options={opts('mother_ar_second_name')} />
-                    <InlineComboField label="اسم العائلة" value={person?.mother_ar_last_name} onChange={v => updateField('mother_ar_last_name', v)} options={opts('mother_ar_last_name')} />
+                    <InlineComboField label="الاسم الأول" value={person?.mother_ar_first_name} onChange={v => updateField('mother_ar_first_name', v)} options={opts('mother_ar_first_name')} error={validationMessageForTarget(validationIssue, 'person.mother_ar_first_name')} targetId="person.mother_ar_first_name" />
+                    <InlineComboField label="الاسم الثاني" value={person?.mother_ar_second_name} onChange={v => updateField('mother_ar_second_name', v)} options={opts('mother_ar_second_name')} error={validationMessageForTarget(validationIssue, 'person.mother_ar_second_name')} targetId="person.mother_ar_second_name" />
+                    <InlineComboField label="اسم العائلة" value={person?.mother_ar_last_name} onChange={v => updateField('mother_ar_last_name', v)} options={opts('mother_ar_last_name')} error={validationMessageForTarget(validationIssue, 'person.mother_ar_last_name')} targetId="person.mother_ar_last_name" />
                   </div>
                   <div className="profile-name-section profile-name-section-english">
                     <div className="profile-name-section-title">English Name</div>
                     <InlineSelectField label="Title" value={englishTitleForPerson} onChange={updateEnglishTitle} options={personEnglishTitleOptions(person?.title)} dir="ltr" />
-                    <InlineComboField label="First Name"  value={person?.en_first_name}  onChange={v => updateField('en_first_name', v)} options={opts('en_first_name')} dir="ltr" />
-                    <InlineComboField label="Second Name" value={person?.en_second_name} onChange={v => updateField('en_second_name', v)} options={opts('en_second_name')} dir="ltr" />
-                    <InlineComboField label="Third Name"  value={person?.en_third_name}  onChange={v => updateField('en_third_name', v)} options={opts('en_third_name')} dir="ltr" />
-                    <InlineComboField label="Last Name"   value={person?.en_last_name}   onChange={v => updateField('en_last_name', v)} options={opts('en_last_name')} dir="ltr" />
+                    <InlineComboField label="First Name" value={person?.en_first_name} onChange={v => updateField('en_first_name', v)} options={opts('en_first_name')} dir="ltr" error={validationMessageForTarget(validationIssue, 'person.en_first_name')} targetId="person.en_first_name" />
+                    <InlineComboField label="Second Name" value={person?.en_second_name} onChange={v => updateField('en_second_name', v)} options={opts('en_second_name')} dir="ltr" error={validationMessageForTarget(validationIssue, 'person.en_second_name')} targetId="person.en_second_name" />
+                    <InlineComboField label="Third Name" value={person?.en_third_name} onChange={v => updateField('en_third_name', v)} options={opts('en_third_name')} dir="ltr" error={validationMessageForTarget(validationIssue, 'person.en_third_name')} targetId="person.en_third_name" />
+                    <InlineComboField label="Last Name" value={person?.en_last_name} onChange={v => updateField('en_last_name', v)} options={opts('en_last_name')} dir="ltr" error={validationMessageForTarget(validationIssue, 'person.en_last_name')} targetId="person.en_last_name" />
                     <div className="profile-name-section-title" style={{ marginTop: 12 }}>Mother's Name</div>
-                    <InlineComboField label="First Name" value={person?.mother_en_first_name} onChange={v => updateField('mother_en_first_name', v)} options={opts('mother_en_first_name')} dir="ltr" />
-                    <InlineComboField label="Second Name" value={person?.mother_en_second_name} onChange={v => updateField('mother_en_second_name', v)} options={opts('mother_en_second_name')} dir="ltr" />
-                    <InlineComboField label="Last Name" value={person?.mother_en_last_name} onChange={v => updateField('mother_en_last_name', v)} options={opts('mother_en_last_name')} dir="ltr" />
+                    <InlineComboField label="First Name" value={person?.mother_en_first_name} onChange={v => updateField('mother_en_first_name', v)} options={opts('mother_en_first_name')} dir="ltr" error={validationMessageForTarget(validationIssue, 'person.mother_en_first_name')} targetId="person.mother_en_first_name" />
+                    <InlineComboField label="Second Name" value={person?.mother_en_second_name} onChange={v => updateField('mother_en_second_name', v)} options={opts('mother_en_second_name')} dir="ltr" error={validationMessageForTarget(validationIssue, 'person.mother_en_second_name')} targetId="person.mother_en_second_name" />
+                    <InlineComboField label="Last Name" value={person?.mother_en_last_name} onChange={v => updateField('mother_en_last_name', v)} options={opts('mother_en_last_name')} dir="ltr" error={validationMessageForTarget(validationIssue, 'person.mother_en_last_name')} targetId="person.mother_en_last_name" />
                   </div>
                 </div>
-                <InlineSelectField label="الجنس"        value={person?.gender}      onChange={v => updateField('gender', v)}       options={opts('gender')} />
+                <InlineSelectField label="الجنس" value={person?.gender} onChange={v => updateField('gender', v)} options={opts('gender')} error={validationMessageForTarget(validationIssue, 'person.gender')} targetId="person.gender" />
                 <InlineDobField
                   label="تاريخ الميلاد"
                   year={person?.birth_year}
                   day={person?.birth_day}
                   month={person?.birth_month}
                   onChange={updateBirthDate}
+                  error={validationMessageForTarget(validationIssue, 'person.birth_date')}
+                  targetId="person.birth_date"
                 />
               </div>
             </div>
@@ -7480,25 +7882,26 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                     onChange={rows => updateSub('nationality', rows)}
                     lookup={nationalityIsoLookup}
                     options={opts('nationality')}
+                    validationIssue={validationIssue}
                   />
                 </div>
               </div>
               <div className="card">
                 <div className="card-header"><span className="card-title"><Phone size={15} /> أرقام الهاتف</span></div>
                 <div className="card-body">
-                  <PhoneNumbersEditor rows={mobile_numbers} onChange={rows => updateSub('mobile_numbers', rows)} jobRows={jobs} />
+                  <PhoneNumbersEditor rows={mobile_numbers} onChange={rows => updateSub('mobile_numbers', rows)} jobRows={jobs} validationIssue={validationIssue} />
                 </div>
               </div>
               <div className="card">
                 <div className="card-header"><span className="card-title"><Mail size={15} /> البريد الإلكتروني</span></div>
                 <div className="card-body">
-                  <EmailsEditor rows={emails} onChange={rows => updateSub('emails', rows)} jobRows={jobs} />
+                  <EmailsEditor rows={emails} onChange={rows => updateSub('emails', rows)} jobRows={jobs} validationIssue={validationIssue} />
                 </div>
               </div>
               <div className="card">
                 <div className="card-header"><span className="card-title"><Globe size={15} /> وسائل التواصل الاجتماعي</span></div>
                 <div className="card-body">
-                  <SocialMediaEditor rows={social_media} onChange={rows => updateSub('social_media', rows)} />
+                  <SocialMediaEditor rows={social_media} onChange={rows => updateSub('social_media', rows)} validationIssue={validationIssue} />
                 </div>
               </div>
               </div>
@@ -7534,7 +7937,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                   }) : <ViewEmptyState text="لا توجد عناوين محفوظة" />}
                 </div>
               ) : (
-                <AddressRowsEditor rows={addresses} onChange={rows => updateSub('addresses', rows)} governorateOptions={opts('governorate')} locationOnly={false} />
+                <AddressRowsEditor rows={addresses} onChange={rows => updateSub('addresses', rows)} governorateOptions={opts('governorate')} locationOnly={false} validationIssue={validationIssue} />
               )}
             </div>
           </div>
@@ -7575,6 +7978,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                   onChange={(rows) => updateSub('person_youth_group', rows)}
                   youthGroupOptions={opts('youth_group')}
                   allowHigherAgeGroups={canFullyEditProfile}
+                  validationIssue={validationIssue}
                 />
               )}
             </div>
@@ -7603,6 +8007,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                   responsibilityOptions={opts('responsibility')}
                   activeJecYear={activeJecYear}
                   resolveYouthGroupLabel={youthGroupName}
+                  validationIssue={validationIssue}
                 />
               )}
             </div>
@@ -7684,6 +8089,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                     })}
                     onSchoolSystemSectorChange={value => updateField('school_system_sector', normalizeLooseInput(value))}
                     onSchoolFinalGpaChange={value => updateField('school_final_gpa', normalizeFinalGpaValue(value))}
+                    validationIssue={validationIssue}
                   />
                 )}
               </div>
@@ -7718,6 +8124,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                     universityOptions={opts('university')}
                     majorOptions={opts('major')}
                     degreeOptions={opts('degree')}
+                    validationIssue={validationIssue}
                   />
                 )}
               </div>
@@ -7756,6 +8163,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                   onChange={rows => updateSub('jobs', rows)}
                   jobTitleOptions={opts('job_title')}
                   companyOptions={opts('company')}
+                  validationIssue={validationIssue}
                 />
               )}
             </div>

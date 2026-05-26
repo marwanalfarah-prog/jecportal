@@ -61,7 +61,7 @@ def _compose_person_full_name(row) -> str:
 def _person_type_from_person_id(pid):
     if pid is None or str(pid).strip() == "":
         return None
-    persons = S.store.get("persons", pd.DataFrame())
+    persons = S._scd_filter_active(S.store.get("persons", pd.DataFrame()))
     if persons.empty or "person_id" not in persons.columns:
         return None
     row = persons[persons["person_id"].astype(str) == str(pid)]
@@ -99,7 +99,7 @@ def _load_auth() -> dict:
     reg_name_by_pid: dict[str, str] = {}
     unreg_name_by_pid: dict[str, str] = {}
 
-    persons = S.store.get("persons", pd.DataFrame())
+    persons = S._scd_filter_active(S.store.get("persons", pd.DataFrame()))
     if not persons.empty and "person_id" in persons.columns:
         p = persons.copy()
         if "registered" in p.columns:
@@ -227,13 +227,13 @@ def _get_person_youth_groups(person_type: str, pid) -> list:
         if person_type is None and pid is not None:
             person_type = _person_type_from_person_id(pid)
         if person_type == "registered":
-            pyg = S.store["person_youth_group"]
+            pyg = S._scd_filter_active(S.store.get("person_youth_group", pd.DataFrame()))
             rows = pyg[pyg["person_id"] == int(pid)]
             if S.YOUTH_GROUP_ID_COL not in rows.columns:
                 return []
             return rows[S.YOUTH_GROUP_ID_COL].dropna().astype(str).unique().tolist()
         elif person_type == "unregistered":
-            df = S.unreg_store.get("person_youth_group", pd.DataFrame())
+            df = S._scd_filter_active(S.unreg_store.get("person_youth_group", pd.DataFrame()))
             if df.empty or "person_id" not in df.columns:
                 return []
             rows = df[df["person_id"].astype(str) == str(pid)]
@@ -252,12 +252,12 @@ def _get_person_memberships(person_type: str, pid) -> tuple[list[str], list[str]
             person_type = _person_type_from_person_id(pid)
 
         if person_type == "registered":
-            df = S.store.get("person_youth_group", pd.DataFrame())
+            df = S._scd_filter_active(S.store.get("person_youth_group", pd.DataFrame()))
             if df.empty or "person_id" not in df.columns:
                 return ([], [])
             rows = df[df["person_id"] == int(pid)]
         elif person_type == "unregistered":
-            df = S.unreg_store.get("person_youth_group", pd.DataFrame())
+            df = S._scd_filter_active(S.unreg_store.get("person_youth_group", pd.DataFrame()))
             if df.empty or "person_id" not in df.columns:
                 return ([], [])
             rows = df[df["person_id"].astype(str) == str(pid)]
@@ -632,7 +632,7 @@ def register_auth_routes(app):
             pids = pyg[mask]["person_id"].dropna().unique().tolist()
             accessible_pids.update(str(int(p)) for p in pids)
 
-        unreg_pyg = S.unreg_store.get("person_youth_group", pd.DataFrame())
+        unreg_pyg = S._scd_filter_active(S.unreg_store.get("person_youth_group", pd.DataFrame()))
         if not unreg_pyg.empty and "person_id" in unreg_pyg.columns:
             for group_id, info in council_access.items():
                 age_groups = info.get("age_groups", [])

@@ -269,7 +269,6 @@ def _default_config():
     return {
         "active_jec_year": "",
         "name_variations": {},
-        "person_titles": [],
         "school_branches": {},
     }
 
@@ -559,7 +558,7 @@ def _normalize_motto(raw_motto: dict, existing: dict | None = None, touch_update
     row = raw_motto if isinstance(raw_motto, dict) else {}
     current = existing if isinstance(existing, dict) else {}
 
-    motto_id = _clean_text(current.get("id") or row.get("id")) or uuid.uuid4().hex[:12]
+    motto_id = _clean_text(current.get("motto_id") or row.get("motto_id")) or uuid.uuid4().hex[:12]
     title = _clean_text(row.get("title") or current.get("title"))
     year_label = _normalize_year_label(row.get("year_label") if "year_label" in row else current.get("year_label"))
     application_from_date = _clean_text(row.get("application_from_date") if "application_from_date" in row else current.get("application_from_date"))
@@ -594,7 +593,7 @@ def _normalize_motto(raw_motto: dict, existing: dict | None = None, touch_update
     logo_file_name = _clean_text(current.get("logo_file_name") or row.get("logo_file_name"))
 
     return {
-        "id": motto_id,
+        "motto_id": motto_id,
         "title": title,
         "year_label": year_label,
         "application_from_date": application_from_date,
@@ -660,7 +659,8 @@ def _serialize_motto(row: dict) -> dict:
         })
     item["bible_references"] = refs
 
-    item["logo_url"] = _motto_logo_url(item.get("id"), item.get("logo_file_name"))
+    item["id"] = item.get("motto_id")
+    item["logo_url"] = _motto_logo_url(item.get("motto_id"), item.get("logo_file_name"))
     item["is_active_now"] = _is_motto_active_now(item)
 
     target = item.get("targets") if isinstance(item.get("targets"), dict) else {}
@@ -704,15 +704,97 @@ def _is_motto_applicable_to_groups(row: dict, group_ids: list[str], include_jec_
     return len(target_group_ids.intersection(set(group_ids))) > 0
 
 
-def _load_mottos_payload() -> dict:
-    path = _mottos_path() if os.path.exists(_mottos_path()) else _legacy_mottos_path()
-    raw = S.db.load_json_file(path, _default_mottos_payload())
-    if not isinstance(raw, dict):
-        return _default_mottos_payload()
+def _load_mottos_from_sheets() -> dict:
+    mottos_df = S.store.get(S.MOTTOS_SHEET, pd.DataFrame()).copy()
+    yg_df = S.store.get(S.MOTTO_YOUTH_GROUPS_SHEET, pd.DataFrame()).copy()
 
-    items = raw.get("mottos") if isinstance(raw.get("mottos"), list) else []
+    yg_map: dict[str, list[str]] = {}
+    if not yg_df.empty:
+        for _, row in yg_df.iterrows():
+            mid = _clean_text(row.get("motto_id"))
+            gid = _clean_text(row.get("youth_group_id"))
+            if mid and gid:
+                yg_map.setdefault(mid, []).append(gid)
+
+    mottos = []
+    if not mottos_df.empty:
+        for _, row in mottos_df.iterrows():
+            mid = _clean_text(row.get("motto_id"))
+            if not mid:
+                continue
+            book_id = _clean_text(row.get("bible_book_id"))
+            verse_raw = _clean_text(row.get("bible_verse_raw"))
+            bible_references = []
+            if book_id and verse_raw:
+                bible_references = [{"book": {"book_id": book_id}, "verse": {"raw": verse_raw}}]
+            mottos.append({
+                "motto_id": mid,
+                "title": _clean_text(row.get("title")),
+                "year_label": _clean_text(row.get("year_label")),
+                "application_from_date": _clean_text(row.get("application_from_date")),
+                "application_to_date": _clean_text(row.get("application_to_date")),
+                "application_is_present": bool(row.get("application_is_present") or False),
+                "targets": {
+                    "jec_jordan": bool(row.get("targets_jec_jordan") or False),
+                    "youth_groups": yg_map.get(mid, []),
+                },
+                "bible_references": bible_references,
+                "logo_file_name": _clean_text(row.get("logo_file_name")),
+                "created_at": _clean_text(row.get("created_at")),
+                "updated_at": _clean_text(row.get("updated_at")),
+            })
+    return {"mottos": mottos}
+
+
+def _save_mottos_to_sheets(payload: dict) -> None:
+    rows = payload.get("mottos") if isinstance(payload, dict) else []
+    if not isinstance(rows, list):
+        rows = []
+
+    motto_rows = []
+    yg_rows = []
+    for item in rows:
+        mid = _clean_text(item.get("motto_id"))
+        if not mid:
+            continue
+        targets = item.get("targets") if isinstance(item.get("targets"), dict) else {}
+        bible_refs = item.get("bible_references") if isinstance(item.get("bible_references"), list) else []
+        bible_book_id = ""
+        bible_verse_raw = ""
+        if bible_refs:
+            ref = bible_refs[0]
+            book = ref.get("book") if isinstance(ref.get("book"), dict) else {}
+            bible_book_id = _clean_text(book.get("book_id")) or ""
+            verse = ref.get("verse") if isinstance(ref.get("verse"), dict) else {}
+            bible_verse_raw = _verse_reference_text(verse) or ""
+        motto_rows.append({
+            "motto_id": mid,
+            "title": _clean_text(item.get("title")) or "",
+            "year_label": _clean_text(item.get("year_label")) or "",
+            "application_from_date": _clean_text(item.get("application_from_date")) or "",
+            "application_to_date": _clean_text(item.get("application_to_date")) or "",
+            "application_is_present": bool(item.get("application_is_present") or False),
+            "targets_jec_jordan": bool(targets.get("jec_jordan") or False),
+            "bible_book_id": bible_book_id,
+            "bible_verse_raw": bible_verse_raw,
+            "logo_file_name": _clean_text(item.get("logo_file_name")) or "",
+            "created_at": _clean_text(item.get("created_at")) or "",
+            "updated_at": _clean_text(item.get("updated_at")) or "",
+        })
+        for gid in (targets.get("youth_groups") or []):
+            gid_clean = _clean_text(gid)
+            if gid_clean:
+                yg_rows.append({"motto_id": mid, "youth_group_id": gid_clean})
+
+    S.store[S.MOTTOS_SHEET] = pd.DataFrame(motto_rows if motto_rows else [], columns=S.MOTTOS_COLUMNS)
+    S.store[S.MOTTO_YOUTH_GROUPS_SHEET] = pd.DataFrame(yg_rows if yg_rows else [], columns=S.MOTTO_YOUTH_GROUPS_COLUMNS)
+    S.db.save_excel_sheets(S.store)
+
+
+def _load_mottos_payload() -> dict:
+    payload = _load_mottos_from_sheets()
     normalized = []
-    for item in items:
+    for item in payload.get("mottos", []):
         row = _normalize_motto(item)
         if not row.get("title"):
             continue
@@ -731,13 +813,13 @@ def _save_mottos_payload(payload: dict) -> dict:
             continue
         normalized.append(item)
     result = {"mottos": normalized}
-    S.db.save_json_file(_mottos_path(), result)
-    legacy_path = _legacy_mottos_path()
-    if os.path.exists(legacy_path):
-        try:
-            os.remove(legacy_path)
-        except OSError:
-            pass
+    _save_mottos_to_sheets(result)
+    for legacy_path in (_mottos_path(), _legacy_mottos_path()):
+        if os.path.exists(legacy_path):
+            try:
+                os.remove(legacy_path)
+            except OSError:
+                pass
     return result
 
 
@@ -811,6 +893,26 @@ def _youth_group_scope_options() -> list[dict]:
     return options
 
 
+def _load_person_titles_from_sheet() -> list[dict]:
+    df = S.store.get(S.TITLE_OPTIONS_SHEET, pd.DataFrame()).copy()
+    if df.empty:
+        return []
+    rows = []
+    for _, row in df.iterrows():
+        arabic = _clean_text(row.get("arabic_title"))
+        english = _clean_text(row.get("english_title"))
+        if arabic:
+            rows.append({"arabic_title": arabic, "english_title": english or ""})
+    return rows
+
+
+def _save_person_titles_to_sheet(titles: list[dict]) -> None:
+    normalized = _normalize_person_titles(titles)
+    df = pd.DataFrame(normalized if normalized else [], columns=S.TITLE_OPTIONS_COLUMNS)
+    S.store[S.TITLE_OPTIONS_SHEET] = df
+    S.db.save_excel_sheets(S.store)
+
+
 def _load_config():
     defaults = _default_config()
 
@@ -818,9 +920,11 @@ def _load_config():
         fragments = {}
         for key, default_value in defaults.items():
             fragments[key] = S.db.load_json_file(_config_fragment_path(key), default_value)
+        fragments["person_titles"] = _load_person_titles_from_sheet()
         return _normalize_config_payload(fragments)
 
     legacy = S.db.load_json_file(_legacy_config_path(), defaults)
+    legacy["person_titles"] = _load_person_titles_from_sheet()
     return _normalize_config_payload(legacy)
 
 
@@ -1142,6 +1246,8 @@ def _save_config(config):
     for key, default_value in defaults.items():
         S.db.save_json_file(_config_fragment_path(key), payload.get(key, default_value))
 
+    _save_person_titles_to_sheet(payload.get("person_titles", []))
+
     legacy_path = _legacy_config_path()
     if os.path.exists(legacy_path):
         try:
@@ -1240,7 +1346,7 @@ def register_config_routes(app):
             payload["mottos"].append(motto)
             saved = _save_mottos_payload(payload)
 
-        created = next((row for row in saved.get("mottos", []) if row.get("id") == motto.get("id")), motto)
+        created = next((row for row in saved.get("mottos", []) if row.get("motto_id") == motto.get("motto_id")), motto)
         return jsonify({"ok": True, "motto": _serialize_motto(created)})
 
     @app.put("/api/config/mottos/<motto_id>")
@@ -1256,13 +1362,13 @@ def register_config_routes(app):
         with S.lock:
             payload = _load_mottos_payload()
             rows = payload.get("mottos", [])
-            idx = next((i for i, row in enumerate(rows) if _clean_text(row.get("id")) == _clean_text(motto_id)), -1)
+            idx = next((i for i, row in enumerate(rows) if _clean_text(row.get("motto_id")) == _clean_text(motto_id)), -1)
             if idx < 0:
                 return jsonify({"error": "motto not found"}), 404
 
             merged = dict(rows[idx])
             merged.update(body)
-            merged["id"] = rows[idx].get("id")
+            merged["motto_id"] = rows[idx].get("motto_id")
             updated = _normalize_motto(merged, existing=rows[idx], touch_updated=True)
 
             if not updated.get("title"):
@@ -1283,7 +1389,7 @@ def register_config_routes(app):
             payload["mottos"] = rows
             saved = _save_mottos_payload(payload)
 
-        saved_row = next((row for row in saved.get("mottos", []) if row.get("id") == rows[idx].get("id")), rows[idx])
+        saved_row = next((row for row in saved.get("mottos", []) if row.get("motto_id") == rows[idx].get("motto_id")), rows[idx])
         return jsonify({"ok": True, "motto": _serialize_motto(saved_row)})
 
     @app.delete("/api/config/mottos/<motto_id>")
@@ -1295,7 +1401,7 @@ def register_config_routes(app):
         with S.lock:
             payload = _load_mottos_payload()
             rows = payload.get("mottos", [])
-            filtered = [row for row in rows if _clean_text(row.get("id")) != _clean_text(motto_id)]
+            filtered = [row for row in rows if _clean_text(row.get("motto_id")) != _clean_text(motto_id)]
 
             if len(filtered) == len(rows):
                 return jsonify({"error": "motto not found"}), 404
@@ -1333,7 +1439,7 @@ def register_config_routes(app):
         with S.lock:
             payload = _load_mottos_payload()
             rows = payload.get("mottos", [])
-            idx = next((i for i, row in enumerate(rows) if _clean_text(row.get("id")) == _clean_text(motto_id)), -1)
+            idx = next((i for i, row in enumerate(rows) if _clean_text(row.get("motto_id")) == _clean_text(motto_id)), -1)
             if idx < 0:
                 return jsonify({"error": "motto not found"}), 404
 

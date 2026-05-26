@@ -5,7 +5,7 @@ import {
   Calendar, ChevronDown, Clock, FileDown
 } from 'lucide-react'
 import { api } from '../api.js'
-import { ErrorState } from '../pageStates.jsx'
+import { ErrorState, LoadingState } from '../pageStates.jsx'
 
 // ── Arabic normalization ───────────────────────────────────────────────────────
 function normalizeWord(w) {
@@ -223,7 +223,13 @@ function computeTidyLayout(nodes, edges) {
     }
   })
 
+  const nodeIndex = Object.fromEntries(nodes.map((n, i) => [n.id, i]))
+  Object.keys(childrenOf).forEach(id => {
+    childrenOf[id].sort((a, b) => (nodeIndex[a] ?? 0) - (nodeIndex[b] ?? 0))
+  })
+
   const rootIds = nodes.filter(n => parentsOf[n.id].length === 0).map(n => n.id)
+  rootIds.sort((a, b) => (nodeIndex[a] ?? 0) - (nodeIndex[b] ?? 0))
 
   const depthOf = {}
   nodes.forEach(n => { depthOf[n.id] = 0 })
@@ -2207,6 +2213,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
   const [connectMode, setConnectMode] = useState(false)
   const [connectSource, setConnSrc]   = useState(null)
   const [allPersons, setAllPersons]   = useState([])
+  const [loadingGroups, setLoadingGroups] = useState(true)
   const [loading, setLoading]         = useState(false)
   const [loadError, setLoadError]     = useState('')
   const [saving, setSaving]           = useState(false)
@@ -2246,7 +2253,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
         label: api.formatYouthGroupLabel(g?.label || g?.value),
       }))
       setGroups(ys)
-    })
+    }).finally(() => setLoadingGroups(false))
     api.personsEnriched().then(p => setAllPersons(p))
     api.getUnregistered().then(u => setAllUnregistered(u))
     api.getConfig()
@@ -2970,7 +2977,12 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
           </div>
 
           <div style={{ maxHeight:360, overflowY:'auto', border:'1px solid var(--gray-200)', borderRadius:'var(--radius-lg)', background:'white', boxShadow:'var(--shadow-sm)' }}>
-            {filteredGroups.length === 0 && <div style={{ padding:32, color:'var(--gray-400)', fontSize:'0.9rem' }}>لا توجد مجموعات</div>}
+            {loadingGroups
+              ? <div style={{ padding: 32, display: 'flex', justifyContent: 'center' }}><div className="spinner" /></div>
+              : filteredGroups.length === 0
+                ? <div style={{ padding: 32, color: 'var(--gray-400)', fontSize: '0.9rem' }}>لا توجد مجموعات</div>
+                : null
+            }
             {filteredGroups.map(g => (
               <div key={g.value} onClick={() => setGroup(g.value)}
                 style={{ padding:'14px 20px', cursor:'pointer', borderBottom:'1px solid var(--gray-100)', display:'flex', alignItems:'center', justifyContent:'space-between', transition:'background 0.15s' }}
@@ -3146,7 +3158,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
         )}
 
         {loading
-          ? <div className="loading-center"><div className="spinner"/></div>
+          ? <LoadingState title="جارٍ تحميل الهيكل التنظيمي" description="يتم تجهيز البيانات والهيكل التنظيمي الآن." minHeight={320} />
           : loadError
             ? <ErrorState
                 title="تعذر تحميل الهيكل التنظيمي"

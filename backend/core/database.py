@@ -10,6 +10,92 @@ from typing import Any
 import pandas as pd
 
 
+SCD_SHEET_PREFIX = "scd_"
+SCD_LOGICAL_SHEETS: set[str] = {
+    "persons",
+    "nationality",
+    "mobile_numbers",
+    "mobile_number_family_relations",
+    "personal_mobile_number_primary",
+    "mobile_number_linked_jobs",
+    "emails",
+    "email_family_relations",
+    "personal_email_primary",
+    "email_linked_jobs",
+    "social_media",
+    "schools",
+    "school_sections",
+    "school_grades",
+    "higher_education",
+    "jobs",
+    "timestamps",
+    "responsibilities",
+    "person_youth_group",
+    "person_youth_group_age_history",
+    "hobbies_skills",
+    "person_health_conditions",
+    "person_special_notes",
+    "addresses",
+    "person_titles",
+    "person_school_system_sectors",
+    "auth_users",
+}
+
+SCD_WORKBOOK_SHEET_NAMES: dict[str, str] = {
+    sheet_name: f"{SCD_SHEET_PREFIX}{sheet_name}"
+    for sheet_name in SCD_LOGICAL_SHEETS
+}
+SCD_WORKBOOK_SHEET_NAMES.update({
+    "mobile_number_family_relations": "scd_mobile_number_family_rel",
+    "personal_mobile_number_primary": "scd_personal_mobile_number_prim",
+    "person_youth_group_age_history": "scd_person_youth_group_age_hist",
+    "person_school_system_sectors": "scd_person_school_system_sector",
+})
+SCD_WORKBOOK_TO_LOGICAL_SHEETS: dict[str, str] = {
+    workbook_name: logical_name
+    for logical_name, workbook_name in SCD_WORKBOOK_SHEET_NAMES.items()
+}
+
+
+def logical_sheet_name(sheet_name: str) -> str:
+    if not isinstance(sheet_name, str):
+        return sheet_name
+    if sheet_name in SCD_WORKBOOK_TO_LOGICAL_SHEETS:
+        return SCD_WORKBOOK_TO_LOGICAL_SHEETS[sheet_name]
+    if sheet_name.startswith(SCD_SHEET_PREFIX):
+        candidate = sheet_name[len(SCD_SHEET_PREFIX):]
+        if candidate in SCD_LOGICAL_SHEETS:
+            return candidate
+    return sheet_name
+
+
+def workbook_sheet_name(sheet_name: str) -> str:
+    logical_name = logical_sheet_name(sheet_name)
+    if logical_name in SCD_LOGICAL_SHEETS:
+        return SCD_WORKBOOK_SHEET_NAMES[logical_name]
+    return logical_name
+
+
+LEGACY_SHEET_ALIASES: dict[str, list[str]] = {
+    "institution_logos": ["school_logos"],
+}
+
+
+def workbook_sheet_candidates(sheet_name: str) -> list[str]:
+    logical_name = logical_sheet_name(sheet_name)
+    physical_name = workbook_sheet_name(logical_name)
+    candidates = [physical_name]
+    legacy_prefixed_name = f"{SCD_SHEET_PREFIX}{logical_name}"
+    if legacy_prefixed_name not in candidates:
+        candidates.append(legacy_prefixed_name)
+    if logical_name not in candidates:
+        candidates.append(logical_name)
+    for alias in LEGACY_SHEET_ALIASES.get(logical_name, []):
+        if alias not in candidates:
+            candidates.append(alias)
+    return candidates
+
+
 WORKBOOK_COLUMN_RENAMES: dict[str, dict[str, str]] = {
     "persons": {
         "first_name": "ar_first_name",
@@ -55,7 +141,7 @@ WORKBOOK_COLUMN_RENAMES: dict[str, dict[str, str]] = {
     "emails": {
         "type": "email_type",
     },
-    "school_logos": {
+    "institution_logos": {
         "id": "school_logo_id",
         "type": "institution_type",
         "name": "institution_name",
@@ -73,6 +159,9 @@ WORKBOOK_COLUMN_RENAMES: dict[str, dict[str, str]] = {
     "youth_group_special_logos": {
         "id": "special_logo_id",
         "file_name": "logo_file_name",
+    },
+    "mottos": {
+        "id": "motto_id",
     },
 }
 
@@ -217,7 +306,8 @@ class Database:
     def _canonicalize_sheet_columns(self, sheet: str, df: pd.DataFrame) -> pd.DataFrame:
         if df is None or df.empty:
             return df
-        mapping = WORKBOOK_COLUMN_RENAMES.get(sheet, {})
+        logical_name = logical_sheet_name(sheet)
+        mapping = WORKBOOK_COLUMN_RENAMES.get(logical_name, {})
         if not mapping:
             return df
 
@@ -238,7 +328,8 @@ class Database:
     def _add_runtime_alias_columns(self, sheet: str, df: pd.DataFrame) -> pd.DataFrame:
         if df is None or df.empty:
             return df
-        mapping = WORKBOOK_COLUMN_RENAMES.get(sheet, {})
+        logical_name = logical_sheet_name(sheet)
+        mapping = WORKBOOK_COLUMN_RENAMES.get(logical_name, {})
         if not mapping:
             return df
 
@@ -251,9 +342,10 @@ class Database:
     def _strip_legacy_sheet_columns(self, sheet: str, df: pd.DataFrame) -> pd.DataFrame:
         if df is None or df.empty:
             return df
-        legacy_columns = [column for column in WORKBOOK_COLUMN_RENAMES.get(sheet, {}) if column in df.columns]
+        logical_name = logical_sheet_name(sheet)
+        legacy_columns = [column for column in WORKBOOK_COLUMN_RENAMES.get(logical_name, {}) if column in df.columns]
         runtime_only_columns: list[str] = []
-        if sheet == "person_youth_group":
+        if logical_name == "person_youth_group":
             runtime_only_columns = [column for column in ("age_group", "current_age_group", "age_group_history") if column in df.columns]
         columns_to_drop = legacy_columns + runtime_only_columns
         if not columns_to_drop:
@@ -265,64 +357,72 @@ class Database:
         xf, _ = self._open_excel_file()
         try:
             for sheet in sheets:
-                if sheet in xf.sheet_names:
-                    if sheet == "mobile_numbers":
-                        df = xf.parse(sheet, dtype={"mobile_number_record_id": str, "mobile_number": str, "type": str, "mobile_number_type": str})
-                    elif sheet == "mobile_number_family_relations":
-                        df = xf.parse(sheet, dtype={"mobile_number_record_id": str, "family_relation": str})
-                    elif sheet == "personal_mobile_number_primary":
-                        df = xf.parse(sheet, dtype={"mobile_number_record_id": str})
-                    elif sheet == "mobile_number_linked_jobs":
-                        df = xf.parse(sheet, dtype={"mobile_number_record_id": str, "linked_job_ids": str})
-                    elif sheet == "nationality":
-                        df = xf.parse(sheet, dtype={"nationality": str})
-                    elif sheet == "person_youth_group":
-                        df = xf.parse(sheet, dtype={"person_youth_group_record_id": str, "youth_join_year": "Int64", "youth_group_id": str, "age_group": str})
-                    elif sheet == "person_youth_group_age_history":
-                        df = xf.parse(sheet, dtype={"person_youth_group_record_id": str, "age_group": str, "start_date": str, "end_date": str})
-                    elif sheet == "schools":
-                        df = xf.parse(sheet, dtype={"school_record_id": str})
-                    elif sheet == "school_sections":
-                        df = xf.parse(sheet, dtype={"school_record_id": str, "section": str})
-                    elif sheet == "school_grades":
-                        df = xf.parse(sheet, dtype={"school_record_id": str, "grade": str})
-                    elif sheet == "school_logos":
-                        df = xf.parse(sheet, dtype={"id": str, "school_logo_id": str, "type": str, "institution_type": str, "name": str, "institution_name": str, "section": str, "institution_section": str, "logo_file_name": str})
-                    elif sheet == "emails":
-                        df = xf.parse(sheet, dtype={"email_record_id": str, "email": str, "type": str, "email_type": str})
-                    elif sheet == "email_family_relations":
-                        df = xf.parse(sheet, dtype={"email_record_id": str, "family_relation": str})
-                    elif sheet == "personal_email_primary":
-                        df = xf.parse(sheet, dtype={"email_record_id": str})
-                    elif sheet == "email_linked_jobs":
-                        df = xf.parse(sheet, dtype={"email_record_id": str, "linked_job_ids": str})
-                    elif sheet == "social_media":
-                        df = xf.parse(sheet, dtype={"platform": str, "url": str})
-                    elif sheet == "parishes":
-                        df = xf.parse(sheet, dtype={"id": str, "parish_id": str, "patron_saint": str, "area": str, "lpj_url": str, "facebook_url": str, "instagram_url": str, "linkedin_url": str, "region": str, "governorate": str})
-                    elif sheet == "churches":
-                        df = xf.parse(sheet, dtype={"id": str, "church_id": str, "parish_id": str, "patron_saint": str, "area": str, "lat": float, "lng": float})
-                    elif sheet == "youth_group_social_media":
-                        df = xf.parse(sheet, dtype={"youth_group_id": str, "id": str, "youth_group_social_media_id": str, "platform": str, "url": str, "age_groups": str})
-                    elif sheet == "youth_group_social_media_ages":
-                        df = xf.parse(sheet, dtype={"id": str, "youth_group_social_media_id": str, "age_group": str})
-                    elif sheet == "youth_group_special_logos":
-                        df = xf.parse(sheet, dtype={"youth_group_id": str, "id": str, "special_logo_id": str, "occasion": str, "start_date": str, "end_date": str, "file_name": str, "logo_file_name": str})
-                    elif sheet == "jobs":
-                        df = xf.parse(sheet, dtype={"job_id": str, "job_title": str, "company": str, "employer_name": str, "start_date": str, "end_date": str, "state": str, "employment_state": str})
-                    elif sheet == "responsibilities":
-                        df = xf.parse(sheet, dtype={"responsibility_period": str, "time": str, "jec_year": str, "is_current": object, "is_active": object, "responsibility_name": str, "responsibility": str, "start_date": str, "end_date": str, "youth_group_id": str})
+                logical_name = logical_sheet_name(sheet)
+                workbook_name = next((name for name in workbook_sheet_candidates(logical_name) if name in xf.sheet_names), None)
+                if workbook_name in xf.sheet_names:
+                    if logical_name == "mobile_numbers":
+                        df = xf.parse(workbook_name, dtype={"mobile_number_record_id": str, "mobile_number": str, "type": str, "mobile_number_type": str})
+                    elif logical_name == "mobile_number_family_relations":
+                        df = xf.parse(workbook_name, dtype={"mobile_number_record_id": str, "family_relation": str})
+                    elif logical_name == "personal_mobile_number_primary":
+                        df = xf.parse(workbook_name, dtype={"mobile_number_record_id": str})
+                    elif logical_name == "mobile_number_linked_jobs":
+                        df = xf.parse(workbook_name, dtype={"mobile_number_record_id": str, "linked_job_ids": str})
+                    elif logical_name == "nationality":
+                        df = xf.parse(workbook_name, dtype={"nationality": str})
+                    elif logical_name == "person_youth_group":
+                        df = xf.parse(workbook_name, dtype={"person_youth_group_record_id": str, "youth_join_year": "Int64", "youth_group_id": str, "age_group": str})
+                    elif logical_name == "person_youth_group_age_history":
+                        df = xf.parse(workbook_name, dtype={"person_youth_group_record_id": str, "age_group": str, "start_date": str, "end_date": str})
+                    elif logical_name == "schools":
+                        df = xf.parse(workbook_name, dtype={"school_record_id": str})
+                    elif logical_name == "school_sections":
+                        df = xf.parse(workbook_name, dtype={"school_record_id": str, "section": str})
+                    elif logical_name == "school_grades":
+                        df = xf.parse(workbook_name, dtype={"school_record_id": str, "grade": str})
+                    elif logical_name == "institution_logos":
+                        df = xf.parse(workbook_name, dtype={"id": str, "school_logo_id": str, "type": str, "institution_type": str, "name": str, "institution_name": str, "section": str, "institution_section": str, "logo_file_name": str})
+                    elif logical_name == "title_options":
+                        df = xf.parse(workbook_name, dtype={"arabic_title": str, "english_title": str})
+                    elif logical_name == "mottos":
+                        df = xf.parse(workbook_name, dtype={"id": str, "motto_id": str, "title": str, "year_label": str, "application_from_date": str, "application_to_date": str, "bible_book_id": str, "bible_verse_raw": str, "logo_file_name": str, "created_at": str, "updated_at": str})
+                    elif logical_name == "motto_youth_groups":
+                        df = xf.parse(workbook_name, dtype={"motto_id": str, "youth_group_id": str})
+                    elif logical_name == "emails":
+                        df = xf.parse(workbook_name, dtype={"email_record_id": str, "email": str, "type": str, "email_type": str})
+                    elif logical_name == "email_family_relations":
+                        df = xf.parse(workbook_name, dtype={"email_record_id": str, "family_relation": str})
+                    elif logical_name == "personal_email_primary":
+                        df = xf.parse(workbook_name, dtype={"email_record_id": str})
+                    elif logical_name == "email_linked_jobs":
+                        df = xf.parse(workbook_name, dtype={"email_record_id": str, "linked_job_ids": str})
+                    elif logical_name == "social_media":
+                        df = xf.parse(workbook_name, dtype={"platform": str, "url": str})
+                    elif logical_name == "parishes":
+                        df = xf.parse(workbook_name, dtype={"id": str, "parish_id": str, "patron_saint": str, "area": str, "lpj_url": str, "facebook_url": str, "instagram_url": str, "linkedin_url": str, "region": str, "governorate": str})
+                    elif logical_name == "churches":
+                        df = xf.parse(workbook_name, dtype={"id": str, "church_id": str, "parish_id": str, "patron_saint": str, "area": str, "lat": float, "lng": float})
+                    elif logical_name == "youth_group_social_media":
+                        df = xf.parse(workbook_name, dtype={"youth_group_id": str, "id": str, "youth_group_social_media_id": str, "platform": str, "url": str, "age_groups": str})
+                    elif logical_name == "youth_group_social_media_ages":
+                        df = xf.parse(workbook_name, dtype={"id": str, "youth_group_social_media_id": str, "age_group": str})
+                    elif logical_name == "youth_group_special_logos":
+                        df = xf.parse(workbook_name, dtype={"youth_group_id": str, "id": str, "special_logo_id": str, "occasion": str, "start_date": str, "end_date": str, "file_name": str, "logo_file_name": str})
+                    elif logical_name == "jobs":
+                        df = xf.parse(workbook_name, dtype={"job_id": str, "job_title": str, "company": str, "employer_name": str, "start_date": str, "end_date": str, "state": str, "employment_state": str})
+                    elif logical_name == "responsibilities":
+                        df = xf.parse(workbook_name, dtype={"responsibility_period": str, "time": str, "jec_year": str, "is_current": object, "is_active": object, "responsibility_name": str, "responsibility": str, "start_date": str, "end_date": str, "youth_group_id": str})
                     else:
-                        df = xf.parse(sheet)
-                    df = self._canonicalize_sheet_columns(sheet, df)
-                    df = self._add_runtime_alias_columns(sheet, df)
-                    if sheet == "persons":
+                        df = xf.parse(workbook_name)
+                    df = self._canonicalize_sheet_columns(logical_name, df)
+                    df = self._add_runtime_alias_columns(logical_name, df)
+                    if logical_name == "persons":
                         if "birth_date" in df.columns:
                             df["birth_date"] = df["birth_date"].where(df["birth_date"].isna(), df["birth_date"].astype(str))
-                    if sheet == "mobile_numbers" and "mobile_number" in df.columns:
+                    if logical_name == "mobile_numbers" and "mobile_number" in df.columns:
                         df["mobile_number"] = df["mobile_number"].apply(self._normalize_mobile_number)
                     df = self.normalize_boolean_columns(df)
-                    store[sheet] = df
+                    store[logical_name] = df
         finally:
             xf.close()
         return store
@@ -330,14 +430,15 @@ class Database:
     def save_excel_sheets(self, store: dict[str, pd.DataFrame]):
         prepared: dict[str, pd.DataFrame] = {}
         for sheet, df in store.items():
-            df = self._canonicalize_sheet_columns(sheet, df)
-            df = self._strip_legacy_sheet_columns(sheet, df)
+            logical_name = logical_sheet_name(sheet)
+            df = self._canonicalize_sheet_columns(logical_name, df)
+            df = self._strip_legacy_sheet_columns(logical_name, df)
             df = self.normalize_boolean_columns(df)
-            if sheet == "persons":
+            if logical_name == "persons":
                 drop_cols = [col for col in self.person_sheet_address_projection_columns if col in df.columns]
                 if drop_cols:
                     df = df.drop(columns=drop_cols)
-            prepared[sheet] = df
+            prepared[workbook_sheet_name(logical_name)] = df
         self._write_sheets_atomically(prepared)
 
     def load_json_file(self, path: str, default: Any):
@@ -414,8 +515,9 @@ class Database:
             try:
                 xf, _ = self._open_excel_file()
                 try:
-                    if self.auth_sheet in xf.sheet_names:
-                        df = xf.parse(self.auth_sheet, dtype={"person_id": str, "username": str, "password_hash": str, "role": str})
+                    auth_workbook_sheet = next((name for name in workbook_sheet_candidates(self.auth_sheet) if name in xf.sheet_names), None)
+                    if auth_workbook_sheet:
+                        df = xf.parse(auth_workbook_sheet, dtype={"person_id": str, "username": str, "password_hash": str, "role": str})
                         users = self._auth_users_from_df(df)
                 finally:
                     xf.close()
@@ -459,7 +561,7 @@ class Database:
             })
 
         df = pd.DataFrame(users, columns=self.auth_columns)
-        self._write_sheets_atomically({self.auth_sheet: df})
+        self._write_sheets_atomically({workbook_sheet_name(self.auth_sheet): df})
 
     def load_promotions(self) -> dict:
         return self.load_json_file(self.promotions_path, {"promotions": []})

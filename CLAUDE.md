@@ -41,7 +41,7 @@ This is a full-stack member management portal for JEC Jordan (a Coptic youth org
 
 ### Data storage
 
-All member data lives in `JECJordanData.xlsx` with sheets for: persons, addresses, mobile numbers, emails, jobs, schools, higher education, youth groups, churches, responsibilities, hobbies/skills, health conditions, org trees, logos, and more.
+All member data lives in `JECJordanData.xlsx`. Slowly changing-dimension member/auth sheets now use `scd_`-prefixed workbook tabs; non-SCD tabs (for example `youth_groups`, `churches`, `parishes`, `institution_logos`) keep their original names. A few long SCD tab names use shorter `scd_...` aliases to stay within Excel's 31-character sheet-name limit; the mapping is centralized in `backend/core/database.py`. Legacy sheet name aliases (e.g. `school_logos` → `institution_logos`) are declared in `LEGACY_SHEET_ALIASES` in `database.py`.
 
 Supplementary JSON files in `data/`:
 - `config/` — per-option JSON files for active year, name-variation mappings, person titles, school branches, and mottos

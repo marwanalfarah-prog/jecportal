@@ -24,7 +24,7 @@ SHEETS = [
     "persons", "nationality", "mobile_numbers", "mobile_number_family_relations", "personal_mobile_number_primary", "mobile_number_linked_jobs", "emails", "email_family_relations", "personal_email_primary", "email_linked_jobs", "social_media", "schools", "school_sections", "school_grades",
     "higher_education", "jobs", "timestamps", "responsibilities",
     "person_youth_group", "person_youth_group_age_history", "hobbies_skills", "person_health_conditions", "person_special_notes", "addresses", "person_titles", "person_school_system_sectors", "parishes", "churches", "youth_groups", "youth_group_social_media", "youth_group_social_media_ages", "youth_group_special_logos",
-    "nationality_iso_codes", "school_logos",
+    "nationality_iso_codes", "institution_logos", "title_options", "mottos", "motto_youth_groups",
 ]
 
 UNREG_SHEETS = [
@@ -57,7 +57,13 @@ SCHOOL_SECTION_SHEET = "school_sections"
 SCHOOL_SECTION_COLUMNS = [SCHOOL_RECORD_ID_COL, "section"]
 SCHOOL_GRADE_SHEET = "school_grades"
 SCHOOL_GRADE_COLUMNS = [SCHOOL_RECORD_ID_COL, "grade"]
-SCHOOL_LOGO_SHEET = "school_logos"
+TITLE_OPTIONS_SHEET = "title_options"
+TITLE_OPTIONS_COLUMNS = ["arabic_title", "english_title"]
+MOTTOS_SHEET = "mottos"
+MOTTOS_COLUMNS = ["motto_id", "title", "year_label", "application_from_date", "application_to_date", "application_is_present", "targets_jec_jordan", "bible_book_id", "bible_verse_raw", "logo_file_name", "created_at", "updated_at"]
+MOTTO_YOUTH_GROUPS_SHEET = "motto_youth_groups"
+MOTTO_YOUTH_GROUPS_COLUMNS = ["motto_id", "youth_group_id"]
+SCHOOL_LOGO_SHEET = "institution_logos"
 SCHOOL_LOGO_ID_COL = "school_logo_id"
 INSTITUTION_TYPE_COL = "institution_type"
 INSTITUTION_NAME_COL = "institution_name"
@@ -173,6 +179,12 @@ SPECIAL_LOGO_ID_COL = "special_logo_id"
 YOUTH_GROUP_SPECIAL_LOGO_COLUMNS = ["youth_group_id", SPECIAL_LOGO_ID_COL, "occasion", "start_date", "end_date", "logo_file_name", "is_active"]
 NATIONALITY_ISO_SHEET = "nationality_iso_codes"
 
+SCD_ACTIVE_FROM_COL = "scd_active_from"
+SCD_ACTIVE_TO_COL = "scd_active_to"
+SCD_CURRENTLY_ACTIVE_FLAG_COL = "scd_currently_active_flag"
+SCD_CHANGED_BY_USER_COL = "scd_changed_by_user"
+SCD_METADATA_COLUMNS = [SCD_ACTIVE_FROM_COL, SCD_ACTIVE_TO_COL, SCD_CURRENTLY_ACTIVE_FLAG_COL, SCD_CHANGED_BY_USER_COL]
+
 _youth_group_name_by_id: dict[str, str] = {}
 _youth_group_patron_by_id: dict[str, str | None] = {}
 _youth_group_short_name_by_id: dict[str, str] = {}
@@ -197,6 +209,56 @@ MONTH_EN_TO_NUM = {
 
 def _get_or_create_secret_key():
     return db.get_or_create_secret_key()
+
+
+def _scd_filter_active(df: pd.DataFrame) -> pd.DataFrame:
+    """Return only currently-active SCD rows. Returns all rows for sheets without SCD columns (legacy)."""
+    if df is None or df.empty:
+        return df if df is not None else pd.DataFrame()
+    if SCD_CURRENTLY_ACTIVE_FLAG_COL not in df.columns:
+        return df
+    return df[df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False].copy()
+
+
+def _scd_new_metadata(changed_by: str) -> dict:
+    """Return SCD metadata dict for a newly-inserted active row."""
+    return {
+        SCD_ACTIVE_FROM_COL: pd.Timestamp.now(),
+        SCD_ACTIVE_TO_COL: None,
+        SCD_CURRENTLY_ACTIVE_FLAG_COL: True,
+        SCD_CHANGED_BY_USER_COL: changed_by,
+    }
+
+
+def _scd_ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Add SCD metadata columns to df if absent; existing rows default to active (True)."""
+    if df is None or df.empty:
+        return df if df is not None else pd.DataFrame()
+    df = df.copy()
+    for col in SCD_METADATA_COLUMNS:
+        if col not in df.columns:
+            df[col] = True if col == SCD_CURRENTLY_ACTIVE_FLAG_COL else None
+    return df
+
+
+def _scd_preserve_metadata(rows: list[dict], source_rows: list[dict], key_col: str) -> list[dict]:
+    """Re-attach SCD metadata from source_rows onto rows by matching on key_col."""
+    lookup: dict[str, dict] = {}
+    for src in source_rows:
+        k = str(src.get(key_col) or "")
+        if k and k not in lookup:
+            lookup[k] = {c: src.get(c) for c in SCD_METADATA_COLUMNS}
+    default_scd = {SCD_ACTIVE_FROM_COL: None, SCD_ACTIVE_TO_COL: None,
+                   SCD_CURRENTLY_ACTIVE_FLAG_COL: True, SCD_CHANGED_BY_USER_COL: None}
+    return [{**row, **lookup.get(str(row.get(key_col) or ""), default_scd)} for row in rows]
+
+
+def _scd_split(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split a DataFrame into (active_df, inactive_df) based on scd_currently_active_flag."""
+    if df.empty or SCD_CURRENTLY_ACTIVE_FLAG_COL not in df.columns:
+        return df, pd.DataFrame(columns=df.columns)
+    inactive_mask = df[SCD_CURRENTLY_ACTIVE_FLAG_COL] == False
+    return df[~inactive_mask].copy(), df[inactive_mask].copy()
 
 
 def invalidate_enriched_cache():
@@ -1057,7 +1119,7 @@ def mobile_number_linked_job_rows_from_mobile_rows(rows) -> list[dict]:
 
 
 def mobile_number_rows_for_person(source_store: dict[str, pd.DataFrame], person_id) -> list[dict]:
-    mobile_numbers_df = source_store.get(MOBILE_NUMBER_SHEET, pd.DataFrame())
+    mobile_numbers_df = _scd_filter_active(source_store.get(MOBILE_NUMBER_SHEET, pd.DataFrame()))
     normalized_person_id = _normalize_person_id(person_id)
     if mobile_numbers_df.empty or "person_id" not in mobile_numbers_df.columns or normalized_person_id in (None, ""):
         return []
@@ -1076,7 +1138,7 @@ def mobile_number_rows_for_person(source_store: dict[str, pd.DataFrame], person_
         if record_id
     }
 
-    family_df = source_store.get(MOBILE_NUMBER_FAMILY_RELATION_SHEET, pd.DataFrame())
+    family_df = _scd_filter_active(source_store.get(MOBILE_NUMBER_FAMILY_RELATION_SHEET, pd.DataFrame()))
     family_map: dict[str, str] = {}
     if not family_df.empty and MOBILE_NUMBER_RECORD_ID_COL in family_df.columns:
         family_rows = normalize_mobile_number_family_relation_rows(
@@ -1089,7 +1151,7 @@ def mobile_number_rows_for_person(source_store: dict[str, pd.DataFrame], person_
             if record_id and family_relation:
                 family_map[record_id] = family_relation
 
-    personal_primary_df = source_store.get(PERSONAL_MOBILE_NUMBER_PRIMARY_SHEET, pd.DataFrame())
+    personal_primary_df = _scd_filter_active(source_store.get(PERSONAL_MOBILE_NUMBER_PRIMARY_SHEET, pd.DataFrame()))
     personal_primary_map: dict[str, bool] = {}
     if not personal_primary_df.empty and MOBILE_NUMBER_RECORD_ID_COL in personal_primary_df.columns:
         personal_primary_rows = normalize_personal_mobile_number_primary_rows(
@@ -1101,7 +1163,7 @@ def mobile_number_rows_for_person(source_store: dict[str, pd.DataFrame], person_
             if record_id:
                 personal_primary_map[record_id] = _to_bool(primary_row.get("is_primary"))
 
-    linked_jobs_df = source_store.get(MOBILE_NUMBER_LINKED_JOB_SHEET, pd.DataFrame())
+    linked_jobs_df = _scd_filter_active(source_store.get(MOBILE_NUMBER_LINKED_JOB_SHEET, pd.DataFrame()))
     linked_job_map: dict[str, list[str]] = {}
     if not linked_jobs_df.empty and MOBILE_NUMBER_RECORD_ID_COL in linked_jobs_df.columns:
         linked_job_rows = normalize_mobile_number_linked_job_rows(
@@ -1134,53 +1196,80 @@ def mobile_number_rows_for_person(source_store: dict[str, pd.DataFrame], person_
     return normalize_mobile_number_rows(rows)
 
 
-def replace_mobile_number_rows(target_store: dict[str, pd.DataFrame], person_id, rows):
+def replace_mobile_number_rows(target_store: dict[str, pd.DataFrame], person_id, rows, changed_by: str = "system"):
     normalized_person_id = _normalize_person_id(person_id)
     person_key = str(normalized_person_id)
     payload_rows = []
     for row in normalize_mobile_number_rows(rows):
-        payload_rows.append({
-            **row,
-            "person_id": normalized_person_id,
-        })
+        payload_rows.append({**row, "person_id": normalized_person_id})
 
     mobile_rows = [{col: row.get(col) for col in MOBILE_NUMBER_COLUMNS} for row in payload_rows]
     family_rows = mobile_number_family_relation_rows_from_mobile_rows(payload_rows)
     personal_primary_rows = personal_mobile_number_primary_rows_from_mobile_rows(payload_rows)
     linked_job_rows = mobile_number_linked_job_rows_from_mobile_rows(payload_rows)
 
-    mobile_df = target_store.get(MOBILE_NUMBER_SHEET, pd.DataFrame()).copy()
+    now = pd.Timestamp.now()
+    new_scd = _scd_new_metadata(changed_by)
+
+    mobile_df = _scd_ensure_columns(target_store.get(MOBILE_NUMBER_SHEET, pd.DataFrame()).copy())
     existing_record_ids: set[str] = set()
     if not mobile_df.empty and "person_id" in mobile_df.columns and MOBILE_NUMBER_RECORD_ID_COL in mobile_df.columns:
-        for raw_record_id in mobile_df[mobile_df["person_id"].astype(str) == person_key][MOBILE_NUMBER_RECORD_ID_COL].tolist():
-            record_id = _normalize_mobile_number_record_id(raw_record_id)
-            if record_id:
-                existing_record_ids.add(record_id)
-    if not mobile_df.empty and "person_id" in mobile_df.columns:
-        mobile_df = mobile_df[mobile_df["person_id"].astype(str) != person_key]
+        active_person_mask = (
+            (mobile_df["person_id"].astype(str) == person_key) &
+            (mobile_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+        )
+        for raw_rid in mobile_df[active_person_mask][MOBILE_NUMBER_RECORD_ID_COL].tolist():
+            rid = _normalize_mobile_number_record_id(raw_rid)
+            if rid:
+                existing_record_ids.add(rid)
+        if active_person_mask.any():
+            mobile_df.loc[active_person_mask, SCD_ACTIVE_TO_COL] = now
+            mobile_df.loc[active_person_mask, SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+            mobile_df.loc[active_person_mask, SCD_CHANGED_BY_USER_COL] = changed_by
     if mobile_rows:
-        mobile_df = pd.concat([mobile_df, pd.DataFrame(mobile_rows)], ignore_index=True)
+        mobile_df = pd.concat([mobile_df, pd.DataFrame([{**r, **new_scd} for r in mobile_rows])], ignore_index=True)
     target_store[MOBILE_NUMBER_SHEET] = mobile_df
 
-    family_df = target_store.get(MOBILE_NUMBER_FAMILY_RELATION_SHEET, pd.DataFrame()).copy()
+    family_df = _scd_ensure_columns(target_store.get(MOBILE_NUMBER_FAMILY_RELATION_SHEET, pd.DataFrame()).copy())
     if not family_df.empty and MOBILE_NUMBER_RECORD_ID_COL in family_df.columns and existing_record_ids:
-        family_df = family_df[~family_df[MOBILE_NUMBER_RECORD_ID_COL].astype(str).isin(existing_record_ids)]
+        active_sat_mask = (
+            family_df[MOBILE_NUMBER_RECORD_ID_COL].astype(str).isin(existing_record_ids) &
+            (family_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+        )
+        if active_sat_mask.any():
+            family_df.loc[active_sat_mask, SCD_ACTIVE_TO_COL] = now
+            family_df.loc[active_sat_mask, SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+            family_df.loc[active_sat_mask, SCD_CHANGED_BY_USER_COL] = changed_by
     if family_rows:
-        family_df = pd.concat([family_df, pd.DataFrame(family_rows)], ignore_index=True)
+        family_df = pd.concat([family_df, pd.DataFrame([{**r, **new_scd} for r in family_rows])], ignore_index=True)
     target_store[MOBILE_NUMBER_FAMILY_RELATION_SHEET] = family_df
 
-    personal_primary_df = target_store.get(PERSONAL_MOBILE_NUMBER_PRIMARY_SHEET, pd.DataFrame()).copy()
+    personal_primary_df = _scd_ensure_columns(target_store.get(PERSONAL_MOBILE_NUMBER_PRIMARY_SHEET, pd.DataFrame()).copy())
     if not personal_primary_df.empty and MOBILE_NUMBER_RECORD_ID_COL in personal_primary_df.columns and existing_record_ids:
-        personal_primary_df = personal_primary_df[~personal_primary_df[MOBILE_NUMBER_RECORD_ID_COL].astype(str).isin(existing_record_ids)]
+        active_prim_mask = (
+            personal_primary_df[MOBILE_NUMBER_RECORD_ID_COL].astype(str).isin(existing_record_ids) &
+            (personal_primary_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+        )
+        if active_prim_mask.any():
+            personal_primary_df.loc[active_prim_mask, SCD_ACTIVE_TO_COL] = now
+            personal_primary_df.loc[active_prim_mask, SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+            personal_primary_df.loc[active_prim_mask, SCD_CHANGED_BY_USER_COL] = changed_by
     if personal_primary_rows:
-        personal_primary_df = pd.concat([personal_primary_df, pd.DataFrame(personal_primary_rows)], ignore_index=True)
+        personal_primary_df = pd.concat([personal_primary_df, pd.DataFrame([{**r, **new_scd} for r in personal_primary_rows])], ignore_index=True)
     target_store[PERSONAL_MOBILE_NUMBER_PRIMARY_SHEET] = personal_primary_df
 
-    linked_jobs_df = target_store.get(MOBILE_NUMBER_LINKED_JOB_SHEET, pd.DataFrame()).copy()
+    linked_jobs_df = _scd_ensure_columns(target_store.get(MOBILE_NUMBER_LINKED_JOB_SHEET, pd.DataFrame()).copy())
     if not linked_jobs_df.empty and MOBILE_NUMBER_RECORD_ID_COL in linked_jobs_df.columns and existing_record_ids:
-        linked_jobs_df = linked_jobs_df[~linked_jobs_df[MOBILE_NUMBER_RECORD_ID_COL].astype(str).isin(existing_record_ids)]
+        active_lnk_mask = (
+            linked_jobs_df[MOBILE_NUMBER_RECORD_ID_COL].astype(str).isin(existing_record_ids) &
+            (linked_jobs_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+        )
+        if active_lnk_mask.any():
+            linked_jobs_df.loc[active_lnk_mask, SCD_ACTIVE_TO_COL] = now
+            linked_jobs_df.loc[active_lnk_mask, SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+            linked_jobs_df.loc[active_lnk_mask, SCD_CHANGED_BY_USER_COL] = changed_by
     if linked_job_rows:
-        linked_jobs_df = pd.concat([linked_jobs_df, pd.DataFrame(linked_job_rows)], ignore_index=True)
+        linked_jobs_df = pd.concat([linked_jobs_df, pd.DataFrame([{**r, **new_scd} for r in linked_job_rows])], ignore_index=True)
     target_store[MOBILE_NUMBER_LINKED_JOB_SHEET] = linked_jobs_df
 
 
@@ -1289,7 +1378,8 @@ def normalize_person_youth_group_age_history_entries(rows) -> list[dict]:
 
 
 def person_youth_group_age_history_lookup(history_df: pd.DataFrame | None = None) -> dict[str, list[dict]]:
-    df = history_df if history_df is not None else store.get(PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame())
+    raw = history_df if history_df is not None else store.get(PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame())
+    df = _scd_filter_active(raw)
     if df is None or df.empty or PERSON_YOUTH_GROUP_RECORD_ID_COL not in df.columns:
         return {}
 
@@ -1435,21 +1525,21 @@ def get_person_youth_group_payload_rows(payload_rows_by_person: dict, pid) -> li
 
 def _ensure_person_youth_group_schema() -> bool:
     changed = False
-    pyg = store.get(PERSON_YOUTH_GROUP_SHEET, pd.DataFrame()).copy()
-    history_df = store.get(PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame()).copy()
+    pyg = _scd_ensure_columns(store.get(PERSON_YOUTH_GROUP_SHEET, pd.DataFrame()).copy())
+    history_df = _scd_ensure_columns(store.get(PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame()).copy())
 
+    pyg_required_columns = ["person_id", PERSON_YOUTH_GROUP_RECORD_ID_COL, "youth_join_year", YOUTH_GROUP_ID_COL, "archived"]
     if pyg.empty:
-        pyg = pd.DataFrame(columns=["person_id", PERSON_YOUTH_GROUP_RECORD_ID_COL, "youth_join_year", YOUTH_GROUP_ID_COL, "archived"])
+        pyg = pd.DataFrame(columns=pyg_required_columns + SCD_METADATA_COLUMNS)
         changed = True
     else:
-        required_columns = ["person_id", PERSON_YOUTH_GROUP_RECORD_ID_COL, "youth_join_year", YOUTH_GROUP_ID_COL, "archived"]
-        for col in required_columns:
+        for col in pyg_required_columns:
             if col not in pyg.columns:
                 pyg[col] = None
                 changed = True
 
     if history_df.empty:
-        history_df = pd.DataFrame(columns=PERSON_YOUTH_GROUP_AGE_HISTORY_COLUMNS)
+        history_df = pd.DataFrame(columns=PERSON_YOUTH_GROUP_AGE_HISTORY_COLUMNS + SCD_METADATA_COLUMNS)
         changed = True
     else:
         for col in PERSON_YOUTH_GROUP_AGE_HISTORY_COLUMNS:
@@ -1457,7 +1547,11 @@ def _ensure_person_youth_group_schema() -> bool:
                 history_df[col] = None
                 changed = True
 
-    existing_history_rows = normalize_person_youth_group_age_history_entries(history_df.replace({np.nan: None}).to_dict(orient="records")) if not history_df.empty else []
+    active_pyg_df, inactive_pyg_df = _scd_split(pyg)
+    active_hist_df, inactive_hist_df = _scd_split(history_df)
+
+    active_hist_raw_rows = active_hist_df.replace({np.nan: None}).to_dict(orient="records") if not active_hist_df.empty else []
+    existing_history_rows = normalize_person_youth_group_age_history_entries(active_hist_raw_rows)
     history_lookup = {}
     for row in existing_history_rows:
         history_lookup.setdefault(row[PERSON_YOUTH_GROUP_RECORD_ID_COL], []).append({
@@ -1466,7 +1560,7 @@ def _ensure_person_youth_group_schema() -> bool:
             "end_date": row.get("end_date"),
         })
 
-    main_source_rows = pyg.replace({np.nan: None}).to_dict(orient="records") if not pyg.empty else []
+    main_source_rows = active_pyg_df.replace({np.nan: None}).to_dict(orient="records") if not active_pyg_df.empty else []
     normalized_main_rows = normalize_person_youth_group_rows(main_source_rows, history_lookup)
 
     supplemental_history_rows = []
@@ -1485,11 +1579,17 @@ def _ensure_person_youth_group_schema() -> bool:
         existing_history_ids.add(record_id)
         changed = True
 
+    # Keep history for inactive pyg records too (preserve historical data)
+    inactive_pyg_record_ids = {
+        row.get(PERSON_YOUTH_GROUP_RECORD_ID_COL)
+        for row in (inactive_pyg_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_pyg_df.empty else [])
+        if row.get(PERSON_YOUTH_GROUP_RECORD_ID_COL)
+    }
     valid_record_ids = {
         row.get(PERSON_YOUTH_GROUP_RECORD_ID_COL)
         for row in normalized_main_rows
         if row.get(PERSON_YOUTH_GROUP_RECORD_ID_COL)
-    }
+    } | inactive_pyg_record_ids
     normalized_history_rows = [
         row for row in normalize_person_youth_group_age_history_entries(existing_history_rows + supplemental_history_rows)
         if row.get(PERSON_YOUTH_GROUP_RECORD_ID_COL) in valid_record_ids
@@ -1501,11 +1601,16 @@ def _ensure_person_youth_group_schema() -> bool:
     if normalized_history_rows != existing_history_rows:
         changed = True
 
-    normalized_main_df = pd.DataFrame(normalized_main_rows, columns=PERSON_YOUTH_GROUP_COLUMNS)
+    norm_pyg_scd = _scd_preserve_metadata(normalized_main_rows, main_source_rows, PERSON_YOUTH_GROUP_RECORD_ID_COL)
+    inactive_pyg_rows = inactive_pyg_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_pyg_df.empty else []
+    normalized_main_df = pd.DataFrame(norm_pyg_scd + inactive_pyg_rows)
     if "youth_join_year" in normalized_main_df.columns:
         normalized_main_df["youth_join_year"] = pd.array(normalized_main_df["youth_join_year"], dtype="Int64")
     store[PERSON_YOUTH_GROUP_SHEET] = normalized_main_df
-    store[PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET] = pd.DataFrame(normalized_history_rows, columns=PERSON_YOUTH_GROUP_AGE_HISTORY_COLUMNS)
+
+    norm_hist_scd = _scd_preserve_metadata(normalized_history_rows, active_hist_raw_rows, PERSON_YOUTH_GROUP_RECORD_ID_COL)
+    inactive_hist_rows = inactive_hist_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_hist_df.empty else []
+    store[PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET] = pd.DataFrame(norm_hist_scd + inactive_hist_rows)
     return changed
 
 
@@ -1665,7 +1770,7 @@ def school_grade_rows_from_school_rows(rows) -> list[dict]:
 
 
 def school_rows_for_person(source_store: dict[str, pd.DataFrame], person_id) -> list[dict]:
-    schools_df = source_store.get(SCHOOL_SHEET, pd.DataFrame())
+    schools_df = _scd_filter_active(source_store.get(SCHOOL_SHEET, pd.DataFrame()))
     normalized_person_id = _normalize_person_id(person_id)
     if schools_df.empty or "person_id" not in schools_df.columns or normalized_person_id in (None, ""):
         return []
@@ -1684,7 +1789,7 @@ def school_rows_for_person(source_store: dict[str, pd.DataFrame], person_id) -> 
         if record_id
     }
 
-    school_sections_df = source_store.get(SCHOOL_SECTION_SHEET, pd.DataFrame())
+    school_sections_df = _scd_filter_active(source_store.get(SCHOOL_SECTION_SHEET, pd.DataFrame()))
     section_map: dict[str, str] = {}
     if not school_sections_df.empty and SCHOOL_RECORD_ID_COL in school_sections_df.columns:
         section_rows = normalize_school_section_rows(
@@ -1697,7 +1802,7 @@ def school_rows_for_person(source_store: dict[str, pd.DataFrame], person_id) -> 
             if record_id and section:
                 section_map[record_id] = section
 
-    school_grades_df = source_store.get(SCHOOL_GRADE_SHEET, pd.DataFrame())
+    school_grades_df = _scd_filter_active(source_store.get(SCHOOL_GRADE_SHEET, pd.DataFrame()))
     grade_map: dict[str, list[str]] = {}
     if not school_grades_df.empty and SCHOOL_RECORD_ID_COL in school_grades_df.columns:
         grade_rows = normalize_school_grade_rows(
@@ -1718,49 +1823,65 @@ def school_rows_for_person(source_store: dict[str, pd.DataFrame], person_id) -> 
     return rows
 
 
-def replace_school_rows(target_store: dict[str, pd.DataFrame], person_id, rows):
+def replace_school_rows(target_store: dict[str, pd.DataFrame], person_id, rows, changed_by: str = "system"):
     normalized_person_id = _normalize_person_id(person_id)
     person_key = str(normalized_person_id)
     payload_rows = []
     for row in normalize_school_payload_rows(rows):
-        payload_rows.append({
-            **row,
-            "person_id": normalized_person_id,
-        })
+        payload_rows.append({**row, "person_id": normalized_person_id})
 
     school_rows = [{col: row.get(col) for col in SCHOOL_COLUMNS} for row in payload_rows]
     school_section_rows = school_section_rows_from_school_rows(payload_rows)
     school_grade_rows = school_grade_rows_from_school_rows(payload_rows)
 
-    schools_df = target_store.get(SCHOOL_SHEET, pd.DataFrame()).copy()
+    now = pd.Timestamp.now()
+    new_scd = _scd_new_metadata(changed_by)
+
+    schools_df = _scd_ensure_columns(target_store.get(SCHOOL_SHEET, pd.DataFrame()).copy())
     existing_record_ids: set[str] = set()
     if not schools_df.empty and "person_id" in schools_df.columns and SCHOOL_RECORD_ID_COL in schools_df.columns:
-        for raw_record_id in schools_df[schools_df["person_id"].astype(str) == person_key][SCHOOL_RECORD_ID_COL].tolist():
-            record_id = _normalize_school_record_id(raw_record_id)
-            if record_id:
-                existing_record_ids.add(record_id)
-    if not schools_df.empty and "person_id" in schools_df.columns:
-        schools_df = schools_df[schools_df["person_id"].astype(str) != person_key]
+        active_mask = (
+            (schools_df["person_id"].astype(str) == person_key) &
+            (schools_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+        )
+        for raw_rid in schools_df[active_mask][SCHOOL_RECORD_ID_COL].tolist():
+            rid = _normalize_school_record_id(raw_rid)
+            if rid:
+                existing_record_ids.add(rid)
+        if active_mask.any():
+            schools_df.loc[active_mask, SCD_ACTIVE_TO_COL] = now
+            schools_df.loc[active_mask, SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+            schools_df.loc[active_mask, SCD_CHANGED_BY_USER_COL] = changed_by
     if school_rows:
-        schools_df = pd.concat([schools_df, pd.DataFrame(school_rows)], ignore_index=True)
+        schools_df = pd.concat([schools_df, pd.DataFrame([{**r, **new_scd} for r in school_rows])], ignore_index=True)
     target_store[SCHOOL_SHEET] = schools_df
 
-    school_sections_df = target_store.get(SCHOOL_SECTION_SHEET, pd.DataFrame()).copy()
+    school_sections_df = _scd_ensure_columns(target_store.get(SCHOOL_SECTION_SHEET, pd.DataFrame()).copy())
     if not school_sections_df.empty and SCHOOL_RECORD_ID_COL in school_sections_df.columns and existing_record_ids:
-        school_sections_df = school_sections_df[
-            ~school_sections_df[SCHOOL_RECORD_ID_COL].astype(str).isin(existing_record_ids)
-        ]
+        active_sec_mask = (
+            school_sections_df[SCHOOL_RECORD_ID_COL].astype(str).isin(existing_record_ids) &
+            (school_sections_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+        )
+        if active_sec_mask.any():
+            school_sections_df.loc[active_sec_mask, SCD_ACTIVE_TO_COL] = now
+            school_sections_df.loc[active_sec_mask, SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+            school_sections_df.loc[active_sec_mask, SCD_CHANGED_BY_USER_COL] = changed_by
     if school_section_rows:
-        school_sections_df = pd.concat([school_sections_df, pd.DataFrame(school_section_rows)], ignore_index=True)
+        school_sections_df = pd.concat([school_sections_df, pd.DataFrame([{**r, **new_scd} for r in school_section_rows])], ignore_index=True)
     target_store[SCHOOL_SECTION_SHEET] = school_sections_df
 
-    school_grades_df = target_store.get(SCHOOL_GRADE_SHEET, pd.DataFrame()).copy()
+    school_grades_df = _scd_ensure_columns(target_store.get(SCHOOL_GRADE_SHEET, pd.DataFrame()).copy())
     if not school_grades_df.empty and SCHOOL_RECORD_ID_COL in school_grades_df.columns and existing_record_ids:
-        school_grades_df = school_grades_df[
-            ~school_grades_df[SCHOOL_RECORD_ID_COL].astype(str).isin(existing_record_ids)
-        ]
+        active_grd_mask = (
+            school_grades_df[SCHOOL_RECORD_ID_COL].astype(str).isin(existing_record_ids) &
+            (school_grades_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+        )
+        if active_grd_mask.any():
+            school_grades_df.loc[active_grd_mask, SCD_ACTIVE_TO_COL] = now
+            school_grades_df.loc[active_grd_mask, SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+            school_grades_df.loc[active_grd_mask, SCD_CHANGED_BY_USER_COL] = changed_by
     if school_grade_rows:
-        school_grades_df = pd.concat([school_grades_df, pd.DataFrame(school_grade_rows)], ignore_index=True)
+        school_grades_df = pd.concat([school_grades_df, pd.DataFrame([{**r, **new_scd} for r in school_grade_rows])], ignore_index=True)
     target_store[SCHOOL_GRADE_SHEET] = school_grades_df
 
 
@@ -1974,7 +2095,7 @@ def email_linked_job_rows_from_email_rows(rows) -> list[dict]:
 
 
 def email_rows_for_person(source_store: dict[str, pd.DataFrame], person_id) -> list[dict]:
-    emails_df = source_store.get(EMAIL_SHEET, pd.DataFrame())
+    emails_df = _scd_filter_active(source_store.get(EMAIL_SHEET, pd.DataFrame()))
     normalized_person_id = _normalize_person_id(person_id)
     if emails_df.empty or "person_id" not in emails_df.columns or normalized_person_id in (None, ""):
         return []
@@ -1993,7 +2114,7 @@ def email_rows_for_person(source_store: dict[str, pd.DataFrame], person_id) -> l
         if record_id
     }
 
-    family_df = source_store.get(EMAIL_FAMILY_RELATION_SHEET, pd.DataFrame())
+    family_df = _scd_filter_active(source_store.get(EMAIL_FAMILY_RELATION_SHEET, pd.DataFrame()))
     family_map: dict[str, str] = {}
     if not family_df.empty and EMAIL_RECORD_ID_COL in family_df.columns:
         family_rows = normalize_email_family_relation_rows(
@@ -2006,7 +2127,7 @@ def email_rows_for_person(source_store: dict[str, pd.DataFrame], person_id) -> l
             if record_id and family_relation:
                 family_map[record_id] = family_relation
 
-    linked_jobs_df = source_store.get(EMAIL_LINKED_JOB_SHEET, pd.DataFrame())
+    linked_jobs_df = _scd_filter_active(source_store.get(EMAIL_LINKED_JOB_SHEET, pd.DataFrame()))
     linked_job_map: dict[str, list[str]] = {}
     if not linked_jobs_df.empty and EMAIL_RECORD_ID_COL in linked_jobs_df.columns:
         linked_job_rows = normalize_email_linked_job_rows(
@@ -2019,7 +2140,7 @@ def email_rows_for_person(source_store: dict[str, pd.DataFrame], person_id) -> l
             if record_id and job_id:
                 linked_job_map.setdefault(record_id, []).append(job_id)
 
-    personal_primary_df = source_store.get(PERSONAL_EMAIL_PRIMARY_SHEET, pd.DataFrame())
+    personal_primary_df = _scd_filter_active(source_store.get(PERSONAL_EMAIL_PRIMARY_SHEET, pd.DataFrame()))
     personal_primary_map: dict[str, bool] = {}
     if not personal_primary_df.empty and EMAIL_RECORD_ID_COL in personal_primary_df.columns:
         personal_primary_rows = normalize_personal_email_primary_rows(
@@ -2120,46 +2241,77 @@ def prepare_email_rows_for_person(target_store: dict[str, pd.DataFrame], person_
     return prepared_rows
 
 
-def replace_email_rows(target_store: dict[str, pd.DataFrame], person_id, rows):
+def replace_email_rows(target_store: dict[str, pd.DataFrame], person_id, rows, changed_by: str = "system"):
     normalized_person_id = _normalize_person_id(person_id)
     person_key = str(normalized_person_id)
     prepared_rows = prepare_email_rows_for_person(target_store, person_id, rows)
     email_rows = [{col: row.get(col) for col in EMAIL_COLUMNS} for row in prepared_rows]
-    emails_df = target_store.get(EMAIL_SHEET, pd.DataFrame()).copy()
+
+    now = pd.Timestamp.now()
+    new_scd = _scd_new_metadata(changed_by)
+
+    emails_df = _scd_ensure_columns(target_store.get(EMAIL_SHEET, pd.DataFrame()).copy())
     existing_record_ids: set[str] = set()
     if not emails_df.empty and "person_id" in emails_df.columns and EMAIL_RECORD_ID_COL in emails_df.columns:
-        for raw_record_id in emails_df[emails_df["person_id"].astype(str) == person_key][EMAIL_RECORD_ID_COL].tolist():
-            record_id = _normalize_email_record_id(raw_record_id)
-            if record_id:
-                existing_record_ids.add(record_id)
-    if not emails_df.empty and "person_id" in emails_df.columns:
-        emails_df = emails_df[emails_df["person_id"].astype(str) != person_key]
+        active_mask = (
+            (emails_df["person_id"].astype(str) == person_key) &
+            (emails_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+        )
+        for raw_rid in emails_df[active_mask][EMAIL_RECORD_ID_COL].tolist():
+            rid = _normalize_email_record_id(raw_rid)
+            if rid:
+                existing_record_ids.add(rid)
+        if active_mask.any():
+            emails_df.loc[active_mask, SCD_ACTIVE_TO_COL] = now
+            emails_df.loc[active_mask, SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+            emails_df.loc[active_mask, SCD_CHANGED_BY_USER_COL] = changed_by
     if email_rows:
-        emails_df = pd.concat([emails_df, pd.DataFrame(email_rows)], ignore_index=True)
+        emails_df = pd.concat([emails_df, pd.DataFrame([{**r, **new_scd} for r in email_rows])], ignore_index=True)
     target_store[EMAIL_SHEET] = emails_df
 
     family_rows = email_family_relation_rows_from_email_rows(prepared_rows)
-    family_df = target_store.get(EMAIL_FAMILY_RELATION_SHEET, pd.DataFrame()).copy()
+    family_df = _scd_ensure_columns(target_store.get(EMAIL_FAMILY_RELATION_SHEET, pd.DataFrame()).copy())
     if not family_df.empty and EMAIL_RECORD_ID_COL in family_df.columns and existing_record_ids:
-        family_df = family_df[~family_df[EMAIL_RECORD_ID_COL].astype(str).isin(existing_record_ids)]
+        active_fam_mask = (
+            family_df[EMAIL_RECORD_ID_COL].astype(str).isin(existing_record_ids) &
+            (family_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+        )
+        if active_fam_mask.any():
+            family_df.loc[active_fam_mask, SCD_ACTIVE_TO_COL] = now
+            family_df.loc[active_fam_mask, SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+            family_df.loc[active_fam_mask, SCD_CHANGED_BY_USER_COL] = changed_by
     if family_rows:
-        family_df = pd.concat([family_df, pd.DataFrame(family_rows)], ignore_index=True)
+        family_df = pd.concat([family_df, pd.DataFrame([{**r, **new_scd} for r in family_rows])], ignore_index=True)
     target_store[EMAIL_FAMILY_RELATION_SHEET] = family_df
 
     personal_primary_rows = personal_email_primary_rows_from_email_rows(prepared_rows)
-    personal_primary_df = target_store.get(PERSONAL_EMAIL_PRIMARY_SHEET, pd.DataFrame()).copy()
+    personal_primary_df = _scd_ensure_columns(target_store.get(PERSONAL_EMAIL_PRIMARY_SHEET, pd.DataFrame()).copy())
     if not personal_primary_df.empty and EMAIL_RECORD_ID_COL in personal_primary_df.columns and existing_record_ids:
-        personal_primary_df = personal_primary_df[~personal_primary_df[EMAIL_RECORD_ID_COL].astype(str).isin(existing_record_ids)]
+        active_prim_mask = (
+            personal_primary_df[EMAIL_RECORD_ID_COL].astype(str).isin(existing_record_ids) &
+            (personal_primary_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+        )
+        if active_prim_mask.any():
+            personal_primary_df.loc[active_prim_mask, SCD_ACTIVE_TO_COL] = now
+            personal_primary_df.loc[active_prim_mask, SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+            personal_primary_df.loc[active_prim_mask, SCD_CHANGED_BY_USER_COL] = changed_by
     if personal_primary_rows:
-        personal_primary_df = pd.concat([personal_primary_df, pd.DataFrame(personal_primary_rows)], ignore_index=True)
+        personal_primary_df = pd.concat([personal_primary_df, pd.DataFrame([{**r, **new_scd} for r in personal_primary_rows])], ignore_index=True)
     target_store[PERSONAL_EMAIL_PRIMARY_SHEET] = personal_primary_df
 
     linked_job_rows = email_linked_job_rows_from_email_rows(prepared_rows)
-    linked_jobs_df = target_store.get(EMAIL_LINKED_JOB_SHEET, pd.DataFrame()).copy()
+    linked_jobs_df = _scd_ensure_columns(target_store.get(EMAIL_LINKED_JOB_SHEET, pd.DataFrame()).copy())
     if not linked_jobs_df.empty and EMAIL_RECORD_ID_COL in linked_jobs_df.columns and existing_record_ids:
-        linked_jobs_df = linked_jobs_df[~linked_jobs_df[EMAIL_RECORD_ID_COL].astype(str).isin(existing_record_ids)]
+        active_lnk_mask = (
+            linked_jobs_df[EMAIL_RECORD_ID_COL].astype(str).isin(existing_record_ids) &
+            (linked_jobs_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+        )
+        if active_lnk_mask.any():
+            linked_jobs_df.loc[active_lnk_mask, SCD_ACTIVE_TO_COL] = now
+            linked_jobs_df.loc[active_lnk_mask, SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+            linked_jobs_df.loc[active_lnk_mask, SCD_CHANGED_BY_USER_COL] = changed_by
     if linked_job_rows:
-        linked_jobs_df = pd.concat([linked_jobs_df, pd.DataFrame(linked_job_rows)], ignore_index=True)
+        linked_jobs_df = pd.concat([linked_jobs_df, pd.DataFrame([{**r, **new_scd} for r in linked_job_rows])], ignore_index=True)
     target_store[EMAIL_LINKED_JOB_SHEET] = linked_jobs_df
 
 
@@ -2425,21 +2577,32 @@ def prepare_job_rows_for_person(target_store: dict[str, pd.DataFrame], person_id
     return prepared_rows, id_map
 
 
-def replace_job_rows(target_store: dict[str, pd.DataFrame], person_id, rows) -> dict[str, str]:
+def replace_job_rows(target_store: dict[str, pd.DataFrame], person_id, rows, changed_by: str = "system") -> dict[str, str]:
     normalized_person_id = _normalize_person_id(person_id)
     person_key = str(normalized_person_id)
     prepared_rows, id_map = prepare_job_rows_for_person(target_store, person_id, rows)
-    jobs_df = target_store.get(JOB_SHEET, pd.DataFrame()).copy()
+
+    now = pd.Timestamp.now()
+    new_scd = _scd_new_metadata(changed_by)
+
+    jobs_df = _scd_ensure_columns(target_store.get(JOB_SHEET, pd.DataFrame()).copy())
     if not jobs_df.empty and "person_id" in jobs_df.columns:
-        jobs_df = jobs_df[jobs_df["person_id"].astype(str) != person_key]
+        active_mask = (
+            (jobs_df["person_id"].astype(str) == person_key) &
+            (jobs_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+        )
+        if active_mask.any():
+            jobs_df.loc[active_mask, SCD_ACTIVE_TO_COL] = now
+            jobs_df.loc[active_mask, SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+            jobs_df.loc[active_mask, SCD_CHANGED_BY_USER_COL] = changed_by
     if prepared_rows:
-        jobs_df = pd.concat([jobs_df, pd.DataFrame(prepared_rows)], ignore_index=True)
+        jobs_df = pd.concat([jobs_df, pd.DataFrame([{**r, **new_scd} for r in prepared_rows])], ignore_index=True)
     target_store[JOB_SHEET] = jobs_df
     return id_map
 
 
 def job_rows_for_person(source_store: dict[str, pd.DataFrame], person_id) -> list[dict]:
-    jobs_df = source_store.get(JOB_SHEET, pd.DataFrame())
+    jobs_df = _scd_filter_active(source_store.get(JOB_SHEET, pd.DataFrame()))
     normalized_person_id = _normalize_person_id(person_id)
     if jobs_df.empty or "person_id" not in jobs_df.columns or normalized_person_id in (None, ""):
         return []
@@ -2920,10 +3083,10 @@ def _ensure_youth_group_schema() -> bool:
 def _ensure_addresses_schema() -> bool:
     changed = False
     persons = store.get("persons", pd.DataFrame()).copy()
-    addresses = store.get(ADDRESS_SHEET, pd.DataFrame()).copy()
+    addresses = _scd_ensure_columns(store.get(ADDRESS_SHEET, pd.DataFrame()).copy())
 
     if addresses.empty:
-        addresses = pd.DataFrame(columns=ADDRESS_COLUMNS)
+        addresses = pd.DataFrame(columns=ADDRESS_COLUMNS + SCD_METADATA_COLUMNS)
         changed = True
     else:
         for col in ADDRESS_COLUMNS:
@@ -2931,8 +3094,9 @@ def _ensure_addresses_schema() -> bool:
                 addresses[col] = None
                 changed = True
 
-    existing_rows = addresses.replace({np.nan: None}).to_dict(orient="records") if not addresses.empty else []
-    normalized_rows = normalize_address_rows(existing_rows)
+    active_addr_df, inactive_addr_df = _scd_split(addresses)
+    active_rows = active_addr_df.replace({np.nan: None}).to_dict(orient="records") if not active_addr_df.empty else []
+    normalized_rows = normalize_address_rows(active_rows)
 
     if not persons.empty and "person_id" in persons.columns:
         existing_ids = {str(row.get("person_id")) for row in normalized_rows if row.get("person_id") not in (None, "")}
@@ -2965,9 +3129,18 @@ def _ensure_addresses_schema() -> bool:
             changed = True
 
     normalized_rows = normalize_address_rows(normalized_rows)
-    if normalized_rows != existing_rows:
+    current_rows = [{col: row.get(col) for col in ADDRESS_COLUMNS} for row in active_rows]
+    normalized_business_rows = [{col: row.get(col) for col in ADDRESS_COLUMNS} for row in normalized_rows]
+    if normalized_business_rows != current_rows:
         changed = True
-    store[ADDRESS_SHEET] = pd.DataFrame(normalized_rows, columns=ADDRESS_COLUMNS)
+
+    default_scd = {c: (True if c == SCD_CURRENTLY_ACTIVE_FLAG_COL else None) for c in SCD_METADATA_COLUMNS}
+    normalized_rows_with_scd = [
+        {**row, **({c: active_rows[i].get(c) for c in SCD_METADATA_COLUMNS} if i < len(active_rows) else default_scd)}
+        for i, row in enumerate(normalized_rows)
+    ]
+    inactive_addr_rows = inactive_addr_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_addr_df.empty else []
+    store[ADDRESS_SHEET] = pd.DataFrame(normalized_rows_with_scd + inactive_addr_rows)
 
     for legacy_col in PERSON_ADDRESS_PROJECTION_COLS:
         if legacy_col in persons.columns:
@@ -2979,64 +3152,67 @@ def _ensure_addresses_schema() -> bool:
 
 def _ensure_mobile_numbers_schema() -> bool:
     changed = False
-    mobile_numbers = store.get(MOBILE_NUMBER_SHEET, pd.DataFrame()).copy()
-    mobile_number_family_relations = store.get(MOBILE_NUMBER_FAMILY_RELATION_SHEET, pd.DataFrame()).copy()
-    personal_mobile_number_primary = store.get(PERSONAL_MOBILE_NUMBER_PRIMARY_SHEET, pd.DataFrame()).copy()
-    mobile_number_linked_jobs = store.get(MOBILE_NUMBER_LINKED_JOB_SHEET, pd.DataFrame()).copy()
+    mobile_numbers = _scd_ensure_columns(store.get(MOBILE_NUMBER_SHEET, pd.DataFrame()).copy())
+    mobile_number_family_relations = _scd_ensure_columns(store.get(MOBILE_NUMBER_FAMILY_RELATION_SHEET, pd.DataFrame()).copy())
+    personal_mobile_number_primary = _scd_ensure_columns(store.get(PERSONAL_MOBILE_NUMBER_PRIMARY_SHEET, pd.DataFrame()).copy())
+    mobile_number_linked_jobs = _scd_ensure_columns(store.get(MOBILE_NUMBER_LINKED_JOB_SHEET, pd.DataFrame()).copy())
 
     if mobile_numbers.empty:
-        mobile_numbers = pd.DataFrame(columns=MOBILE_NUMBER_COLUMNS)
+        mobile_numbers = pd.DataFrame(columns=MOBILE_NUMBER_COLUMNS + SCD_METADATA_COLUMNS)
         changed = True
     else:
         for col in MOBILE_NUMBER_COLUMNS:
             if col not in mobile_numbers.columns:
                 mobile_numbers[col] = None
                 changed = True
-        if any(col not in MOBILE_NUMBER_COLUMNS and col not in ("family_relation", "linked_job_ids") for col in mobile_numbers.columns):
+        if any(col not in MOBILE_NUMBER_COLUMNS and col not in SCD_METADATA_COLUMNS and col not in ("family_relation", "linked_job_ids") for col in mobile_numbers.columns):
             changed = True
 
-    existing_rows = mobile_numbers.replace({np.nan: None}).to_dict(orient="records") if not mobile_numbers.empty else []
-    normalized_payload_rows = normalize_mobile_number_rows(existing_rows)
+    # Split active/inactive and normalize only active rows
+    active_mob_df, inactive_mob_df = _scd_split(mobile_numbers)
+    active_rows = active_mob_df.replace({np.nan: None}).to_dict(orient="records") if not active_mob_df.empty else []
+    normalized_payload_rows = normalize_mobile_number_rows(active_rows)
     normalized_rows = [{col: row.get(col) for col in MOBILE_NUMBER_COLUMNS} for row in normalized_payload_rows]
-    current_rows = [{col: row.get(col) for col in MOBILE_NUMBER_COLUMNS} for row in existing_rows]
+    current_rows = [{col: row.get(col) for col in MOBILE_NUMBER_COLUMNS} for row in active_rows]
     if normalized_rows != current_rows:
         changed = True
 
+    # All record IDs (active + inactive) for satellite validation
+    all_mobile_record_ids = {
+        str(row.get(MOBILE_NUMBER_RECORD_ID_COL))
+        for row in (active_rows + (inactive_mob_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_mob_df.empty else []))
+        if row.get(MOBILE_NUMBER_RECORD_ID_COL)
+    }
+    active_mobile_record_ids = {str(row.get(MOBILE_NUMBER_RECORD_ID_COL)) for row in normalized_rows if row.get(MOBILE_NUMBER_RECORD_ID_COL)}
+
     if mobile_number_family_relations.empty:
-        mobile_number_family_relations = pd.DataFrame(columns=MOBILE_NUMBER_FAMILY_RELATION_COLUMNS)
+        mobile_number_family_relations = pd.DataFrame(columns=MOBILE_NUMBER_FAMILY_RELATION_COLUMNS + SCD_METADATA_COLUMNS)
         changed = True
     else:
         for col in MOBILE_NUMBER_FAMILY_RELATION_COLUMNS:
             if col not in mobile_number_family_relations.columns:
                 mobile_number_family_relations[col] = None
                 changed = True
-        if any(col not in MOBILE_NUMBER_FAMILY_RELATION_COLUMNS for col in mobile_number_family_relations.columns):
+        if any(col not in MOBILE_NUMBER_FAMILY_RELATION_COLUMNS and col not in SCD_METADATA_COLUMNS for col in mobile_number_family_relations.columns):
             changed = True
 
-    mobile_record_ids = {
-        str(row.get(MOBILE_NUMBER_RECORD_ID_COL))
-        for row in normalized_rows
-        if row.get(MOBILE_NUMBER_RECORD_ID_COL)
-    }
-    existing_family_rows = mobile_number_family_relations.replace({np.nan: None}).to_dict(orient="records") if not mobile_number_family_relations.empty else []
+    active_fam_df, inactive_fam_df = _scd_split(mobile_number_family_relations)
+    existing_family_rows = active_fam_df.replace({np.nan: None}).to_dict(orient="records") if not active_fam_df.empty else []
     legacy_family_rows = mobile_number_family_relation_rows_from_mobile_rows(normalized_payload_rows)
-    normalized_family_rows = normalize_mobile_number_family_relation_rows(
-        existing_family_rows + legacy_family_rows,
-        mobile_record_ids,
-    )
-    current_family_rows = normalize_mobile_number_family_relation_rows(existing_family_rows, mobile_record_ids)
+    normalized_family_rows = normalize_mobile_number_family_relation_rows(existing_family_rows + legacy_family_rows, active_mobile_record_ids)
+    current_family_rows = normalize_mobile_number_family_relation_rows(existing_family_rows, active_mobile_record_ids)
     if normalized_family_rows != current_family_rows:
         changed = True
 
     if personal_mobile_number_primary.empty:
-        personal_mobile_number_primary = pd.DataFrame(columns=PERSONAL_MOBILE_NUMBER_PRIMARY_COLUMNS)
+        personal_mobile_number_primary = pd.DataFrame(columns=PERSONAL_MOBILE_NUMBER_PRIMARY_COLUMNS + SCD_METADATA_COLUMNS)
         changed = True
     else:
         for col in PERSONAL_MOBILE_NUMBER_PRIMARY_COLUMNS:
             if col not in personal_mobile_number_primary.columns:
                 personal_mobile_number_primary[col] = None
                 changed = True
-        if any(col not in PERSONAL_MOBILE_NUMBER_PRIMARY_COLUMNS for col in personal_mobile_number_primary.columns):
+        if any(col not in PERSONAL_MOBILE_NUMBER_PRIMARY_COLUMNS and col not in SCD_METADATA_COLUMNS for col in personal_mobile_number_primary.columns):
             changed = True
 
     personal_mobile_record_ids = {
@@ -3044,262 +3220,280 @@ def _ensure_mobile_numbers_schema() -> bool:
         for row in normalized_payload_rows
         if row.get(MOBILE_NUMBER_RECORD_ID_COL) and _normalize_mobile_number_type(_first_present(row, MOBILE_NUMBER_TYPE_COL, "type")) == "personal"
     }
-    existing_personal_primary_rows = personal_mobile_number_primary.replace({np.nan: None}).to_dict(orient="records") if not personal_mobile_number_primary.empty else []
+    active_prim_df, inactive_prim_df = _scd_split(personal_mobile_number_primary)
+    existing_personal_primary_rows = active_prim_df.replace({np.nan: None}).to_dict(orient="records") if not active_prim_df.empty else []
     legacy_personal_primary_rows = personal_mobile_number_primary_rows_from_mobile_rows(normalized_payload_rows)
-    normalized_personal_primary_rows = normalize_personal_mobile_number_primary_rows(
-        existing_personal_primary_rows + legacy_personal_primary_rows,
-        personal_mobile_record_ids,
-    )
+    normalized_personal_primary_rows = normalize_personal_mobile_number_primary_rows(existing_personal_primary_rows + legacy_personal_primary_rows, personal_mobile_record_ids)
     current_personal_primary_rows = normalize_personal_mobile_number_primary_rows(existing_personal_primary_rows, personal_mobile_record_ids)
     if normalized_personal_primary_rows != current_personal_primary_rows:
         changed = True
 
     if mobile_number_linked_jobs.empty:
-        mobile_number_linked_jobs = pd.DataFrame(columns=MOBILE_NUMBER_LINKED_JOB_COLUMNS)
+        mobile_number_linked_jobs = pd.DataFrame(columns=MOBILE_NUMBER_LINKED_JOB_COLUMNS + SCD_METADATA_COLUMNS)
         changed = True
     else:
         for col in MOBILE_NUMBER_LINKED_JOB_COLUMNS:
             if col not in mobile_number_linked_jobs.columns:
                 mobile_number_linked_jobs[col] = None
                 changed = True
-        if any(col not in MOBILE_NUMBER_LINKED_JOB_COLUMNS for col in mobile_number_linked_jobs.columns):
+        if any(col not in MOBILE_NUMBER_LINKED_JOB_COLUMNS and col not in SCD_METADATA_COLUMNS for col in mobile_number_linked_jobs.columns):
             changed = True
 
-    existing_linked_job_rows = mobile_number_linked_jobs.replace({np.nan: None}).to_dict(orient="records") if not mobile_number_linked_jobs.empty else []
+    active_lnk_df, inactive_lnk_df = _scd_split(mobile_number_linked_jobs)
+    existing_linked_job_rows = active_lnk_df.replace({np.nan: None}).to_dict(orient="records") if not active_lnk_df.empty else []
     legacy_linked_job_rows = mobile_number_linked_job_rows_from_mobile_rows(normalized_payload_rows)
-    normalized_linked_job_rows = normalize_mobile_number_linked_job_rows(
-        existing_linked_job_rows + legacy_linked_job_rows,
-        mobile_record_ids,
-    )
-    current_linked_job_rows = normalize_mobile_number_linked_job_rows(existing_linked_job_rows, mobile_record_ids)
+    normalized_linked_job_rows = normalize_mobile_number_linked_job_rows(existing_linked_job_rows + legacy_linked_job_rows, active_mobile_record_ids)
+    current_linked_job_rows = normalize_mobile_number_linked_job_rows(existing_linked_job_rows, active_mobile_record_ids)
     if normalized_linked_job_rows != current_linked_job_rows:
         changed = True
 
-    store[MOBILE_NUMBER_SHEET] = pd.DataFrame(normalized_rows, columns=MOBILE_NUMBER_COLUMNS)
-    store[MOBILE_NUMBER_FAMILY_RELATION_SHEET] = pd.DataFrame(normalized_family_rows, columns=MOBILE_NUMBER_FAMILY_RELATION_COLUMNS)
-    store[PERSONAL_MOBILE_NUMBER_PRIMARY_SHEET] = pd.DataFrame(normalized_personal_primary_rows, columns=PERSONAL_MOBILE_NUMBER_PRIMARY_COLUMNS)
-    store[MOBILE_NUMBER_LINKED_JOB_SHEET] = pd.DataFrame(normalized_linked_job_rows, columns=MOBILE_NUMBER_LINKED_JOB_COLUMNS)
+    # Restore SCD metadata and combine with inactive rows
+    norm_mob_scd = _scd_preserve_metadata(normalized_rows, active_rows, MOBILE_NUMBER_RECORD_ID_COL)
+    inactive_mob_rows = inactive_mob_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_mob_df.empty else []
+    store[MOBILE_NUMBER_SHEET] = pd.DataFrame(norm_mob_scd + inactive_mob_rows)
+
+    norm_fam_scd = _scd_preserve_metadata(normalized_family_rows, existing_family_rows, MOBILE_NUMBER_RECORD_ID_COL)
+    inactive_fam_rows = inactive_fam_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_fam_df.empty else []
+    store[MOBILE_NUMBER_FAMILY_RELATION_SHEET] = pd.DataFrame(norm_fam_scd + inactive_fam_rows)
+
+    norm_prim_scd = _scd_preserve_metadata(normalized_personal_primary_rows, existing_personal_primary_rows, MOBILE_NUMBER_RECORD_ID_COL)
+    inactive_prim_rows = inactive_prim_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_prim_df.empty else []
+    store[PERSONAL_MOBILE_NUMBER_PRIMARY_SHEET] = pd.DataFrame(norm_prim_scd + inactive_prim_rows)
+
+    norm_lnk_scd = _scd_preserve_metadata(normalized_linked_job_rows, existing_linked_job_rows, MOBILE_NUMBER_RECORD_ID_COL)
+    inactive_lnk_rows = inactive_lnk_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_lnk_df.empty else []
+    store[MOBILE_NUMBER_LINKED_JOB_SHEET] = pd.DataFrame(norm_lnk_scd + inactive_lnk_rows)
     return changed
 
 
 def _ensure_nationality_schema() -> bool:
     changed = False
-    nationality = store.get(NATIONALITY_SHEET, pd.DataFrame()).copy()
+    nationality = _scd_ensure_columns(store.get(NATIONALITY_SHEET, pd.DataFrame()).copy())
 
     if nationality.empty:
-        nationality = pd.DataFrame(columns=NATIONALITY_COLUMNS)
+        nationality = pd.DataFrame(columns=NATIONALITY_COLUMNS + SCD_METADATA_COLUMNS)
         changed = True
     else:
         for col in NATIONALITY_COLUMNS:
             if col not in nationality.columns:
                 nationality[col] = None
                 changed = True
-        if any(col not in NATIONALITY_COLUMNS for col in nationality.columns):
+        if any(col not in NATIONALITY_COLUMNS and col not in SCD_METADATA_COLUMNS for col in nationality.columns):
             changed = True
 
-    existing_rows = nationality.replace({np.nan: None}).to_dict(orient="records") if not nationality.empty else []
-    normalized_payload_rows = normalize_nationality_payload_rows(existing_rows)
+    active_df, inactive_df = _scd_split(nationality)
+    active_rows = active_df.replace({np.nan: None}).to_dict(orient="records") if not active_df.empty else []
+    normalized_payload_rows = normalize_nationality_payload_rows(active_rows)
     normalized_rows = [{col: row.get(col) for col in NATIONALITY_COLUMNS} for row in normalized_payload_rows]
-    current_rows = [{col: row.get(col) for col in NATIONALITY_COLUMNS} for row in existing_rows]
+    current_rows = [{col: row.get(col) for col in NATIONALITY_COLUMNS} for row in active_rows]
     if normalized_rows != current_rows:
         changed = True
 
-    store[NATIONALITY_SHEET] = pd.DataFrame(normalized_rows, columns=NATIONALITY_COLUMNS)
+    normalized_rows_with_scd = _scd_preserve_metadata(normalized_rows, active_rows, "nationality")
+    inactive_rows = inactive_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_df.empty else []
+    store[NATIONALITY_SHEET] = pd.DataFrame(normalized_rows_with_scd + inactive_rows)
     return changed
 
 
 def _ensure_schools_schema() -> bool:
     changed = False
-    schools = store.get(SCHOOL_SHEET, pd.DataFrame()).copy()
-    school_sections = store.get(SCHOOL_SECTION_SHEET, pd.DataFrame()).copy()
-    school_grades = store.get(SCHOOL_GRADE_SHEET, pd.DataFrame()).copy()
+    schools = _scd_ensure_columns(store.get(SCHOOL_SHEET, pd.DataFrame()).copy())
+    school_sections = _scd_ensure_columns(store.get(SCHOOL_SECTION_SHEET, pd.DataFrame()).copy())
+    school_grades = _scd_ensure_columns(store.get(SCHOOL_GRADE_SHEET, pd.DataFrame()).copy())
 
     if schools.empty:
-        schools = pd.DataFrame(columns=SCHOOL_COLUMNS)
+        schools = pd.DataFrame(columns=SCHOOL_COLUMNS + SCD_METADATA_COLUMNS)
         changed = True
     else:
         for col in SCHOOL_COLUMNS:
             if col not in schools.columns:
                 schools[col] = None
                 changed = True
-        if any(col not in SCHOOL_COLUMNS and col not in ("section", "grades_attended") for col in schools.columns):
+        if any(col not in SCHOOL_COLUMNS and col not in SCD_METADATA_COLUMNS and col not in ("section", "grades_attended") for col in schools.columns):
             changed = True
 
-    existing_rows = schools.replace({np.nan: None}).to_dict(orient="records") if not schools.empty else []
-    normalized_payload_rows = normalize_school_payload_rows(existing_rows)
+    active_sch_df, inactive_sch_df = _scd_split(schools)
+    active_rows = active_sch_df.replace({np.nan: None}).to_dict(orient="records") if not active_sch_df.empty else []
+    normalized_payload_rows = normalize_school_payload_rows(active_rows)
     normalized_rows = [{col: row.get(col) for col in SCHOOL_COLUMNS} for row in normalized_payload_rows]
-    current_rows = [{col: row.get(col) for col in SCHOOL_COLUMNS} for row in existing_rows]
+    current_rows = [{col: row.get(col) for col in SCHOOL_COLUMNS} for row in active_rows]
     if normalized_rows != current_rows:
         changed = True
 
+    active_school_record_ids = {str(row.get(SCHOOL_RECORD_ID_COL)) for row in normalized_rows if row.get(SCHOOL_RECORD_ID_COL)}
+
     if school_sections.empty:
-        school_sections = pd.DataFrame(columns=SCHOOL_SECTION_COLUMNS)
+        school_sections = pd.DataFrame(columns=SCHOOL_SECTION_COLUMNS + SCD_METADATA_COLUMNS)
         changed = True
     else:
         for col in SCHOOL_SECTION_COLUMNS:
             if col not in school_sections.columns:
                 school_sections[col] = None
                 changed = True
-        if any(col not in SCHOOL_SECTION_COLUMNS for col in school_sections.columns):
+        if any(col not in SCHOOL_SECTION_COLUMNS and col not in SCD_METADATA_COLUMNS for col in school_sections.columns):
             changed = True
 
     if school_grades.empty:
-        school_grades = pd.DataFrame(columns=SCHOOL_GRADE_COLUMNS)
+        school_grades = pd.DataFrame(columns=SCHOOL_GRADE_COLUMNS + SCD_METADATA_COLUMNS)
         changed = True
     else:
         for col in SCHOOL_GRADE_COLUMNS:
             if col not in school_grades.columns:
                 school_grades[col] = None
                 changed = True
-        if any(col not in SCHOOL_GRADE_COLUMNS for col in school_grades.columns):
+        if any(col not in SCHOOL_GRADE_COLUMNS and col not in SCD_METADATA_COLUMNS for col in school_grades.columns):
             changed = True
 
-    school_record_ids = {
-        str(row.get(SCHOOL_RECORD_ID_COL))
-        for row in normalized_rows
-        if row.get(SCHOOL_RECORD_ID_COL)
-    }
-    existing_section_rows = school_sections.replace({np.nan: None}).to_dict(orient="records") if not school_sections.empty else []
+    active_sec_df, inactive_sec_df = _scd_split(school_sections)
+    existing_section_rows = active_sec_df.replace({np.nan: None}).to_dict(orient="records") if not active_sec_df.empty else []
     legacy_section_rows = school_section_rows_from_school_rows(normalized_payload_rows)
-    normalized_section_rows = normalize_school_section_rows(
-        existing_section_rows + legacy_section_rows,
-        school_record_ids,
-    )
-    current_section_rows = normalize_school_section_rows(existing_section_rows, school_record_ids)
+    normalized_section_rows = normalize_school_section_rows(existing_section_rows + legacy_section_rows, active_school_record_ids)
+    current_section_rows = normalize_school_section_rows(existing_section_rows, active_school_record_ids)
     if normalized_section_rows != current_section_rows:
         changed = True
 
-    existing_grade_rows = school_grades.replace({np.nan: None}).to_dict(orient="records") if not school_grades.empty else []
+    active_grd_df, inactive_grd_df = _scd_split(school_grades)
+    existing_grade_rows = active_grd_df.replace({np.nan: None}).to_dict(orient="records") if not active_grd_df.empty else []
     legacy_grade_rows = school_grade_rows_from_school_rows(normalized_payload_rows)
-    normalized_grade_rows = normalize_school_grade_rows(
-        existing_grade_rows + legacy_grade_rows,
-        school_record_ids,
-    )
-    current_grade_rows = normalize_school_grade_rows(existing_grade_rows, school_record_ids)
+    normalized_grade_rows = normalize_school_grade_rows(existing_grade_rows + legacy_grade_rows, active_school_record_ids)
+    current_grade_rows = normalize_school_grade_rows(existing_grade_rows, active_school_record_ids)
     if normalized_grade_rows != current_grade_rows:
         changed = True
 
-    store[SCHOOL_SHEET] = pd.DataFrame(normalized_rows, columns=SCHOOL_COLUMNS)
-    store[SCHOOL_SECTION_SHEET] = pd.DataFrame(normalized_section_rows, columns=SCHOOL_SECTION_COLUMNS)
-    store[SCHOOL_GRADE_SHEET] = pd.DataFrame(normalized_grade_rows, columns=SCHOOL_GRADE_COLUMNS)
+    norm_sch_scd = _scd_preserve_metadata(normalized_rows, active_rows, SCHOOL_RECORD_ID_COL)
+    inactive_sch_rows = inactive_sch_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_sch_df.empty else []
+    store[SCHOOL_SHEET] = pd.DataFrame(norm_sch_scd + inactive_sch_rows)
+
+    norm_sec_scd = _scd_preserve_metadata(normalized_section_rows, existing_section_rows, SCHOOL_RECORD_ID_COL)
+    inactive_sec_rows = inactive_sec_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_sec_df.empty else []
+    store[SCHOOL_SECTION_SHEET] = pd.DataFrame(norm_sec_scd + inactive_sec_rows)
+
+    norm_grd_scd = _scd_preserve_metadata(normalized_grade_rows, existing_grade_rows, SCHOOL_RECORD_ID_COL)
+    inactive_grd_rows = inactive_grd_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_grd_df.empty else []
+    store[SCHOOL_GRADE_SHEET] = pd.DataFrame(norm_grd_scd + inactive_grd_rows)
     return changed
 
 
 def _ensure_emails_schema() -> bool:
     changed = False
-    emails = store.get(EMAIL_SHEET, pd.DataFrame()).copy()
-    email_family_relations = store.get(EMAIL_FAMILY_RELATION_SHEET, pd.DataFrame()).copy()
-    personal_email_primary = store.get(PERSONAL_EMAIL_PRIMARY_SHEET, pd.DataFrame()).copy()
-    email_linked_jobs = store.get(EMAIL_LINKED_JOB_SHEET, pd.DataFrame()).copy()
+    emails = _scd_ensure_columns(store.get(EMAIL_SHEET, pd.DataFrame()).copy())
+    email_family_relations = _scd_ensure_columns(store.get(EMAIL_FAMILY_RELATION_SHEET, pd.DataFrame()).copy())
+    personal_email_primary = _scd_ensure_columns(store.get(PERSONAL_EMAIL_PRIMARY_SHEET, pd.DataFrame()).copy())
+    email_linked_jobs = _scd_ensure_columns(store.get(EMAIL_LINKED_JOB_SHEET, pd.DataFrame()).copy())
 
     if emails.empty:
-        emails = pd.DataFrame(columns=EMAIL_COLUMNS)
+        emails = pd.DataFrame(columns=EMAIL_COLUMNS + SCD_METADATA_COLUMNS)
         changed = True
     else:
         for col in EMAIL_COLUMNS:
             if col not in emails.columns:
                 emails[col] = None
                 changed = True
-        if any(col not in EMAIL_COLUMNS for col in emails.columns):
+        if any(col not in EMAIL_COLUMNS and col not in SCD_METADATA_COLUMNS for col in emails.columns):
             changed = True
 
     if email_family_relations.empty:
-        email_family_relations = pd.DataFrame(columns=EMAIL_FAMILY_RELATION_COLUMNS)
+        email_family_relations = pd.DataFrame(columns=EMAIL_FAMILY_RELATION_COLUMNS + SCD_METADATA_COLUMNS)
         changed = True
     else:
         for col in EMAIL_FAMILY_RELATION_COLUMNS:
             if col not in email_family_relations.columns:
                 email_family_relations[col] = None
                 changed = True
-        if any(col not in EMAIL_FAMILY_RELATION_COLUMNS for col in email_family_relations.columns):
+        if any(col not in EMAIL_FAMILY_RELATION_COLUMNS and col not in SCD_METADATA_COLUMNS for col in email_family_relations.columns):
             changed = True
 
     if personal_email_primary.empty:
-        personal_email_primary = pd.DataFrame(columns=PERSONAL_EMAIL_PRIMARY_COLUMNS)
+        personal_email_primary = pd.DataFrame(columns=PERSONAL_EMAIL_PRIMARY_COLUMNS + SCD_METADATA_COLUMNS)
         changed = True
     else:
         for col in PERSONAL_EMAIL_PRIMARY_COLUMNS:
             if col not in personal_email_primary.columns:
                 personal_email_primary[col] = None
                 changed = True
-        if any(col not in PERSONAL_EMAIL_PRIMARY_COLUMNS for col in personal_email_primary.columns):
+        if any(col not in PERSONAL_EMAIL_PRIMARY_COLUMNS and col not in SCD_METADATA_COLUMNS for col in personal_email_primary.columns):
             changed = True
 
     if email_linked_jobs.empty:
-        email_linked_jobs = pd.DataFrame(columns=EMAIL_LINKED_JOB_COLUMNS)
+        email_linked_jobs = pd.DataFrame(columns=EMAIL_LINKED_JOB_COLUMNS + SCD_METADATA_COLUMNS)
         changed = True
     else:
         for col in EMAIL_LINKED_JOB_COLUMNS:
             if col not in email_linked_jobs.columns:
                 email_linked_jobs[col] = None
                 changed = True
-        if any(col not in EMAIL_LINKED_JOB_COLUMNS for col in email_linked_jobs.columns):
+        if any(col not in EMAIL_LINKED_JOB_COLUMNS and col not in SCD_METADATA_COLUMNS for col in email_linked_jobs.columns):
             changed = True
 
-    existing_rows = emails.replace({np.nan: None}).to_dict(orient="records") if not emails.empty else []
-    existing_family_rows = email_family_relations.replace({np.nan: None}).to_dict(orient="records") if not email_family_relations.empty else []
-    existing_personal_primary_rows = personal_email_primary.replace({np.nan: None}).to_dict(orient="records") if not personal_email_primary.empty else []
-    existing_linked_job_rows = email_linked_jobs.replace({np.nan: None}).to_dict(orient="records") if not email_linked_jobs.empty else []
-    normalized_rows = normalize_email_rows(existing_rows)
-    email_record_ids = {
-        record_id
-        for record_id in (
-            _normalize_email_record_id(row.get(EMAIL_RECORD_ID_COL))
-            for row in normalized_rows
-        )
-        if record_id
+    active_em_df, inactive_em_df = _scd_split(emails)
+    active_rows = active_em_df.replace({np.nan: None}).to_dict(orient="records") if not active_em_df.empty else []
+    normalized_rows = normalize_email_rows(active_rows)
+    active_email_record_ids = {
+        record_id for record_id in (
+            _normalize_email_record_id(row.get(EMAIL_RECORD_ID_COL)) for row in normalized_rows
+        ) if record_id
     }
     personal_email_record_ids = {
-        record_id
-        for record_id in (
+        record_id for record_id in (
             _normalize_email_record_id(row.get(EMAIL_RECORD_ID_COL))
             for row in normalized_rows
             if _normalize_email_type(_first_present(row, EMAIL_TYPE_COL, "type")) == "personal"
-        )
-        if record_id
+        ) if record_id
     }
-    legacy_family_rows = email_family_relation_rows_from_email_rows(existing_rows)
-    normalized_family_rows = normalize_email_family_relation_rows(
-        existing_family_rows + legacy_family_rows,
-        email_record_ids,
-    )
-    legacy_personal_primary_rows = personal_email_primary_rows_from_email_rows(existing_rows)
-    normalized_personal_primary_rows = normalize_personal_email_primary_rows(
-        existing_personal_primary_rows + legacy_personal_primary_rows,
-        personal_email_record_ids,
-    )
-    legacy_linked_job_rows = email_linked_job_rows_from_email_rows(existing_rows)
-    normalized_linked_job_rows = normalize_email_linked_job_rows(
-        existing_linked_job_rows + legacy_linked_job_rows,
-        email_record_ids,
-    )
-    current_rows = [{col: row.get(col) for col in EMAIL_COLUMNS} for row in existing_rows]
+
+    active_fam_df, inactive_fam_df = _scd_split(email_family_relations)
+    existing_family_rows = active_fam_df.replace({np.nan: None}).to_dict(orient="records") if not active_fam_df.empty else []
+    legacy_family_rows = email_family_relation_rows_from_email_rows(active_rows)
+    normalized_family_rows = normalize_email_family_relation_rows(existing_family_rows + legacy_family_rows, active_email_record_ids)
+    current_family_rows = normalize_email_family_relation_rows(existing_family_rows, active_email_record_ids)
+
+    active_prim_df, inactive_prim_df = _scd_split(personal_email_primary)
+    existing_personal_primary_rows = active_prim_df.replace({np.nan: None}).to_dict(orient="records") if not active_prim_df.empty else []
+    legacy_personal_primary_rows = personal_email_primary_rows_from_email_rows(active_rows)
+    normalized_personal_primary_rows = normalize_personal_email_primary_rows(existing_personal_primary_rows + legacy_personal_primary_rows, personal_email_record_ids)
+    current_personal_primary_rows = normalize_personal_email_primary_rows(existing_personal_primary_rows, personal_email_record_ids)
+
+    active_lnk_df, inactive_lnk_df = _scd_split(email_linked_jobs)
+    existing_linked_job_rows = active_lnk_df.replace({np.nan: None}).to_dict(orient="records") if not active_lnk_df.empty else []
+    legacy_linked_job_rows = email_linked_job_rows_from_email_rows(active_rows)
+    normalized_linked_job_rows = normalize_email_linked_job_rows(existing_linked_job_rows + legacy_linked_job_rows, active_email_record_ids)
+    current_linked_job_rows = normalize_email_linked_job_rows(existing_linked_job_rows, active_email_record_ids)
+
+    current_rows = [{col: row.get(col) for col in EMAIL_COLUMNS} for row in active_rows]
     normalized_email_sheet_rows = [{col: row.get(col) for col in EMAIL_COLUMNS} for row in normalized_rows]
     if normalized_email_sheet_rows != current_rows:
         changed = True
-    current_family_rows = normalize_email_family_relation_rows(existing_family_rows, email_record_ids)
     if normalized_family_rows != current_family_rows:
         changed = True
-    current_personal_primary_rows = normalize_personal_email_primary_rows(existing_personal_primary_rows, personal_email_record_ids)
     if normalized_personal_primary_rows != current_personal_primary_rows:
         changed = True
-    current_linked_job_rows = normalize_email_linked_job_rows(existing_linked_job_rows, email_record_ids)
     if normalized_linked_job_rows != current_linked_job_rows:
         changed = True
 
-    store[EMAIL_SHEET] = pd.DataFrame(normalized_email_sheet_rows, columns=EMAIL_COLUMNS)
-    store[EMAIL_FAMILY_RELATION_SHEET] = pd.DataFrame(normalized_family_rows, columns=EMAIL_FAMILY_RELATION_COLUMNS)
-    store[PERSONAL_EMAIL_PRIMARY_SHEET] = pd.DataFrame(normalized_personal_primary_rows, columns=PERSONAL_EMAIL_PRIMARY_COLUMNS)
-    store[EMAIL_LINKED_JOB_SHEET] = pd.DataFrame(normalized_linked_job_rows, columns=EMAIL_LINKED_JOB_COLUMNS)
+    norm_em_scd = _scd_preserve_metadata(normalized_email_sheet_rows, active_rows, EMAIL_RECORD_ID_COL)
+    inactive_em_rows = inactive_em_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_em_df.empty else []
+    store[EMAIL_SHEET] = pd.DataFrame(norm_em_scd + inactive_em_rows)
+
+    norm_fam_scd = _scd_preserve_metadata(normalized_family_rows, existing_family_rows, EMAIL_RECORD_ID_COL)
+    inactive_fam_rows = inactive_fam_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_fam_df.empty else []
+    store[EMAIL_FAMILY_RELATION_SHEET] = pd.DataFrame(norm_fam_scd + inactive_fam_rows)
+
+    norm_prim_scd = _scd_preserve_metadata(normalized_personal_primary_rows, existing_personal_primary_rows, EMAIL_RECORD_ID_COL)
+    inactive_prim_rows = inactive_prim_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_prim_df.empty else []
+    store[PERSONAL_EMAIL_PRIMARY_SHEET] = pd.DataFrame(norm_prim_scd + inactive_prim_rows)
+
+    norm_lnk_scd = _scd_preserve_metadata(normalized_linked_job_rows, existing_linked_job_rows, EMAIL_RECORD_ID_COL)
+    inactive_lnk_rows = inactive_lnk_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_lnk_df.empty else []
+    store[EMAIL_LINKED_JOB_SHEET] = pd.DataFrame(norm_lnk_scd + inactive_lnk_rows)
     return changed
 
 
 def _ensure_social_media_schema() -> bool:
     changed = False
-    social_media = store.get(SOCIAL_MEDIA_SHEET, pd.DataFrame()).copy()
+    social_media = _scd_ensure_columns(store.get(SOCIAL_MEDIA_SHEET, pd.DataFrame()).copy())
 
     if social_media.empty:
-        social_media = pd.DataFrame(columns=SOCIAL_MEDIA_COLUMNS)
+        social_media = pd.DataFrame(columns=SOCIAL_MEDIA_COLUMNS + SCD_METADATA_COLUMNS)
         changed = True
     else:
         for col in SOCIAL_MEDIA_COLUMNS:
@@ -3307,49 +3501,63 @@ def _ensure_social_media_schema() -> bool:
                 social_media[col] = None
                 changed = True
 
-    existing_rows = social_media.replace({np.nan: None}).to_dict(orient="records") if not social_media.empty else []
-    normalized_rows = normalize_social_media_rows(existing_rows)
-    if normalized_rows != existing_rows:
+    active_df, inactive_df = _scd_split(social_media)
+    active_rows = active_df.replace({np.nan: None}).to_dict(orient="records") if not active_df.empty else []
+    normalized_rows = normalize_social_media_rows(active_rows)
+    current_rows = [{col: row.get(col) for col in SOCIAL_MEDIA_COLUMNS} for row in active_rows]
+    if [{col: r.get(col) for col in SOCIAL_MEDIA_COLUMNS} for r in normalized_rows] != current_rows:
         changed = True
 
-    store[SOCIAL_MEDIA_SHEET] = pd.DataFrame(normalized_rows, columns=SOCIAL_MEDIA_COLUMNS)
+    normalized_rows_with_scd = _scd_preserve_metadata(normalized_rows, active_rows, "url")
+    inactive_rows = inactive_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_df.empty else []
+    store[SOCIAL_MEDIA_SHEET] = pd.DataFrame(normalized_rows_with_scd + inactive_rows)
     return changed
 
 
 def _ensure_jobs_schema() -> bool:
     changed = False
-    jobs = store.get(JOB_SHEET, pd.DataFrame()).copy()
+    jobs = _scd_ensure_columns(store.get(JOB_SHEET, pd.DataFrame()).copy())
 
     if jobs.empty:
-        jobs = pd.DataFrame(columns=JOB_BASE_COLUMNS)
+        jobs = pd.DataFrame(columns=JOB_BASE_COLUMNS + SCD_METADATA_COLUMNS)
         changed = True
     else:
         for col in JOB_BASE_COLUMNS:
             if col not in jobs.columns:
                 jobs[col] = None
                 changed = True
-        if any(col not in JOB_BASE_COLUMNS and col != "is_current" for col in jobs.columns):
+        if any(col not in JOB_BASE_COLUMNS and col not in SCD_METADATA_COLUMNS and col != "is_current" for col in jobs.columns):
             changed = True
 
-    existing_rows = jobs.replace({np.nan: None}).to_dict(orient="records") if not jobs.empty else []
-    normalized_rows, job_id_map = normalize_job_rows(existing_rows)
-    current_rows = [{col: row.get(col) for col in JOB_BASE_COLUMNS} for row in existing_rows]
+    active_jobs_df, inactive_jobs_df = _scd_split(jobs)
+    active_rows = active_jobs_df.replace({np.nan: None}).to_dict(orient="records") if not active_jobs_df.empty else []
+    normalized_rows, job_id_map = normalize_job_rows(active_rows)
+    current_rows = [{col: row.get(col) for col in JOB_BASE_COLUMNS} for row in active_rows]
     if normalized_rows != current_rows:
         changed = True
 
-    emails = store.get(EMAIL_SHEET, pd.DataFrame()).copy()
-    email_rows = emails.replace({np.nan: None}).to_dict(orient="records") if not emails.empty else []
-    normalized_email_rows = normalize_email_rows(email_rows)
-    current_email_rows = [{col: row.get(col) for col in EMAIL_COLUMNS} for row in email_rows]
+    norm_jobs_scd = _scd_preserve_metadata(normalized_rows, active_rows, JOB_ID_COL)
+    inactive_jobs_rows = inactive_jobs_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_jobs_df.empty else []
+
+    # Re-normalize emails (preserve SCD metadata)
+    emails = _scd_ensure_columns(store.get(EMAIL_SHEET, pd.DataFrame()).copy())
+    active_email_df, inactive_email_df = _scd_split(emails)
+    active_email_rows = active_email_df.replace({np.nan: None}).to_dict(orient="records") if not active_email_df.empty else []
+    normalized_email_rows = normalize_email_rows(active_email_rows)
+    current_email_rows = [{col: row.get(col) for col in EMAIL_COLUMNS} for row in active_email_rows]
     normalized_email_sheet_rows = [{col: row.get(col) for col in EMAIL_COLUMNS} for row in normalized_email_rows]
     if normalized_email_sheet_rows != current_email_rows:
         changed = True
-    store[EMAIL_SHEET] = pd.DataFrame(normalized_email_sheet_rows, columns=EMAIL_COLUMNS)
+    norm_email_scd = _scd_preserve_metadata(normalized_email_sheet_rows, active_email_rows, EMAIL_RECORD_ID_COL)
+    inactive_email_rows = inactive_email_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_email_df.empty else []
+    store[EMAIL_SHEET] = pd.DataFrame(norm_email_scd + inactive_email_rows)
 
-    email_linked_jobs = store.get(EMAIL_LINKED_JOB_SHEET, pd.DataFrame()).copy()
-    email_linked_job_rows = email_linked_jobs.replace({np.nan: None}).to_dict(orient="records") if not email_linked_jobs.empty else []
+    # Remap email_linked_jobs job IDs (preserve SCD metadata)
+    email_linked_jobs = _scd_ensure_columns(store.get(EMAIL_LINKED_JOB_SHEET, pd.DataFrame()).copy())
+    active_elj_df, inactive_elj_df = _scd_split(email_linked_jobs)
+    active_elj_rows = active_elj_df.replace({np.nan: None}).to_dict(orient="records") if not active_elj_df.empty else []
     remapped_email_linked_job_rows = []
-    for row in email_linked_job_rows:
+    for row in active_elj_rows:
         if not isinstance(row, dict):
             continue
         record_id = _normalize_email_record_id(row.get(EMAIL_RECORD_ID_COL))
@@ -3361,14 +3569,19 @@ def _ensure_jobs_schema() -> bool:
                 "linked_job_ids": job_id,
             })
     normalized_email_linked_job_rows = normalize_email_linked_job_rows(remapped_email_linked_job_rows)
-    if normalized_email_linked_job_rows != email_linked_job_rows:
+    current_elj_rows = [{col: row.get(col) for col in EMAIL_LINKED_JOB_COLUMNS} for row in active_elj_rows]
+    if normalized_email_linked_job_rows != current_elj_rows:
         changed = True
-    store[EMAIL_LINKED_JOB_SHEET] = pd.DataFrame(normalized_email_linked_job_rows, columns=EMAIL_LINKED_JOB_COLUMNS)
+    norm_elj_scd = _scd_preserve_metadata(normalized_email_linked_job_rows, active_elj_rows, EMAIL_RECORD_ID_COL)
+    inactive_elj_rows = inactive_elj_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_elj_df.empty else []
+    store[EMAIL_LINKED_JOB_SHEET] = pd.DataFrame(norm_elj_scd + inactive_elj_rows)
 
-    mobile_linked_jobs = store.get(MOBILE_NUMBER_LINKED_JOB_SHEET, pd.DataFrame()).copy()
-    mobile_linked_job_rows = mobile_linked_jobs.replace({np.nan: None}).to_dict(orient="records") if not mobile_linked_jobs.empty else []
+    # Remap mobile_number_linked_jobs job IDs (preserve SCD metadata)
+    mobile_linked_jobs = _scd_ensure_columns(store.get(MOBILE_NUMBER_LINKED_JOB_SHEET, pd.DataFrame()).copy())
+    active_mlj_df, inactive_mlj_df = _scd_split(mobile_linked_jobs)
+    active_mlj_rows = active_mlj_df.replace({np.nan: None}).to_dict(orient="records") if not active_mlj_df.empty else []
     remapped_mobile_linked_job_rows = []
-    for row in mobile_linked_job_rows:
+    for row in active_mlj_rows:
         if not isinstance(row, dict):
             continue
         record_id = _normalize_mobile_number_record_id(row.get(MOBILE_NUMBER_RECORD_ID_COL))
@@ -3380,62 +3593,79 @@ def _ensure_jobs_schema() -> bool:
                 "linked_job_ids": job_id,
             })
     normalized_mobile_linked_job_rows = normalize_mobile_number_linked_job_rows(remapped_mobile_linked_job_rows)
-    if normalized_mobile_linked_job_rows != mobile_linked_job_rows:
+    current_mlj_rows = [{col: row.get(col) for col in MOBILE_NUMBER_LINKED_JOB_COLUMNS} for row in active_mlj_rows]
+    if normalized_mobile_linked_job_rows != current_mlj_rows:
         changed = True
-    store[MOBILE_NUMBER_LINKED_JOB_SHEET] = pd.DataFrame(normalized_mobile_linked_job_rows, columns=MOBILE_NUMBER_LINKED_JOB_COLUMNS)
+    norm_mlj_scd = _scd_preserve_metadata(normalized_mobile_linked_job_rows, active_mlj_rows, MOBILE_NUMBER_RECORD_ID_COL)
+    inactive_mlj_rows = inactive_mlj_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_mlj_df.empty else []
+    store[MOBILE_NUMBER_LINKED_JOB_SHEET] = pd.DataFrame(norm_mlj_scd + inactive_mlj_rows)
 
-    store[JOB_SHEET] = pd.DataFrame(normalized_rows, columns=JOB_BASE_COLUMNS)
+    store[JOB_SHEET] = pd.DataFrame(norm_jobs_scd + inactive_jobs_rows)
     return changed
 
 
 def _ensure_higher_education_schema() -> bool:
     changed = False
-    higher_education = store.get(HIGHER_EDUCATION_SHEET, pd.DataFrame()).copy()
+    higher_education = _scd_ensure_columns(store.get(HIGHER_EDUCATION_SHEET, pd.DataFrame()).copy())
 
     if higher_education.empty:
-        higher_education = pd.DataFrame(columns=HIGHER_EDUCATION_COLUMNS)
+        higher_education = pd.DataFrame(columns=HIGHER_EDUCATION_COLUMNS + SCD_METADATA_COLUMNS)
         changed = True
     else:
         for col in HIGHER_EDUCATION_COLUMNS:
             if col not in higher_education.columns:
                 higher_education[col] = None
                 changed = True
-        if any(col not in HIGHER_EDUCATION_COLUMNS and col != "is_current" for col in higher_education.columns):
+        if any(col not in HIGHER_EDUCATION_COLUMNS and col not in SCD_METADATA_COLUMNS and col != "is_current" for col in higher_education.columns):
             changed = True
 
-    existing_rows = higher_education.replace({np.nan: None}).to_dict(orient="records") if not higher_education.empty else []
-    normalized_rows = normalize_higher_education_rows(existing_rows)
-    current_rows = [{col: row.get(col) for col in HIGHER_EDUCATION_COLUMNS} for row in existing_rows]
+    active_df, inactive_df = _scd_split(higher_education)
+    active_rows = active_df.replace({np.nan: None}).to_dict(orient="records") if not active_df.empty else []
+    normalized_rows = normalize_higher_education_rows(active_rows)
+    current_rows = [{col: row.get(col) for col in HIGHER_EDUCATION_COLUMNS} for row in active_rows]
     if normalized_rows != current_rows:
         changed = True
 
-    store[HIGHER_EDUCATION_SHEET] = pd.DataFrame(normalized_rows, columns=HIGHER_EDUCATION_COLUMNS)
+    default_scd = {c: (True if c == SCD_CURRENTLY_ACTIVE_FLAG_COL else None) for c in SCD_METADATA_COLUMNS}
+    normalized_rows_with_scd = [
+        {**row, **({c: active_rows[i].get(c) for c in SCD_METADATA_COLUMNS} if i < len(active_rows) else default_scd)}
+        for i, row in enumerate(normalized_rows)
+    ]
+    inactive_rows = inactive_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_df.empty else []
+    store[HIGHER_EDUCATION_SHEET] = pd.DataFrame(normalized_rows_with_scd + inactive_rows)
     return changed
 
 
 def _ensure_responsibility_schema() -> bool:
     changed = False
-    responsibilities = store.get(RESPONSIBILITY_SHEET, pd.DataFrame()).copy()
+    responsibilities = _scd_ensure_columns(store.get(RESPONSIBILITY_SHEET, pd.DataFrame()).copy())
 
     if responsibilities.empty:
-        responsibilities = pd.DataFrame(columns=RESPONSIBILITY_COLUMNS)
+        responsibilities = pd.DataFrame(columns=RESPONSIBILITY_COLUMNS + SCD_METADATA_COLUMNS)
         changed = True
     else:
         for col in RESPONSIBILITY_COLUMNS:
             if col not in responsibilities.columns:
                 responsibilities[col] = None
                 changed = True
-        if any(col not in RESPONSIBILITY_COLUMNS and col not in {"time", "responsibility", "responsibility_period", "is_active"} for col in responsibilities.columns):
+        if any(col not in RESPONSIBILITY_COLUMNS and col not in SCD_METADATA_COLUMNS and col not in {"time", "responsibility", "responsibility_period", "is_active"} for col in responsibilities.columns):
             changed = True
 
-    existing_rows = responsibilities.replace({np.nan: None}).to_dict(orient="records") if not responsibilities.empty else []
-    normalized_rows = normalize_responsibility_rows(existing_rows)
-    current_rows = [{col: row.get(col) for col in RESPONSIBILITY_COLUMNS} for row in existing_rows]
+    active_df, inactive_df = _scd_split(responsibilities)
+    active_rows = active_df.replace({np.nan: None}).to_dict(orient="records") if not active_df.empty else []
+    normalized_rows = normalize_responsibility_rows(active_rows)
+    current_rows = [{col: row.get(col) for col in RESPONSIBILITY_COLUMNS} for row in active_rows]
     normalized_sheet_rows = [{col: row.get(col) for col in RESPONSIBILITY_COLUMNS} for row in normalized_rows]
     if normalized_sheet_rows != current_rows:
         changed = True
 
-    store[RESPONSIBILITY_SHEET] = pd.DataFrame(normalized_sheet_rows, columns=RESPONSIBILITY_COLUMNS)
+    default_scd = {c: (True if c == SCD_CURRENTLY_ACTIVE_FLAG_COL else None) for c in SCD_METADATA_COLUMNS}
+    normalized_rows_with_scd = [
+        {**row, **({c: active_rows[i].get(c) for c in SCD_METADATA_COLUMNS} if i < len(active_rows) else default_scd)}
+        for i, row in enumerate(normalized_sheet_rows)
+    ]
+    inactive_rows = inactive_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_df.empty else []
+    store[RESPONSIBILITY_SHEET] = pd.DataFrame(normalized_rows_with_scd + inactive_rows)
     return changed
 
 
@@ -3625,7 +3855,7 @@ def _normalize_birth_columns_in_df(df: pd.DataFrame) -> tuple[pd.DataFrame, bool
 
 
 def _ensure_persons_schema():
-    persons = store.get("persons", pd.DataFrame())
+    persons = _scd_ensure_columns(store.get("persons", pd.DataFrame()))
     changed = False
 
     persons, migrated_birth = _normalize_birth_columns_in_df(persons)
@@ -3666,14 +3896,14 @@ def _ensure_persons_schema():
 
 def _registered_persons_df() -> pd.DataFrame:
     _ensure_persons_schema()
-    persons = store["persons"]
+    persons = _scd_filter_active(store["persons"])
     projected = _project_primary_addresses(persons[persons["registered"] == True])
     return merge_person_school_system_sectors(merge_person_titles(projected))
 
 
 def _unregistered_persons_df() -> pd.DataFrame:
     _ensure_persons_schema()
-    persons = store["persons"]
+    persons = _scd_filter_active(store["persons"])
     projected = _project_primary_addresses(persons[persons["registered"] == False])
     return merge_person_school_system_sectors(merge_person_titles(projected))
 
@@ -3681,7 +3911,7 @@ def _unregistered_persons_df() -> pd.DataFrame:
 def unregistered_persons_view_df() -> pd.DataFrame:
     return merge_person_school_system_sectors(
         merge_person_titles(
-            unreg_store.get("persons", pd.DataFrame()),
+            _scd_filter_active(unreg_store.get("persons", pd.DataFrame())),
             unreg_store.get(PERSON_TITLE_SHEET, pd.DataFrame()),
         ),
         unreg_store.get(PERSON_SCHOOL_SYSTEM_SECTOR_SHEET, pd.DataFrame()),
@@ -3805,7 +4035,7 @@ def normalize_person_special_note_rows(rows: list[dict] | None) -> list[dict]:
 
 
 def person_title_lookup(title_df: pd.DataFrame | None = None) -> dict[str, str]:
-    df = title_df if title_df is not None else store.get(PERSON_TITLE_SHEET, pd.DataFrame())
+    df = _scd_filter_active(title_df if title_df is not None else store.get(PERSON_TITLE_SHEET, pd.DataFrame()))
     if df is None or df.empty or "person_id" not in df.columns:
         return {}
 
@@ -3820,7 +4050,7 @@ def person_title_lookup(title_df: pd.DataFrame | None = None) -> dict[str, str]:
 
 
 def person_school_system_sector_lookup(sector_df: pd.DataFrame | None = None) -> dict[str, str]:
-    df = sector_df if sector_df is not None else store.get(PERSON_SCHOOL_SYSTEM_SECTOR_SHEET, pd.DataFrame())
+    df = _scd_filter_active(sector_df if sector_df is not None else store.get(PERSON_SCHOOL_SYSTEM_SECTOR_SHEET, pd.DataFrame()))
     if df is None or df.empty or "person_id" not in df.columns:
         return {}
 
@@ -3878,62 +4108,67 @@ def merge_person_school_system_sectors(persons_df: pd.DataFrame | None, sector_d
     return persons
 
 
-def replace_person_title(target_store: dict[str, pd.DataFrame], person_id, title_value):
-    current_df = target_store.get(PERSON_TITLE_SHEET, pd.DataFrame())
-    current_rows = []
-    if current_df is not None and not current_df.empty:
-        current_rows = current_df.replace({np.nan: None}).to_dict(orient="records")
+def replace_person_title(target_store: dict[str, pd.DataFrame], person_id, title_value, changed_by: str = "system"):
+    now = pd.Timestamp.now()
+    new_scd = _scd_new_metadata(changed_by)
 
+    current_df = _scd_ensure_columns(target_store.get(PERSON_TITLE_SHEET, pd.DataFrame()).copy())
     normalized_person_id = _normalize_person_id(person_id)
-    filtered_rows = [
-        row for row in current_rows
-        if str(_normalize_person_id((row or {}).get("person_id"))) != str(normalized_person_id)
-    ]
+    person_key = str(normalized_person_id)
+
+    if not current_df.empty and "person_id" in current_df.columns:
+        active_mask = (
+            (current_df["person_id"].apply(lambda v: str(_normalize_person_id(v))) == person_key) &
+            (current_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+        )
+        if active_mask.any():
+            current_df.loc[active_mask, SCD_ACTIVE_TO_COL] = now
+            current_df.loc[active_mask, SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+            current_df.loc[active_mask, SCD_CHANGED_BY_USER_COL] = changed_by
 
     title = _normalize_text(title_value)
     if normalized_person_id not in (None, "") and title:
-        filtered_rows.append({
-            "person_id": normalized_person_id,
-            "title": title,
-        })
+        new_row = pd.DataFrame([{**{"person_id": normalized_person_id, "title": title}, **new_scd}])
+        current_df = pd.concat([current_df, new_row], ignore_index=True)
 
-    normalized_rows = normalize_person_title_rows(filtered_rows)
-    target_store[PERSON_TITLE_SHEET] = pd.DataFrame(normalized_rows, columns=PERSON_TITLE_COLUMNS)
+    target_store[PERSON_TITLE_SHEET] = current_df
 
 
-def replace_person_school_system_sector(target_store: dict[str, pd.DataFrame], person_id, sector_value):
-    current_df = target_store.get(PERSON_SCHOOL_SYSTEM_SECTOR_SHEET, pd.DataFrame())
-    current_rows = []
-    if current_df is not None and not current_df.empty:
-        current_rows = current_df.replace({np.nan: None}).to_dict(orient="records")
+def replace_person_school_system_sector(target_store: dict[str, pd.DataFrame], person_id, sector_value, changed_by: str = "system"):
+    now = pd.Timestamp.now()
+    new_scd = _scd_new_metadata(changed_by)
 
+    current_df = _scd_ensure_columns(target_store.get(PERSON_SCHOOL_SYSTEM_SECTOR_SHEET, pd.DataFrame()).copy())
     normalized_person_id = _normalize_person_id(person_id)
-    filtered_rows = [
-        row for row in current_rows
-        if str(_normalize_person_id((row or {}).get("person_id"))) != str(normalized_person_id)
-    ]
+    person_key = str(normalized_person_id)
+
+    if not current_df.empty and "person_id" in current_df.columns:
+        active_mask = (
+            (current_df["person_id"].apply(lambda v: str(_normalize_person_id(v))) == person_key) &
+            (current_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+        )
+        if active_mask.any():
+            current_df.loc[active_mask, SCD_ACTIVE_TO_COL] = now
+            current_df.loc[active_mask, SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+            current_df.loc[active_mask, SCD_CHANGED_BY_USER_COL] = changed_by
 
     sector = _normalize_text(sector_value)
     if normalized_person_id not in (None, "") and sector:
-        filtered_rows.append({
-            "person_id": normalized_person_id,
-            "school_system_sector": sector,
-        })
+        new_row = pd.DataFrame([{**{"person_id": normalized_person_id, "school_system_sector": sector}, **new_scd}])
+        current_df = pd.concat([current_df, new_row], ignore_index=True)
 
-    normalized_rows = normalize_person_school_system_sector_rows(filtered_rows)
-    target_store[PERSON_SCHOOL_SYSTEM_SECTOR_SHEET] = pd.DataFrame(normalized_rows, columns=PERSON_SCHOOL_SYSTEM_SECTOR_COLUMNS)
+    target_store[PERSON_SCHOOL_SYSTEM_SECTOR_SHEET] = current_df
 
 
 def _ensure_person_titles_schema() -> bool:
     changed = False
     persons = store.get("persons", pd.DataFrame()).copy()
-    titles_df = store.get(PERSON_TITLE_SHEET, pd.DataFrame())
+    titles_df = _scd_ensure_columns(store.get(PERSON_TITLE_SHEET, pd.DataFrame()))
 
-    existing_rows = []
-    if titles_df is not None and not titles_df.empty:
-        existing_rows = titles_df.replace({np.nan: None}).to_dict(orient="records")
-    normalized_rows = normalize_person_title_rows(existing_rows)
-    existing_ids = {str(row.get("person_id")) for row in normalized_rows}
+    active_titles_df, inactive_titles_df = _scd_split(titles_df)
+    active_titles_raw_rows = active_titles_df.replace({np.nan: None}).to_dict(orient="records") if not active_titles_df.empty else []
+    existing_rows = normalize_person_title_rows(active_titles_raw_rows)
+    existing_ids = {str(row.get("person_id")) for row in existing_rows}
 
     if not persons.empty and "person_id" in persons.columns and "title" in persons.columns:
         for row in persons.replace({np.nan: None}).to_dict(orient="records"):
@@ -3944,7 +4179,7 @@ def _ensure_person_titles_schema() -> bool:
             key = str(person_id)
             if key in existing_ids:
                 continue
-            normalized_rows.append({
+            existing_rows.append({
                 "person_id": person_id,
                 "title": title,
             })
@@ -3953,25 +4188,27 @@ def _ensure_person_titles_schema() -> bool:
         persons = persons.drop(columns=["title"])
         changed = True
 
-    normalized_rows = normalize_person_title_rows(normalized_rows)
-    if PERSON_TITLE_SHEET not in store or normalized_rows != normalize_person_title_rows(existing_rows):
+    normalized_rows = normalize_person_title_rows(existing_rows)
+    original_normalized = normalize_person_title_rows(active_titles_raw_rows)
+    if PERSON_TITLE_SHEET not in store or normalized_rows != original_normalized:
         changed = True
 
+    norm_titles_scd = _scd_preserve_metadata(normalized_rows, active_titles_raw_rows, "person_id")
+    inactive_titles_rows = inactive_titles_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_titles_df.empty else []
     store["persons"] = persons
-    store[PERSON_TITLE_SHEET] = pd.DataFrame(normalized_rows, columns=PERSON_TITLE_COLUMNS)
+    store[PERSON_TITLE_SHEET] = pd.DataFrame(norm_titles_scd + inactive_titles_rows)
     return changed
 
 
 def _ensure_person_school_system_sector_schema() -> bool:
     changed = False
     persons = store.get("persons", pd.DataFrame()).copy()
-    sector_df = store.get(PERSON_SCHOOL_SYSTEM_SECTOR_SHEET, pd.DataFrame())
+    sector_df = _scd_ensure_columns(store.get(PERSON_SCHOOL_SYSTEM_SECTOR_SHEET, pd.DataFrame()))
 
-    existing_rows = []
-    if sector_df is not None and not sector_df.empty:
-        existing_rows = sector_df.replace({np.nan: None}).to_dict(orient="records")
-    normalized_rows = normalize_person_school_system_sector_rows(existing_rows)
-    existing_ids = {str(row.get("person_id")) for row in normalized_rows}
+    active_sector_df, inactive_sector_df = _scd_split(sector_df)
+    active_sector_raw_rows = active_sector_df.replace({np.nan: None}).to_dict(orient="records") if not active_sector_df.empty else []
+    existing_rows = normalize_person_school_system_sector_rows(active_sector_raw_rows)
+    existing_ids = {str(row.get("person_id")) for row in existing_rows}
 
     if not persons.empty and "person_id" in persons.columns and "school_system_sector" in persons.columns:
         for row in persons.replace({np.nan: None}).to_dict(orient="records"):
@@ -3982,7 +4219,7 @@ def _ensure_person_school_system_sector_schema() -> bool:
             key = str(person_id)
             if key in existing_ids:
                 continue
-            normalized_rows.append({
+            existing_rows.append({
                 "person_id": person_id,
                 "school_system_sector": school_system_sector,
             })
@@ -3991,67 +4228,84 @@ def _ensure_person_school_system_sector_schema() -> bool:
         persons = persons.drop(columns=["school_system_sector"])
         changed = True
 
-    normalized_rows = normalize_person_school_system_sector_rows(normalized_rows)
-    if PERSON_SCHOOL_SYSTEM_SECTOR_SHEET not in store or normalized_rows != normalize_person_school_system_sector_rows(existing_rows):
+    normalized_rows = normalize_person_school_system_sector_rows(existing_rows)
+    original_normalized = normalize_person_school_system_sector_rows(active_sector_raw_rows)
+    if PERSON_SCHOOL_SYSTEM_SECTOR_SHEET not in store or normalized_rows != original_normalized:
         changed = True
 
+    norm_sector_scd = _scd_preserve_metadata(normalized_rows, active_sector_raw_rows, "person_id")
+    inactive_sector_rows = inactive_sector_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_sector_df.empty else []
     store["persons"] = persons
-    store[PERSON_SCHOOL_SYSTEM_SECTOR_SHEET] = pd.DataFrame(normalized_rows, columns=PERSON_SCHOOL_SYSTEM_SECTOR_COLUMNS)
+    store[PERSON_SCHOOL_SYSTEM_SECTOR_SHEET] = pd.DataFrame(norm_sector_scd + inactive_sector_rows)
     return changed
 
 
 def _ensure_person_health_condition_schema() -> bool:
     changed = False
-    health_df = store.get(PERSON_HEALTH_CONDITION_SHEET, pd.DataFrame()).copy()
+    health_df = _scd_ensure_columns(store.get(PERSON_HEALTH_CONDITION_SHEET, pd.DataFrame()).copy())
 
     if health_df.empty:
-        health_df = pd.DataFrame(columns=PERSON_HEALTH_CONDITION_COLUMNS)
+        health_df = pd.DataFrame(columns=PERSON_HEALTH_CONDITION_COLUMNS + SCD_METADATA_COLUMNS)
         changed = True
     else:
         for col in PERSON_HEALTH_CONDITION_COLUMNS:
             if col not in health_df.columns:
                 health_df[col] = None
                 changed = True
-        if any(col not in PERSON_HEALTH_CONDITION_COLUMNS for col in health_df.columns):
+        if any(col not in PERSON_HEALTH_CONDITION_COLUMNS and col not in SCD_METADATA_COLUMNS for col in health_df.columns):
             changed = True
 
-    existing_rows = health_df.replace({np.nan: None}).to_dict(orient="records") if not health_df.empty else []
-    normalized_rows = normalize_person_health_condition_rows(existing_rows)
-    current_rows = [{col: row.get(col) for col in PERSON_HEALTH_CONDITION_COLUMNS} for row in existing_rows]
+    active_df, inactive_df = _scd_split(health_df)
+    active_rows = active_df.replace({np.nan: None}).to_dict(orient="records") if not active_df.empty else []
+    normalized_rows = normalize_person_health_condition_rows(active_rows)
+    current_rows = [{col: row.get(col) for col in PERSON_HEALTH_CONDITION_COLUMNS} for row in active_rows]
     if normalized_rows != current_rows:
         changed = True
 
-    store[PERSON_HEALTH_CONDITION_SHEET] = pd.DataFrame(normalized_rows, columns=PERSON_HEALTH_CONDITION_COLUMNS)
+    default_scd = {c: (True if c == SCD_CURRENTLY_ACTIVE_FLAG_COL else None) for c in SCD_METADATA_COLUMNS}
+    normalized_rows_with_scd = [
+        {**row, **({c: active_rows[i].get(c) for c in SCD_METADATA_COLUMNS} if i < len(active_rows) else default_scd)}
+        for i, row in enumerate(normalized_rows)
+    ]
+    inactive_rows = inactive_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_df.empty else []
+    store[PERSON_HEALTH_CONDITION_SHEET] = pd.DataFrame(normalized_rows_with_scd + inactive_rows)
     return changed
 
 
 def _ensure_person_special_note_schema() -> bool:
     changed = False
-    notes_df = store.get(PERSON_SPECIAL_NOTE_SHEET, pd.DataFrame()).copy()
+    notes_df = _scd_ensure_columns(store.get(PERSON_SPECIAL_NOTE_SHEET, pd.DataFrame()).copy())
 
     if notes_df.empty:
-        notes_df = pd.DataFrame(columns=PERSON_SPECIAL_NOTE_COLUMNS)
+        notes_df = pd.DataFrame(columns=PERSON_SPECIAL_NOTE_COLUMNS + SCD_METADATA_COLUMNS)
         changed = True
     else:
         for col in PERSON_SPECIAL_NOTE_COLUMNS:
             if col not in notes_df.columns:
                 notes_df[col] = None
                 changed = True
-        if any(col not in PERSON_SPECIAL_NOTE_COLUMNS for col in notes_df.columns):
+        if any(col not in PERSON_SPECIAL_NOTE_COLUMNS and col not in SCD_METADATA_COLUMNS for col in notes_df.columns):
             changed = True
 
-    existing_rows = notes_df.replace({np.nan: None}).to_dict(orient="records") if not notes_df.empty else []
-    normalized_rows = normalize_person_special_note_rows(existing_rows)
-    current_rows = [{col: row.get(col) for col in PERSON_SPECIAL_NOTE_COLUMNS} for row in existing_rows]
+    active_df, inactive_df = _scd_split(notes_df)
+    active_rows = active_df.replace({np.nan: None}).to_dict(orient="records") if not active_df.empty else []
+    normalized_rows = normalize_person_special_note_rows(active_rows)
+    current_rows = [{col: row.get(col) for col in PERSON_SPECIAL_NOTE_COLUMNS} for row in active_rows]
     if normalized_rows != current_rows:
         changed = True
 
-    store[PERSON_SPECIAL_NOTE_SHEET] = pd.DataFrame(normalized_rows, columns=PERSON_SPECIAL_NOTE_COLUMNS)
+    default_scd = {c: (True if c == SCD_CURRENTLY_ACTIVE_FLAG_COL else None) for c in SCD_METADATA_COLUMNS}
+    normalized_rows_with_scd = [
+        {**row, **({c: active_rows[i].get(c) for c in SCD_METADATA_COLUMNS} if i < len(active_rows) else default_scd)}
+        for i, row in enumerate(normalized_rows)
+    ]
+    inactive_rows = inactive_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_df.empty else []
+    store[PERSON_SPECIAL_NOTE_SHEET] = pd.DataFrame(normalized_rows_with_scd + inactive_rows)
     return changed
 
 
 def _sheet_for_registered(sheet: str) -> pd.DataFrame:
-    df = store.get(sheet, pd.DataFrame())
+    df = _scd_filter_active(store.get(sheet, pd.DataFrame()))
     if df.empty or "person_id" not in df.columns:
         return df
     reg_ids = set(_registered_persons_df()["person_id"].astype(str))
@@ -4630,6 +4884,8 @@ def init_state():
     schema_changed = _ensure_persons_schema()
     person_title_schema_changed = _ensure_person_titles_schema()
     person_school_system_sector_schema_changed = _ensure_person_school_system_sector_schema()
+    person_health_condition_schema_changed = _ensure_person_health_condition_schema()
+    person_special_note_schema_changed = _ensure_person_special_note_schema()
     person_youth_group_schema_changed = _ensure_person_youth_group_schema()
     group_schema_changed = _ensure_youth_group_schema()
     group_special_logo_schema_changed = _ensure_youth_group_special_logo_schema()
@@ -4643,6 +4899,6 @@ def init_state():
     responsibility_schema_changed = _ensure_responsibility_schema()
     address_schema_changed = _ensure_addresses_schema()
     _coerce_person_id_columns(store)
-    if schema_changed or person_title_schema_changed or person_school_system_sector_schema_changed or person_youth_group_schema_changed or group_schema_changed or group_special_logo_schema_changed or nationality_schema_changed or schools_schema_changed or mobile_schema_changed or email_schema_changed or social_media_schema_changed or higher_education_schema_changed or jobs_schema_changed or responsibility_schema_changed or address_schema_changed:
+    if schema_changed or person_title_schema_changed or person_school_system_sector_schema_changed or person_health_condition_schema_changed or person_special_note_schema_changed or person_youth_group_schema_changed or group_schema_changed or group_special_logo_schema_changed or nationality_schema_changed or schools_schema_changed or mobile_schema_changed or email_schema_changed or social_media_schema_changed or higher_education_schema_changed or jobs_schema_changed or responsibility_schema_changed or address_schema_changed:
         save()
     _load_unreg_store()

@@ -5,6 +5,7 @@ import {
   Calendar, ChevronDown, Clock, FileDown
 } from 'lucide-react'
 import { api } from '../api.js'
+import { ErrorState } from '../pageStates.jsx'
 
 // ── Arabic normalization ───────────────────────────────────────────────────────
 function normalizeWord(w) {
@@ -602,7 +603,7 @@ function parseGSRoleBase(role) {
   if (!role) return { type: null }
 
   // Tab 1 — leadership
-  if (role === 'الأمين العام' || role === 'نائب الأمين العام' || role === 'المرشد الروحيّ العام' || role === 'مساعد المرشد الروحي' || role === 'منسق الشرق الأوسط' || role === 'مدير مكتب الأمانة')
+  if (role === 'الأمين العام' || role === 'نائب الأمين العام' || role === 'المرشد الروحيّ العام' || role === 'مساعد المرشد الروحي' || role === 'منسق الشرق الأوسط' || role === 'نائب منسق الشرق الأوسط' || role === 'مدير مكتب الأمانة')
     return { type: 'leadership', value: role }
 
   // Tab 2 — committee
@@ -1781,6 +1782,7 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
   const canvasRef = useRef(null)
 
   const [suppressedAutoEdges, setSuppressed] = useState(new Set())
+  const [loadError, setLoadError] = useState(false)
 
   // ── Load data ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1798,7 +1800,7 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
       .then(data => {
         loadTreeIntoView(data, null, data.periods || [])
       })
-      .catch(() => { setNodes([]); setEdges([]); setCurrentPeriod(null); setPeriods([]); setDirty(false); setStructuralDirty(false) })
+      .catch(() => { setNodes([]); setEdges([]); setCurrentPeriod(null); setPeriods([]); setDirty(false); setStructuralDirty(false); setLoadError(true) })
       .finally(() => setLoading(false))
   }, [])
 
@@ -2403,6 +2405,22 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
           </div>
         )}
 
+        {!loading && loadError && (
+          <ErrorState
+            title="تعذر تحميل هيكل الأمانة العامة"
+            description="تعذر الاتصال بالخادم. تحقق من الاتصال وأعد المحاولة."
+            onRetry={() => {
+              setLoadError(false)
+              setLoading(true)
+              api.getOrgTree(GS_GROUP_KEY)
+                .then(data => loadTreeIntoView(data, null, data.periods || []))
+                .catch(() => setLoadError(true))
+                .finally(() => setLoading(false))
+            }}
+            minHeight={260}
+          />
+        )}
+
         {/* Node editor */}
         {showEditor && (
           <GSNodeEditor
@@ -2421,6 +2439,20 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
         )}
 
         <svg ref={svgRef} style={{ width:'100%', height:'100%' }}>
+          <defs>
+            <marker id="gs-arrow-h" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L8,3 z" fill="var(--navy)" opacity="0.5"/>
+            </marker>
+            <marker id="gs-arrow-p" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L8,3 z" fill="var(--gold)" opacity="0.7"/>
+            </marker>
+            <marker id="gs-arrow-h-auto" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L8,3 z" fill="#4a7fb5" opacity="0.7"/>
+            </marker>
+            <marker id="gs-arrow-p-auto" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+              <path d="M0,0 L0,6 L8,3 z" fill="#e8b55a" opacity="0.9"/>
+            </marker>
+          </defs>
           <g transform={`translate(${pan.x},${pan.y}) scale(${zoom})`}>
             {/* Edges */}
             {visibleEdges.map(edge => {
@@ -2428,9 +2460,16 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
               const toNode   = visibleNodes.find(n=>n.id===edge.to)
               if (!fromNode || !toNode) return null
               const d = edgePath(fromNode, toNode, edge.type)
+              const isPeer = edge.type === 'peer'
+              const isAuto = !!edge.auto
+              const strokeColor   = isAuto ? (isPeer ? '#e8b55a' : '#4a7fb5') : (isPeer ? 'var(--gold)' : 'var(--navy)')
+              const strokeOpacity = isAuto ? 0.75 : (isPeer ? 0.6 : 0.4)
+              const strokeWidth   = isAuto ? 2.5 : 2
+              const dashArray     = isPeer ? '6,4' : 'none'
+              const markerEnd     = isAuto ? (isPeer ? 'url(#gs-arrow-p-auto)' : 'url(#gs-arrow-h-auto)') : (isPeer ? 'url(#gs-arrow-p)' : 'url(#gs-arrow-h)')
               return (
                 <g key={edge.id}>
-                  <path d={d} fill="none" stroke={edge.auto?'#4a7fb5':edge.type==='peer'?'var(--gold)':'var(--navy)'} strokeWidth={edge.auto?2.5:2} strokeOpacity={edge.auto?0.75:edge.type==='peer'?0.6:0.4} strokeDasharray={edge.type==='peer'?'6,4':'none'}/>
+                  <path d={d} fill="none" stroke={strokeColor} strokeWidth={strokeWidth} strokeOpacity={strokeOpacity} strokeDasharray={dashArray} markerEnd={markerEnd}/>
                   {!viewOnly && (
                     <path d={d} fill="none" stroke="transparent" strokeWidth={14} style={{ cursor:'pointer' }} onClick={()=>removeEdge(edge.id)}/>
                   )}
@@ -2455,7 +2494,7 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
           </g>
         </svg>
 
-        {!loading && visibleNodes.length === 0 && (
+        {!loading && !loadError && visibleNodes.length === 0 && (
           <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', pointerEvents:'none' }}>
             <GitBranch size={52} style={{ color:'var(--gray-300)', marginBottom:16 }}/>
             <p style={{ color:'var(--gray-400)', fontSize:'1rem', fontWeight:600 }}>

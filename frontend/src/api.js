@@ -117,7 +117,6 @@ export const api = {
 
   personsEnriched: ()           => req('/persons/enriched'),
   membersIndex:    ()           => req('/persons/members-index'),
-  listPeopleLocations: ()       => req('/people-locations'),
   persons:         (params)     => req('/persons?' + new URLSearchParams(params)),
   getPerson:       (id)         => req(`/person/${id}`),
   updatePerson:    (id, body)   => req(`/person/${id}`, { method: 'PUT', body }),
@@ -264,12 +263,6 @@ export const api = {
   clearNotifications: ()           => req('/config/maintenance/notifications', { method: 'DELETE' }),
   clearPromotions:    ()           => req('/config/maintenance/promotions', { method: 'DELETE' }),
   reloadData:         ()           => req('/config/maintenance/reload', { method: 'POST' }),
-
-  // ── Admin Data Tables ──────────────────────────────────────────────────────
-  listDataTables:     ()           => req('/admin/data-tables'),
-  searchDataTables:   (query, limit = 100) => req(`/admin/data-tables/search?q=${encodeURIComponent(query)}&limit=${encodeURIComponent(limit)}`),
-  getDataTable:       (sheet)      => req(`/admin/data-tables/${encodeURIComponent(sheet)}`),
-  updateDataTable:    (sheet, rows)=> req(`/admin/data-tables/${encodeURIComponent(sheet)}`, { method: 'PUT', body: rows }),
 
   // Unregistered photo
   uploadUnregisteredPhoto: async (id, file) => {

@@ -362,6 +362,7 @@ export default function BibleReader({ toast, externalTarget }) {
   const [highlightVerses, setHighlightVerses] = useState([])
   const [searchText, setSearchText] = useState('')
   const [searchResult, setSearchResult] = useState(null)
+  const [searchLoading, setSearchLoading] = useState(false)
   const [referenceText, setReferenceText] = useState('')
   const [loadingBooks, setLoadingBooks] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -467,10 +468,13 @@ export default function BibleReader({ toast, externalTarget }) {
   useEffect(() => {
     const query = searchText.trim()
     if (!query) {
+      setSearchLoading(false)
       setSearchResult(null)
       if (viewMode === 'search') setViewMode('chapter')
       return
     }
+
+    setSearchLoading(true)
 
     const handle = setTimeout(async () => {
       try {
@@ -551,6 +555,7 @@ export default function BibleReader({ toast, externalTarget }) {
         verseHits,
         total: titleHits.length + sectionHits.length + verseHits.length,
       })
+      setSearchLoading(false)
       setViewMode('search')
       setMultiChapterView(null)
     }, 220)
@@ -636,6 +641,7 @@ export default function BibleReader({ toast, externalTarget }) {
     setReferenceText('')
     setSearchText('')
     setSearchResult(null)
+    setSearchLoading(false)
     return true
   }
 
@@ -873,7 +879,7 @@ export default function BibleReader({ toast, externalTarget }) {
                 </div>
               ) : (
                 <div className="bible-sidebar-note">
-                  اختر سفراً أولاً لعرض الأصحاحات في نفس القائمة.
+                  اختر السفر أولاً لعرض الفصول.
                 </div>
               )}
             </div>
@@ -929,6 +935,12 @@ export default function BibleReader({ toast, externalTarget }) {
                 {quickGuide.map((testament) => renderGuidePanel(testament))}
               </div>
             </div>
+          ) : searchLoading ? (
+            <LoadingState
+              title="جارٍ البحث في الكتاب المقدس"
+              description="يتم تحميل الأسفار والبحث في الآيات والعناوين."
+              minHeight={260}
+            />
           ) : viewMode === 'search' && searchResult ? (
             <>
               {!searchResult.total ? (

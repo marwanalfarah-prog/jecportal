@@ -8,6 +8,7 @@ import pandas as pd
 from flask import jsonify, request, send_from_directory
 
 from core import state as S
+from core.database import SCD_LOGICAL_SHEETS as _SCD_LOGICAL_SHEETS
 from core.routes_auth import (
     _current_user,
     _get_council_access,
@@ -32,7 +33,7 @@ _PHONE_RE = re.compile(r"^\+?\d{7,15}$")
 _DATE_TEXT_RE = re.compile(r"^\d{4}-\d{1,2}-\d{1,2}$")
 _ARABIC_LETTER_RE = re.compile(rf"[{_ARABIC_CHAR_CLASS}]")
 _ENGLISH_LETTER_RE = re.compile(r"[A-Za-z]")
-_ADDRESS_ALLOWED_PUNCTUATION = {" ", "-", "/", ".", ",", "#", "(", ")"}
+_ADDRESS_ALLOWED_PUNCTUATION = {" ", "-", "/", ".", ",", "،", "#", "(", ")"}
 _ARABIC_INDIC_DIGITS = set("٠١٢٣٤٥٦٧٨٩")
 _NAME_FIELD_LABELS = {
     "ar_first_name": "الاسم الأول بالعربية",
@@ -64,6 +65,15 @@ _DATE_FIELD_LABELS = {
 
 def _validation_error_response(errors: list[str]):
     return jsonify({"error": errors[0], "errors": errors}), 400
+
+
+def _changed_by_from_current_user() -> str:
+    user = _current_user()
+    if not user:
+        return "system"
+    if user.get("role") == "admin":
+        return "admin"
+    return str(user.get("person_id", "system"))
 
 
 def _normalize_integer_value(value):
@@ -224,23 +234,15 @@ def _is_arabic_or_english_address_text(value) -> bool:
     if not text:
         return True
 
-    has_arabic = False
-    has_english = False
+    has_letter = False
     for char in text:
-        if _ARABIC_LETTER_RE.fullmatch(char):
-            has_arabic = True
-            if has_english:
-                return False
-            continue
-        if _ENGLISH_LETTER_RE.fullmatch(char):
-            has_english = True
-            if has_arabic:
-                return False
+        if _ARABIC_LETTER_RE.fullmatch(char) or _ENGLISH_LETTER_RE.fullmatch(char):
+            has_letter = True
             continue
         if char.isdigit() or char in _ARABIC_INDIC_DIGITS or char in _ADDRESS_ALLOWED_PUNCTUATION:
             continue
         return False
-    return has_arabic or has_english
+    return has_letter
 
 
 def _is_valid_social_url(value) -> bool:
@@ -477,13 +479,20 @@ def get_profile_sub_rows(store: dict, pid, sheet, *, compare_as_string: bool):
     if df.empty or "person_id" not in df.columns:
         return []
 
+    # Only expose currently-active SCD rows; inactive rows are historical audit records
+    if sheet in _SCD_LOGICAL_SHEETS:
+        df = S._scd_filter_active(df)
+
     if compare_as_string:
         rows = S.df_to_json(df[df["person_id"].astype(str) == str(pid)])
     else:
         rows = S.df_to_json(df[df["person_id"] == pid])
 
+    _scd_cols = set(S.SCD_METADATA_COLUMNS)
+    rows = [{k: v for k, v in row.items() if k not in _scd_cols} for row in rows]
+
     if sheet == "person_youth_group":
-        history_df = store.get(S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame())
+        history_df = S._scd_filter_active(store.get(S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame()))
         payload_rows = S.get_person_youth_group_payload_rows(
             S.build_person_youth_group_payload_rows(pd.DataFrame(rows), history_df),
             pid,
@@ -513,9 +522,13 @@ def build_profile_record(
     if row.empty:
         return None
 
-    person_data = S.df_to_json(
-        S._project_primary_addresses(row, store.get("addresses", pd.DataFrame()))
-    )[0]
+    _scd_cols = set(S.SCD_METADATA_COLUMNS)
+    person_data = {
+        k: v for k, v in S.df_to_json(
+            S._project_primary_addresses(row, store.get("addresses", pd.DataFrame()))
+        )[0].items()
+        if k not in _scd_cols
+    }
     _, ext = photo_path_getter(pid)
     return {
         "person": person_data,
@@ -673,70 +686,98 @@ def ensure_profile_timestamp_rows(
     )
 
 
-def replace_profile_sub_rows(store: dict, pid, sheet, rows, *, compare_as_string: bool):
+def replace_profile_sub_rows(store: dict, pid, sheet, rows, *, compare_as_string: bool, changed_by: str = "system"):
     if sheet == S.SCHOOL_SHEET:
-        S.replace_school_rows(store, pid, rows)
+        S.replace_school_rows(store, pid, rows, changed_by=changed_by)
         return
     if sheet == S.MOBILE_NUMBER_SHEET:
-        S.replace_mobile_number_rows(store, pid, rows)
+        S.replace_mobile_number_rows(store, pid, rows, changed_by=changed_by)
         return
     if sheet == S.EMAIL_SHEET:
-        S.replace_email_rows(store, pid, rows)
+        S.replace_email_rows(store, pid, rows, changed_by=changed_by)
         return
     if sheet == S.JOB_SHEET:
-        S.replace_job_rows(store, pid, rows)
+        S.replace_job_rows(store, pid, rows, changed_by=changed_by)
         return
 
     if sheet == S.PERSON_YOUTH_GROUP_SHEET:
         membership_rows = S.normalize_person_youth_group_rows(rows)
         history_rows = S.person_youth_group_age_history_rows_from_membership_rows(rows, membership_rows)
+        now = pd.Timestamp.now()
+        new_scd = S._scd_new_metadata(changed_by)
 
+        df = S._scd_ensure_columns(store.get(sheet, pd.DataFrame()))
+        deactivate_record_ids: set[str] = set()
+        if "person_id" in df.columns:
+            if compare_as_string:
+                person_mask = df["person_id"].astype(str) == str(pid)
+            else:
+                person_mask = df["person_id"] == pid
+            active_mask = person_mask & (df[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            if S.PERSON_YOUTH_GROUP_RECORD_ID_COL in df.columns:
+                deactivate_record_ids = set(df.loc[active_mask, S.PERSON_YOUTH_GROUP_RECORD_ID_COL].dropna().astype(str))
+            if active_mask.any():
+                df.loc[active_mask, S.SCD_ACTIVE_TO_COL] = now
+                df.loc[active_mask, S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+                df.loc[active_mask, S.SCD_CHANGED_BY_USER_COL] = changed_by
+        if membership_rows:
+            new_df = pd.DataFrame([{**row, "person_id": pid, **new_scd} for row in membership_rows])
+            df = pd.concat([df, new_df], ignore_index=True) if not df.empty else new_df.reset_index(drop=True)
+        store[sheet] = df
+
+        history_df = S._scd_ensure_columns(store.get(S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame()))
+        if S.PERSON_YOUTH_GROUP_RECORD_ID_COL in history_df.columns and deactivate_record_ids:
+            hist_active_mask = (
+                history_df[S.PERSON_YOUTH_GROUP_RECORD_ID_COL].astype(str).isin(deactivate_record_ids)
+                & (history_df[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            )
+            if hist_active_mask.any():
+                history_df.loc[hist_active_mask, S.SCD_ACTIVE_TO_COL] = now
+                history_df.loc[hist_active_mask, S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+                history_df.loc[hist_active_mask, S.SCD_CHANGED_BY_USER_COL] = changed_by
+        if history_rows:
+            new_history_df = pd.DataFrame([{**row, **new_scd} for row in history_rows])
+            history_df = pd.concat([history_df, new_history_df], ignore_index=True) if not history_df.empty else new_history_df.reset_index(drop=True)
+        store[S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET] = history_df
+        return
+
+    rows = normalize_profile_rows(sheet, rows)
+    if sheet in _SCD_LOGICAL_SHEETS:
+        df = S._scd_ensure_columns(store.get(sheet, pd.DataFrame()))
+        if "person_id" in df.columns:
+            if compare_as_string:
+                active_mask = (df["person_id"].astype(str) == str(pid)) & (df[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            else:
+                active_mask = (df["person_id"] == pid) & (df[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            if active_mask.any():
+                now = pd.Timestamp.now()
+                df.loc[active_mask, S.SCD_ACTIVE_TO_COL] = now
+                df.loc[active_mask, S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+                df.loc[active_mask, S.SCD_CHANGED_BY_USER_COL] = changed_by
+        if rows:
+            new_scd = S._scd_new_metadata(changed_by)
+            new_df = pd.DataFrame([{**row, **new_scd} for row in rows])
+            if "person_id" not in new_df.columns:
+                new_df.insert(0, "person_id", pid)
+            else:
+                new_df["person_id"] = pid
+            df = pd.concat([df, new_df], ignore_index=True) if not df.empty else new_df.reset_index(drop=True)
+        store[sheet] = df
+    else:
         df = store.get(sheet, pd.DataFrame())
         if "person_id" in df.columns:
             if compare_as_string:
                 df = df[df["person_id"].astype(str) != str(pid)]
             else:
                 df = df[df["person_id"] != pid]
-        if membership_rows:
-            new_df = pd.DataFrame(membership_rows)
-            new_df["person_id"] = pid
-            if df.empty:
-                df = new_df.reset_index(drop=True)
+        if rows:
+            new_df = pd.DataFrame(rows)
+            if "person_id" not in new_df.columns:
+                new_df.insert(0, "person_id", pid)
             else:
-                df = pd.concat([df, new_df], ignore_index=True)
+                new_df["person_id"] = pid
+            df = pd.concat([df, new_df], ignore_index=True) if not df.empty else new_df.reset_index(drop=True)
         store[sheet] = df
-
-        history_df = store.get(S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame())
-        if S.PERSON_YOUTH_GROUP_RECORD_ID_COL in history_df.columns:
-            record_ids = {row.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL) for row in membership_rows if row.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL)}
-            history_df = history_df[~history_df[S.PERSON_YOUTH_GROUP_RECORD_ID_COL].astype(str).isin({str(value) for value in record_ids})]
-        if history_rows:
-            new_history_df = pd.DataFrame(history_rows)
-            if history_df.empty:
-                history_df = new_history_df.reset_index(drop=True)
-            else:
-                history_df = pd.concat([history_df, new_history_df], ignore_index=True)
-        store[S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET] = history_df
-        return
-
-    rows = normalize_profile_rows(sheet, rows)
-    df = store.get(sheet, pd.DataFrame())
-    if "person_id" in df.columns:
-        if compare_as_string:
-            df = df[df["person_id"].astype(str) != str(pid)]
-        else:
-            df = df[df["person_id"] != pid]
-    if rows:
-        new_df = pd.DataFrame(rows)
-        if "person_id" not in new_df.columns:
-            new_df.insert(0, "person_id", pid)
-        else:
-            new_df["person_id"] = pid
-        if df.empty:
-            df = new_df.reset_index(drop=True)
-        else:
-            df = pd.concat([df, new_df], ignore_index=True)
-    store[sheet] = df
 
 
 def replace_profile_sub_rows_batch(
@@ -745,6 +786,7 @@ def replace_profile_sub_rows_batch(
     sheet_rows_map: dict,
     *,
     compare_as_string: bool,
+    changed_by: str = "system",
     sheet_order=None,
     include_empty: bool = True,
 ):
@@ -758,7 +800,7 @@ def replace_profile_sub_rows_batch(
             continue
         if not include_empty and not rows:
             continue
-        replace_profile_sub_rows(store, pid, sheet, rows, compare_as_string=compare_as_string)
+        replace_profile_sub_rows(store, pid, sheet, rows, compare_as_string=compare_as_string, changed_by=changed_by)
 
 
 def remove_profile_rows_by_person_id(
@@ -767,6 +809,7 @@ def remove_profile_rows_by_person_id(
     *,
     compare_as_string: bool,
     sheet_names,
+    changed_by: str = "system",
     remove_membership_history: bool = False,
 ):
     record_ids = set()
@@ -787,26 +830,55 @@ def remove_profile_rows_by_person_id(
                 if str(value).strip()
             }
 
+    now = pd.Timestamp.now()
     for sheet in sheet_names:
         df = store.get(sheet, pd.DataFrame())
-        if (
-            sheet == S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET
-            and not df.empty
-            and S.PERSON_YOUTH_GROUP_RECORD_ID_COL in df.columns
-        ):
-            if record_ids:
-                store[sheet] = df[
-                    ~df[S.PERSON_YOUTH_GROUP_RECORD_ID_COL].astype(str).isin(record_ids)
-                ].reset_index(drop=True)
-            continue
-
-        if df.empty or "person_id" not in df.columns:
-            continue
-
-        if compare_as_string:
-            store[sheet] = df[df["person_id"].astype(str) != str(pid)].reset_index(drop=True)
+        if sheet in _SCD_LOGICAL_SHEETS:
+            df = S._scd_ensure_columns(df)
+            if (
+                sheet == S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET
+                and not df.empty
+                and S.PERSON_YOUTH_GROUP_RECORD_ID_COL in df.columns
+            ):
+                if record_ids:
+                    hist_mask = (
+                        df[S.PERSON_YOUTH_GROUP_RECORD_ID_COL].astype(str).isin(record_ids)
+                        & (df[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+                    )
+                    if hist_mask.any():
+                        df.loc[hist_mask, S.SCD_ACTIVE_TO_COL] = now
+                        df.loc[hist_mask, S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+                        df.loc[hist_mask, S.SCD_CHANGED_BY_USER_COL] = changed_by
+                    store[sheet] = df
+                continue
+            if df.empty or "person_id" not in df.columns:
+                continue
+            if compare_as_string:
+                active_mask = (df["person_id"].astype(str) == str(pid)) & (df[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            else:
+                active_mask = (df["person_id"] == pid) & (df[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            if active_mask.any():
+                df.loc[active_mask, S.SCD_ACTIVE_TO_COL] = now
+                df.loc[active_mask, S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+                df.loc[active_mask, S.SCD_CHANGED_BY_USER_COL] = changed_by
+                store[sheet] = df
         else:
-            store[sheet] = df[df["person_id"] != pid].reset_index(drop=True)
+            if (
+                sheet == S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET
+                and not df.empty
+                and S.PERSON_YOUTH_GROUP_RECORD_ID_COL in df.columns
+            ):
+                if record_ids:
+                    store[sheet] = df[
+                        ~df[S.PERSON_YOUTH_GROUP_RECORD_ID_COL].astype(str).isin(record_ids)
+                    ].reset_index(drop=True)
+                continue
+            if df.empty or "person_id" not in df.columns:
+                continue
+            if compare_as_string:
+                store[sheet] = df[df["person_id"].astype(str) != str(pid)].reset_index(drop=True)
+            else:
+                store[sheet] = df[df["person_id"] != pid].reset_index(drop=True)
 
 
 def remove_profile_photo_files(pid):
@@ -849,29 +921,47 @@ def update_profile_membership_archive_state(
     if person_rows.empty:
         return jsonify({"error": "not found"}), 404
 
-    memberships_df = store.get(S.PERSON_YOUTH_GROUP_SHEET, pd.DataFrame())
+    memberships_df = S._scd_ensure_columns(store.get(S.PERSON_YOUTH_GROUP_SHEET, pd.DataFrame()).copy())
     if memberships_df.empty or "person_id" not in memberships_df.columns or S.YOUTH_GROUP_ID_COL not in memberships_df.columns:
         return jsonify({"error": "membership not found"}), 404
 
+    # Only touch currently-active SCD rows
+    scd_active_mask = memberships_df[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False
     combined_mask = pd.Series(False, index=memberships_df.index)
     for youth_group_id in youth_group_ids:
         if compare_as_string:
             mask = (
                 (memberships_df["person_id"].astype(str) == str(pid))
                 & (memberships_df[S.YOUTH_GROUP_ID_COL].astype(str) == youth_group_id)
+                & scd_active_mask
             )
         else:
             mask = (
                 (memberships_df["person_id"] == pid)
                 & (memberships_df[S.YOUTH_GROUP_ID_COL].astype(str) == youth_group_id)
+                & scd_active_mask
             )
         if not mask.any():
             return jsonify({"error": "membership not found"}), 404
         combined_mask = combined_mask | mask
 
-    if "archived" not in store[S.PERSON_YOUTH_GROUP_SHEET].columns:
-        store[S.PERSON_YOUTH_GROUP_SHEET]["archived"] = False
-    store[S.PERSON_YOUTH_GROUP_SHEET].loc[combined_mask, "archived"] = archived
+    # SCD deactivate matching active rows, then insert new rows with updated archived flag
+    now = pd.Timestamp.now()
+    changed_by = _changed_by_from_current_user() or "system"
+    new_scd = S._scd_new_metadata(changed_by)
+    active_rows = memberships_df[combined_mask].to_dict(orient="records")
+    memberships_df.loc[combined_mask, S.SCD_ACTIVE_TO_COL] = now
+    memberships_df.loc[combined_mask, S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+    memberships_df.loc[combined_mask, S.SCD_CHANGED_BY_USER_COL] = changed_by
+    new_rows = []
+    for row in active_rows:
+        new_row = {k: v for k, v in row.items() if k not in S.SCD_METADATA_COLUMNS}
+        new_row["archived"] = archived
+        new_row.update(new_scd)
+        new_rows.append(new_row)
+    store[S.PERSON_YOUTH_GROUP_SHEET] = pd.concat(
+        [memberships_df, pd.DataFrame(new_rows)], ignore_index=True
+    )
     if save_callback:
         save_callback()
     return None
@@ -1343,24 +1433,6 @@ def register_registered_routes(app):
         df = df.iloc[(page - 1) * per_page: page * per_page]
         return jsonify({"total": total, "page": page, "per_page": per_page, "data": S.df_to_json(df)})
 
-    @app.get("/api/people-locations")
-    def get_people_locations():
-        registered_rows = _build_people_location_rows(
-            S._registered_persons_df(),
-            S.store.get("addresses", pd.DataFrame()),
-            S._sheet_for_registered("person_youth_group"),
-            "registered",
-        )
-
-        unregistered_rows = _build_people_location_rows(
-            S.unregistered_persons_view_df(),
-            S.unreg_store.get("addresses", pd.DataFrame()),
-            S.unreg_store.get("person_youth_group", pd.DataFrame()),
-            "unregistered",
-        )
-
-        return jsonify({"locations": registered_rows + unregistered_rows})
-
     @app.get("/api/person/<int:pid>")
     def get_person(pid):
         err = require_profile_view_access("registered", pid)
@@ -1419,6 +1491,8 @@ def register_registered_routes(app):
             return err
         if sheet not in S.store:
             return jsonify({"error": "not found"}), 404
+        if sheet in _SCD_LOGICAL_SHEETS:
+            return jsonify({"error": "SCD tables cannot be directly replaced; use the profile API to make changes"}), 403
         body = request.json
         with S.lock:
             S.store[sheet] = pd.DataFrame(body)
@@ -1458,15 +1532,8 @@ def register_registered_routes(app):
                 return jsonify({"error": "invalid google maps location"}), 400
 
             with S.lock:
-                df = S.store.get("addresses", pd.DataFrame())
-                if not df.empty and "person_id" in df.columns:
-                    df = df[df["person_id"] != pid]
-                if addresses_rows:
-                    new_df = pd.DataFrame(addresses_rows)
-                    if "person_id" not in new_df.columns:
-                        new_df.insert(0, "person_id", pid)
-                    df = pd.concat([df, new_df], ignore_index=True)
-                S.store["addresses"] = df
+                changed_by = _changed_by_from_current_user()
+                replace_profile_sub_rows(S.store, pid, "addresses", addresses_rows, compare_as_string=False, changed_by=changed_by)
                 S.save()
             return jsonify({"ok": True})
 
@@ -1512,15 +1579,26 @@ def register_registered_routes(app):
                 responsibility_rows=body.get("responsibilities") if "responsibilities" in body else None,
             )
 
-            persons = S._registered_persons_df()
-            idx = persons[persons["person_id"] == pid].index
-            if not idx.empty:
-                for k, v in p.items():
-                    S.store["persons"].at[idx[0], k] = v
+            changed_by = _changed_by_from_current_user()
+            all_persons = S._scd_ensure_columns(S.store["persons"].copy())
+            person_mask = (
+                (all_persons["person_id"] == pid)
+                & (all_persons[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            )
+            if person_mask.any():
+                now = pd.Timestamp.now()
+                current_row = all_persons[person_mask].iloc[0].to_dict()
+                all_persons.loc[person_mask, S.SCD_ACTIVE_TO_COL] = now
+                all_persons.loc[person_mask, S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+                all_persons.loc[person_mask, S.SCD_CHANGED_BY_USER_COL] = changed_by
+                new_row_data = {k: v for k, v in current_row.items() if k not in S.SCD_METADATA_COLUMNS}
+                new_row_data.update(p)
+                new_row_data.update(S._scd_new_metadata(changed_by))
+                S.store["persons"] = pd.concat([all_persons, pd.DataFrame([new_row_data])], ignore_index=True)
                 if person_payload["title_in_payload"]:
-                    S.replace_person_title(S.store, pid, person_payload["person_title"])
+                    S.replace_person_title(S.store, pid, person_payload["person_title"], changed_by=changed_by)
                 if person_payload["school_system_sector_in_payload"]:
-                    S.replace_person_school_system_sector(S.store, pid, person_payload["school_system_sector"])
+                    S.replace_person_school_system_sector(S.store, pid, person_payload["school_system_sector"], changed_by=changed_by)
 
             payload_by_sheet = {
                 "nationality": body.get("nationality", []),
@@ -1545,6 +1623,7 @@ def register_registered_routes(app):
                 pid,
                 payload_by_sheet,
                 compare_as_string=False,
+                changed_by=changed_by,
                 sheet_order=(
                     "nationality",
                     "jobs",
@@ -1611,11 +1690,13 @@ def register_registered_routes(app):
                 responsibility_rows=body.get("responsibilities", []),
             )
 
+            changed_by = _changed_by_from_current_user()
             p["person_id"] = new_id
             p["registered"] = True
-            S.store["persons"] = pd.concat([S.store["persons"], pd.DataFrame([p])], ignore_index=True)
-            S.replace_person_title(S.store, new_id, person_payload["person_title"])
-            S.replace_person_school_system_sector(S.store, new_id, person_payload["school_system_sector"])
+            new_person_scd = S._scd_new_metadata(changed_by)
+            S.store["persons"] = pd.concat([S.store["persons"], pd.DataFrame([{**p, **new_person_scd}])], ignore_index=True)
+            S.replace_person_title(S.store, new_id, person_payload["person_title"], changed_by=changed_by)
+            S.replace_person_school_system_sector(S.store, new_id, person_payload["school_system_sector"], changed_by=changed_by)
 
             replace_profile_sub_rows_batch(
                 S.store,
@@ -1637,6 +1718,7 @@ def register_registered_routes(app):
                     S.PERSON_SPECIAL_NOTE_SHEET: body.get(S.PERSON_SPECIAL_NOTE_SHEET, []),
                 },
                 compare_as_string=False,
+                changed_by=changed_by,
                 sheet_order=(
                     "nationality",
                     "jobs",
@@ -1663,15 +1745,21 @@ def register_registered_routes(app):
         if err:
             return err
         with S.lock:
-            persons = S.store["persons"]
+            persons = S._scd_ensure_columns(S.store["persons"])
             reg_mask = (persons["person_id"] == pid) & (persons["registered"].apply(S._bool_registered))
             if reg_mask.any():
-                S.store["persons"] = persons[~reg_mask].reset_index(drop=True)
+                now = pd.Timestamp.now()
+                persons.loc[reg_mask, S.SCD_ACTIVE_TO_COL] = now
+                persons.loc[reg_mask, S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+                persons.loc[reg_mask, S.SCD_CHANGED_BY_USER_COL] = "admin"
+                S.store["persons"] = persons
             remove_profile_rows_by_person_id(
                 S.store,
                 pid,
                 compare_as_string=False,
+                changed_by="admin",
                 sheet_names=(sheet for sheet in S.store if sheet != "persons"),
+                remove_membership_history=True,
             )
             remove_profile_photo_files(pid)
             S.save()
@@ -1884,16 +1972,18 @@ def register_unregistered_routes(app):
                 responsibility_rows=body.get("responsibilities", []),
             )
 
+            changed_by = _changed_by_from_current_user()
             p["person_id"] = new_uid
             p["registered"] = False
+            new_person_scd = S._scd_new_metadata(changed_by)
             persons_df = S.unreg_store.get("persons", pd.DataFrame())
-            new_row = pd.DataFrame([p])
+            new_row = pd.DataFrame([{**p, **new_person_scd}])
             for col in S.UNREG_PERSONS_COLS:
                 if col not in new_row.columns:
                     new_row[col] = None
             S.unreg_store["persons"] = pd.concat([persons_df, new_row], ignore_index=True)
-            S.replace_person_title(S.unreg_store, new_uid, person_payload["person_title"])
-            S.replace_person_school_system_sector(S.unreg_store, new_uid, person_payload["school_system_sector"])
+            S.replace_person_title(S.unreg_store, new_uid, person_payload["person_title"], changed_by=changed_by)
+            S.replace_person_school_system_sector(S.unreg_store, new_uid, person_payload["school_system_sector"], changed_by=changed_by)
             replace_profile_sub_rows_batch(
                 S.unreg_store,
                 new_uid,
@@ -1914,6 +2004,7 @@ def register_unregistered_routes(app):
                     S.PERSON_SPECIAL_NOTE_SHEET: body.get(S.PERSON_SPECIAL_NOTE_SHEET, []),
                 },
                 compare_as_string=True,
+                changed_by=changed_by,
                 sheet_order=(
                     "addresses",
                     "nationality",
@@ -1959,7 +2050,8 @@ def register_unregistered_routes(app):
                 return jsonify({"error": "invalid google maps location"}), 400
 
             with S.unreg_lock:
-                replace_profile_sub_rows(S.unreg_store, uid, "addresses", addresses_rows, compare_as_string=True)
+                changed_by = _changed_by_from_current_user()
+                replace_profile_sub_rows(S.unreg_store, uid, "addresses", addresses_rows, compare_as_string=True, changed_by=changed_by)
                 S._save_unreg_store()
                 record = build_profile_record(
                     S.unregistered_persons_view_df(),
@@ -2019,12 +2111,26 @@ def register_unregistered_routes(app):
                 responsibility_rows=body.get("responsibilities") if "responsibilities" in body else None,
             )
 
-            for k, v in p.items():
-                S.unreg_store["persons"].at[idx[0], k] = v
+            changed_by = _changed_by_from_current_user()
+            all_unreg = S._scd_ensure_columns(S.unreg_store.get("persons", pd.DataFrame()).copy())
+            uid_mask = (
+                (all_unreg["person_id"].astype(str) == str(uid))
+                & (all_unreg[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            )
+            if uid_mask.any():
+                now = pd.Timestamp.now()
+                current_row = all_unreg[uid_mask].iloc[0].to_dict()
+                all_unreg.loc[uid_mask, S.SCD_ACTIVE_TO_COL] = now
+                all_unreg.loc[uid_mask, S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+                all_unreg.loc[uid_mask, S.SCD_CHANGED_BY_USER_COL] = changed_by
+                new_row_data = {k: v for k, v in current_row.items() if k not in S.SCD_METADATA_COLUMNS}
+                new_row_data.update(p)
+                new_row_data.update(S._scd_new_metadata(changed_by))
+                S.unreg_store["persons"] = pd.concat([all_unreg, pd.DataFrame([new_row_data])], ignore_index=True)
             if person_payload["title_in_payload"]:
-                S.replace_person_title(S.unreg_store, uid, person_payload["person_title"])
+                S.replace_person_title(S.unreg_store, uid, person_payload["person_title"], changed_by=changed_by)
             if person_payload["school_system_sector_in_payload"]:
-                S.replace_person_school_system_sector(S.unreg_store, uid, person_payload["school_system_sector"])
+                S.replace_person_school_system_sector(S.unreg_store, uid, person_payload["school_system_sector"], changed_by=changed_by)
             payload_by_sheet = {
                 "addresses": person_payload["addresses_rows"],
                 "nationality": body.get("nationality", []),
@@ -2047,6 +2153,7 @@ def register_unregistered_routes(app):
                     uid,
                     payload_by_sheet,
                     compare_as_string=True,
+                    changed_by=changed_by,
                     sheet_order=("addresses",),
                 )
 
@@ -2055,6 +2162,7 @@ def register_unregistered_routes(app):
                 uid,
                 payload_by_sheet,
                 compare_as_string=True,
+                changed_by=changed_by,
                 sheet_order=tuple(
                     sheet
                     for sheet in (
@@ -2097,6 +2205,7 @@ def register_unregistered_routes(app):
                 S.unreg_store,
                 uid,
                 compare_as_string=True,
+                changed_by="admin",
                 sheet_names=S.UNREG_SHEETS,
                 remove_membership_history=True,
             )
@@ -2201,9 +2310,10 @@ def register_unregistered_routes(app):
             school_system_sector = p.pop("school_system_sector", None)
             p["person_id"] = new_pid
             p["registered"] = True
-            S.store["persons"] = pd.concat([S.store["persons"], pd.DataFrame([p])], ignore_index=True)
-            S.replace_person_title(S.store, new_pid, person_title)
-            S.replace_person_school_system_sector(S.store, new_pid, school_system_sector)
+            new_person_scd = S._scd_new_metadata("admin")
+            S.store["persons"] = pd.concat([S.store["persons"], pd.DataFrame([{**p, **new_person_scd}])], ignore_index=True)
+            S.replace_person_title(S.store, new_pid, person_title, changed_by="admin")
+            S.replace_person_school_system_sector(S.store, new_pid, school_system_sector, changed_by="admin")
 
             for sheet in ("nationality", "mobile_numbers", "emails", "social_media", "addresses", "schools", "higher_education", "jobs", "timestamps", "responsibilities", "person_youth_group", "hobbies_skills", S.PERSON_HEALTH_CONDITION_SHEET, S.PERSON_SPECIAL_NOTE_SHEET):
                 rows = record.get(sheet, [])
@@ -2214,12 +2324,7 @@ def register_unregistered_routes(app):
                         responsibility_rows=record.get("responsibilities", []),
                     )
                 if rows:
-                    if sheet == "person_youth_group":
-                        replace_profile_sub_rows(S.store, new_pid, sheet, rows, compare_as_string=False)
-                    else:
-                        ndf = pd.DataFrame(rows)
-                        ndf["person_id"] = new_pid
-                        S.store[sheet] = pd.concat([S.store[sheet], ndf], ignore_index=True)
+                    replace_profile_sub_rows(S.store, new_pid, sheet, rows, compare_as_string=False, changed_by="admin")
             S.save()
 
         src_path, ext = S.get_unreg_photo_path(uid)
@@ -2234,6 +2339,7 @@ def register_unregistered_routes(app):
                 S.unreg_store,
                 uid,
                 compare_as_string=True,
+                changed_by="admin",
                 sheet_names=S.UNREG_SHEETS,
                 remove_membership_history=True,
             )
@@ -2328,6 +2434,7 @@ def register_unregistered_routes(app):
                     "ar_second_name": sn,
                     "ar_third_name": tn,
                     "ar_last_name": ln,
+                    **S._scd_new_metadata("system"),
                 }
                 new_row = pd.DataFrame([p_row])
                 S.unreg_store["persons"] = pd.concat([persons_df, new_row], ignore_index=True)

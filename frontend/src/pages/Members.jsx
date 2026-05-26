@@ -1129,7 +1129,8 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
   const [uPage, setUPage]                 = useState(1)
   const [archiveQ, setArchiveQ]           = useState('')
   const deferredArchiveQ                   = useDeferredValue(archiveQ)
-  const [archiveGroup, setArchiveGroup]   = useState('all')
+  const [showArchiveFilters, setShowArchiveFilters] = useState(false)
+  const [archiveFilterState, setArchiveFilterState] = useState({})
   const [nameVariations, setNameVariations] = useState({})
   const [exportingTarget, setExportingTarget] = useState('')
   const PER_PAGE = 50
@@ -1230,32 +1231,19 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
     return []
   }
 
-  const archiveGroupOptions = useMemo(() => {
-    const counts = new Map()
-    for (const row of archivedAll) {
-      const ids = getArchivedMembershipIds(row)
-      for (const id of ids) counts.set(id, (counts.get(id) || 0) + 1)
-    }
-    return [...counts.entries()]
-      .map(([id, count]) => ({ id, label: `${toGroupLabel(id)} (${count})` }))
-      .sort((a, b) => a.label.localeCompare(b.label, 'ar'))
-  }, [archivedAll])
-
   const visibleArchived = useMemo(() => {
-    const qText = normalizeArabic(deferredArchiveQ)
-    return archivedAll.filter(row => {
-      if (qText) {
-        const nameParts = getNameParts(row)
-        const words = qText.split(/\s+/).filter(Boolean)
-        if (!nameMatches(nameParts, expandQueryWords(words, nameAliasLookup))) return false
-      }
-      if (archiveGroup !== 'all') {
-        const ids = getArchivedMembershipIds(row)
-        if (!ids.includes(archiveGroup)) return false
-      }
-      return true
-    })
-  }, [archivedAll, deferredArchiveQ, archiveGroup])
+    let rows = applyFilters(archivedAll, archiveFilterState, null, deferredArchiveQ, nameAliasLookup)
+    const primarySortCol = COL_DEFS.find(c => archiveFilterState[c.key]?.sort)
+    if (primarySortCol) {
+      const dir = archiveFilterState[primarySortCol.key].sort
+      rows = [...rows].sort((a, b) => {
+        const va = normalizeArabic(getValues(a, primarySortCol)[0] ?? '')
+        const vb = normalizeArabic(getValues(b, primarySortCol)[0] ?? '')
+        return dir === 'asc' ? va.localeCompare(vb, 'ar') : vb.localeCompare(va, 'ar')
+      })
+    }
+    return rows
+  }, [archivedAll, archiveFilterState, deferredArchiveQ, nameAliasLookup])
 
   const firstActiveMembershipGroup = (row) => {
     if (Array.isArray(row?._youth_group_ids) && row._youth_group_ids.length > 0) {
@@ -1328,6 +1316,18 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
 
   const uTotalPages = Math.ceil(visibleUnreg.length / PER_PAGE)
   const uPageRows   = visibleUnreg.slice((uPage - 1) * PER_PAGE, uPage * PER_PAGE)
+
+  // ── Archived logic ────────────────────────────────────────────────────────
+  const updateArchiveFilter = (key, selected, sort) => { setArchiveFilterState(f => ({ ...f, [key]: { selected, sort } })) }
+  const clearArchiveAll = () => { setArchiveFilterState({}); setArchiveQ('') }
+  const hasAnyArchiveFilter = archiveQ.trim() || Object.values(archiveFilterState).some(f => f?.selected || f?.sort)
+
+  const cascadedArchiveOpts = useMemo(() => {
+    if (!showArchiveFilters) return {}
+    const result = {}
+    for (const col of COL_DEFS) result[col.key] = buildOpts(applyFilters(archivedAll, archiveFilterState, col.key, deferredArchiveQ, nameAliasLookup), col)
+    return result
+  }, [archivedAll, archiveFilterState, deferredArchiveQ, showArchiveFilters, nameAliasLookup])
 
   const handleDeleteUnreg = async (e, r) => {
     e.stopPropagation()
@@ -1451,7 +1451,7 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
       return
     }
 
-    const target = mode === 'unregistered' ? 'unregistered' : 'registered'
+    const target = mode === 'archived' ? 'archived' : (mode === 'unregistered' ? 'unregistered' : 'registered')
     setExportingTarget(target)
     try {
       const youthGroupLookup = extendYouthGroupLookupFromMembers(
@@ -1460,7 +1460,8 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
       )
 
       const detailedRecords = await mapWithConcurrency(rows, 10, async (row) => {
-        const payload = mode === 'unregistered'
+        const isUnreg = mode === 'unregistered' || (mode === 'archived' && !row._isReg)
+        const payload = isUnreg
           ? await api.getUnregisteredPerson(row.person_id)
           : await api.getPerson(row.person_id)
         return buildExportViewRow(payload, youthGroupLookup)
@@ -1578,7 +1579,6 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
               {hasAnyFilter && <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--gold)', display: 'inline-block', marginRight: 2 }} />}
             </button>
             {hasAnyFilter && <button className="btn btn-ghost btn-sm" onClick={clearAll}><X size={14} /> مسح الكل</button>}
-            <button className="btn btn-gold" onClick={onAdd}><UserPlus size={16} /> إضافة عضو</button>
           </div>
 
           {/* Filter panel */}
@@ -1746,41 +1746,45 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
       {/* ═══════════════════ ARCHIVED TAB ═══════════════════ */}
       {activeTab === 'archived' && (
         <>
-          <div style={{ fontSize: '0.83rem', color: 'var(--gray-500)', marginBottom: 10 }}>
-            <Archive size={13} style={{ display: 'inline', marginLeft: 4, verticalAlign: 'middle' }} />
-            الأرشيف — <strong>{visibleArchived.length.toLocaleString('ar-EG')}</strong> من أصل {archivedAll.length.toLocaleString('ar-EG')}
-          </div>
-
-          <div style={{ display: 'flex', gap: 10, marginBottom: 12, alignItems: 'center' }}>
+          {/* Toolbar */}
+          <div style={{ display: 'flex', gap: 10, marginBottom: 14, alignItems: 'center' }}>
             <div className="search-bar" style={{ flex: 1 }}>
               <Search size={17} className="search-icon" />
-              <input
-                placeholder="بحث في الأرشيف…"
-                value={archiveQ}
-                onChange={e => setArchiveQ(e.target.value)}
-              />
+              <input placeholder="ابحث بأي بيانات…" value={archiveQ} onChange={e => setArchiveQ(e.target.value)} />
               {archiveQ && <X size={15} style={{ color: 'var(--gray-400)', cursor: 'pointer', flexShrink: 0 }} onClick={() => setArchiveQ('')} />}
             </div>
-            <select
-              value={archiveGroup}
-              onChange={e => setArchiveGroup(e.target.value)}
-              style={{
-                padding: '9px 12px',
-                border: '1.5px solid var(--gray-200)',
-                borderRadius: 8,
-                fontFamily: 'var(--font-body)',
-                fontSize: '0.88rem',
-                direction: 'rtl',
-                outline: 'none',
-                background: 'white',
-                minWidth: 170,
-              }}
+            <button
+              className="btn btn-ghost"
+              onClick={() => exportProfilesToWorkbook({ rows: visibleArchived, mode: 'archived' })}
+              disabled={exportingTarget === 'archived' || visibleArchived.length === 0}
             >
-              <option value="all">كل فرق الشبيبة</option>
-              {archiveGroupOptions.map(opt => (
-                <option key={opt.id} value={opt.id}>{opt.label}</option>
-              ))}
-            </select>
+              <Download size={15} />
+              {exportingTarget === 'archived' ? 'جارٍ التصدير…' : 'تنزيل Excel'}
+            </button>
+            <button className={`btn ${showArchiveFilters ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setShowArchiveFilters(s => !s)}>
+              <ChevronDown size={15} style={{ transform: showArchiveFilters ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+              فلترة
+              {hasAnyArchiveFilter && <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--gold)', display: 'inline-block', marginRight: 2 }} />}
+            </button>
+            {hasAnyArchiveFilter && <button className="btn btn-ghost btn-sm" onClick={clearArchiveAll}><X size={14} /> مسح الكل</button>}
+          </div>
+
+          {/* Filter panel */}
+          {showArchiveFilters && (
+            <div style={{ background: 'white', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-lg)', padding: '16px 18px', marginBottom: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))', gap: '12px 10px' }}>
+              {COL_DEFS.map(col => {
+                const opts = cascadedArchiveOpts[col.key] ?? []
+                if (opts.length === 0) return null
+                return <FilterBox key={col.key} label={col.label} allValues={opts} selected={archiveFilterState[col.key]?.selected ?? null} sort={archiveFilterState[col.key]?.sort ?? null} onChange={(sel, sort) => updateArchiveFilter(col.key, sel, sort)} />
+              })}
+            </div>
+          )}
+
+          {/* Count */}
+          <div style={{ fontSize: '0.83rem', color: 'var(--gray-500)', marginBottom: 10 }}>
+            <Archive size={13} style={{ display: 'inline', marginLeft: 4, verticalAlign: 'middle' }} />
+            عرض <strong>{visibleArchived.length.toLocaleString('ar-EG')}</strong> من أصل {archivedAll.length.toLocaleString('ar-EG')} في الأرشيف
+            {hasAnyArchiveFilter && <span style={{ color: 'var(--gold)', fontWeight: 600, marginRight: 6 }}>(مفلتر)</span>}
           </div>
 
           {archivedLoadError ? (

@@ -1,5 +1,5 @@
 import { Component, Suspense, lazy, startTransition, useEffect, useState } from 'react'
-import { LayoutDashboard, Users, GitBranch, UserPlus, LogOut, ShieldCheck, User as UserIcon, Eye, X, Search, ClipboardList, Settings, Building2, ImageOff, Key, MapPin, Map, BookOpenText, Database, Menu } from 'lucide-react'
+import { LayoutDashboard, Users, GitBranch, LogOut, ShieldCheck, User as UserIcon, Eye, X, Search, ClipboardList, Settings, Building2, ImageOff, Key, MapPin, BookOpenText, Menu } from 'lucide-react'
 import Login from './pages/Login.jsx'
 import { useToast, ToastContainer } from './useToast.jsx'
 import NotificationBell from './NotificationBell.jsx'
@@ -10,7 +10,6 @@ import { buildMottoBibleReaderTarget, formatMottoTextWithSource } from './mottoB
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'))
 const Members = lazy(() => import('./pages/Members.jsx'))
 const Profile = lazy(() => import('./pages/Profile.jsx'))
-const AddMemberModal = lazy(() => import('./pages/AddMember.jsx'))
 const OrgTree = lazy(() => import('./pages/OrgTree.jsx'))
 const GeneralSecretariatTree = lazy(() => import('./pages/GeneralSecretariatTree.jsx'))
 const UserManagement = lazy(() => import('./pages/UserManagement.jsx'))
@@ -20,15 +19,12 @@ const MyQuestions = lazy(() => import('./pages/MyQuestions.jsx'))
 const Config = lazy(() => import('./pages/Config.jsx'))
 const YouthGroupAdmin = lazy(() => import('./pages/YouthGroupAdmin.jsx'))
 const ChurchesMap = lazy(() => import('./pages/ChurchesMap.jsx'))
-const PeopleLocationsMap = lazy(() => import('./pages/PeopleLocationsMap.jsx'))
 const BibleReader = lazy(() => import('./pages/BibleReader.jsx'))
-const DataWorkbookAdmin = lazy(() => import('./pages/DataWorkbookAdmin.jsx'))
 
 const ROUTE_PRELOADERS = {
   dashboard: () => import('./pages/Dashboard.jsx'),
   members: () => import('./pages/Members.jsx'),
   profile: () => import('./pages/Profile.jsx'),
-  add_member: () => import('./pages/AddMember.jsx'),
   orgtree: () => import('./pages/OrgTree.jsx'),
   general_secretariat: () => import('./pages/GeneralSecretariatTree.jsx'),
   users: () => import('./pages/UserManagement.jsx'),
@@ -38,9 +34,7 @@ const ROUTE_PRELOADERS = {
   config: () => import('./pages/Config.jsx'),
   youth_groups: () => import('./pages/YouthGroupAdmin.jsx'),
   churches_map: () => import('./pages/ChurchesMap.jsx'),
-  people_locations_map: () => import('./pages/PeopleLocationsMap.jsx'),
   bible_reader: () => import('./pages/BibleReader.jsx'),
-  data_workbook: () => import('./pages/DataWorkbookAdmin.jsx'),
 }
 
 const preloadedRoutes = new Set()
@@ -64,13 +58,10 @@ const ROUTE_LOADING_TITLES = {
   questionnaires: 'جارٍ تحميل الاستبيانات',
   youth_groups: 'جارٍ تحميل ملف فرق الشبيبة',
   churches_map: 'جارٍ تحميل خريطة الكنائس',
-  people_locations_map: 'جارٍ تحميل خريطة المواقع',
-  data_workbook: 'جارٍ تحميل بيانات المصنف',
   bible_reader: 'جارٍ تحميل قارئ الكتاب المقدس',
   config: 'جارٍ تحميل الإعدادات',
   my_questions: 'جارٍ تحميل استبياناتي',
   council_members: 'جارٍ تحميل أعضاء الفئة',
-  add_member: 'جارٍ تحميل نموذج الإضافة',
 }
 
 function RouteLoader({ page, minHeight = 320, description = 'يتم تجهيز مكونات الصفحة الآن.' }) {
@@ -80,39 +71,6 @@ function RouteLoader({ page, minHeight = 320, description = 'يتم تجهيز �
       description={description}
       minHeight={minHeight}
     />
-  )
-}
-
-function ModalLoader({ title = 'جارٍ تحميل النموذج' }) {
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.45)',
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 20,
-      }}
-    >
-      <div
-        style={{
-          width: '100%',
-          maxWidth: 520,
-          overflow: 'hidden',
-          borderRadius: 16,
-          background: 'white',
-          boxShadow: '0 24px 64px rgba(0,0,0,0.2)',
-        }}
-      >
-        <div style={{ background: '#0f2744', padding: '14px 20px', color: 'white', fontWeight: 700, fontSize: '0.95rem' }}>
-          {title}
-        </div>
-        <RouteLoader page="add_member" minHeight={220} description="يتم تجهيز نموذج الإضافة الآن." />
-      </div>
-    </div>
   )
 }
 
@@ -556,12 +514,63 @@ const PAGE_TITLES = {
   config:              'الإعدادات والتهيئة',
   youth_groups:        'ملف فرق الشبيبة',
   churches_map:        'خريطة الكنائس',
-  people_locations_map:'خريطة مواقع الأشخاص',
-  data_workbook:       'بيانات JECJordanData',
   bible_reader:        'قارئ الكتاب المقدس',
 }
 
+// ── URL routing utilities ────────────────────────────────────────────────────
+const PAGE_PATHS = {
+  dashboard:            '/',
+  members:              '/members',
+  orgtree:              '/orgtree',
+  general_secretariat:  '/general-secretariat',
+  users:                '/users',
+  questionnaires:       '/questionnaires',
+  my_questions:         '/my-questions',
+  config:               '/config',
+  youth_groups:         '/youth-groups',
+  churches_map:         '/churches-map',
+  bible_reader:         '/bible-reader',
+  council_members:      '/council-members',
+}
+
+const PATH_PAGES = Object.fromEntries(
+  Object.entries(PAGE_PATHS).map(([pg, path]) => [path, pg])
+)
+
+function parseRoute(pathname) {
+  const unregMatch = pathname.match(/^\/profile\/unreg\/(.+)$/)
+  if (unregMatch) return { page: 'profile', pid: unregMatch[1], unreg: true }
+  const profileMatch = pathname.match(/^\/profile\/(.+)$/)
+  if (profileMatch) return { page: 'profile', pid: profileMatch[1], unreg: false }
+  // /profile with no ID is ambiguous — auth will redirect to the right place
+  const pg = PATH_PAGES[pathname]
+  return { page: pg || null, pid: null, unreg: false }
+}
+
+function pageToPath(page, pid = null, unreg = false) {
+  if (page === 'profile') {
+    if (!pid) return '/profile'
+    return unreg ? `/profile/unreg/${pid}` : `/profile/${pid}`
+  }
+  return PAGE_PATHS[page] || '/'
+}
+
+function pushRoute(page, pid = null, unreg = false) {
+  const path = pageToPath(page, pid, unreg)
+  if (window.location.pathname !== path) {
+    window.history.pushState({ page, pid, unreg }, '', path)
+  }
+}
+
+function replaceRoute(page, pid = null, unreg = false) {
+  const path = pageToPath(page, pid, unreg)
+  if (window.location.pathname !== path) {
+    window.history.replaceState({ page, pid, unreg }, '', path)
+  }
+}
+
 export default function App() {
+  const UNSAVED_PROFILE_CHANGES_MESSAGE = 'لديك تعديلات غير محفوظة في الملف الشخصي. إذا غادرت الآن فستفقد هذه التعديلات. هل تريد المتابعة؟'
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false
     try {
@@ -573,12 +582,10 @@ export default function App() {
     return window.innerWidth <= 900
   })
   const [authUser, setAuthUser]         = useState(undefined) // undefined = loading
-  const [page, setPage]                 = useState('dashboard')
-  const [selectedPid, setSelected]      = useState(null)
-  const [isUnregistered, setIsUnreg]    = useState(false)
+  const [page, setPage]                 = useState(() => { const r = parseRoute(window.location.pathname); return r.page || 'dashboard' })
+  const [selectedPid, setSelected]      = useState(() => parseRoute(window.location.pathname).pid)
+  const [isUnregistered, setIsUnreg]    = useState(() => parseRoute(window.location.pathname).unreg)
   const [orgContext, setOrgContext]      = useState(null)
-  const [showAdd, setShowAdd]           = useState(false)
-  const [prefillName, setPrefill]       = useState('')
   const [profileReturnPage, setProfileReturnPage] = useState('members')
   const [viewAsUser, setViewAsUser]       = useState(null)   // { username, display_name, role, person_id, person_type, youth_groups, council_access, ... }
   const [showViewAsPicker, setShowViewAsPicker] = useState(false)
@@ -587,6 +594,7 @@ export default function App() {
   const [credPassword, setCredPassword] = useState('')
   const [credPasswordConfirm, setCredPasswordConfirm] = useState('')
   const [savingCreds, setSavingCreds] = useState(false)
+  const [profileHasUnsavedChanges, setProfileHasUnsavedChanges] = useState(false)
   const [youthGroupLabels, setYouthGroupLabels] = useState({})
   const [memberMottoByGroup, setMemberMottoByGroup] = useState({})
   const [bibleReaderTarget, setBibleReaderTarget] = useState(null)
@@ -601,6 +609,14 @@ export default function App() {
         setIsUnreg(user.person_type === 'unregistered')
         setPage('profile')
         setProfileReturnPage('orgtree')
+        replaceRoute('profile', user.person_id, user.person_type === 'unregistered')
+      } else if (user?.role === 'admin') {
+        const { page: urlPage } = parseRoute(window.location.pathname)
+        const adminAllowed = ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches_map', 'bible_reader', 'config', 'profile']
+        if (!urlPage || !adminAllowed.includes(urlPage)) {
+          setPage('dashboard')
+          replaceRoute('dashboard')
+        }
       }
     }).catch(() => setAuthUser(null))
   }, [])
@@ -642,19 +658,26 @@ export default function App() {
         setPage('profile')
         setProfileReturnPage('orgtree')
       })
+      replaceRoute('profile', user.person_id, user.person_type === 'unregistered')
     } else {
       preloadRoute('dashboard')
       startTransition(() => {
         setPage('dashboard')
       })
+      replaceRoute('dashboard')
     }
   }
 
   const handleLogout = async () => {
+    if (page === 'profile' && profileHasUnsavedChanges && !window.confirm(UNSAVED_PROFILE_CHANGES_MESSAGE)) {
+      return
+    }
     await api.logout()
+    setProfileHasUnsavedChanges(false)
     setAuthUser(null)
     setPage('dashboard')
     setSelected(null)
+    replaceRoute('dashboard')
   }
 
   const closeSidebarOnMobile = () => {
@@ -828,8 +851,6 @@ export default function App() {
     { id: 'questionnaires',       label: 'إدارة الاستبيانات',           icon: ClipboardList },
     { id: 'youth_groups',         label: 'ملف فرق الشبيبة',              icon: Building2 },
     { id: 'churches_map',         label: 'خريطة الكنائس',                 icon: MapPin },
-    { id: 'people_locations_map', label: 'خريطة مواقع الأشخاص',           icon: Map },
-    { id: 'data_workbook',        label: 'بيانات JECJordanData',          icon: Database },
     { id: 'bible_reader',         label: 'قارئ الكتاب المقدس',            icon: BookOpenText },
     { id: 'config',               label: 'الإعدادات',                    icon: Settings },
   ] : [
@@ -853,8 +874,14 @@ export default function App() {
     return false
   }
 
-  const goProfile = (pid, ctx = null, unreg = false, returnPage = 'members') => {
+  const confirmLeavingDirtyProfile = ({ skipUnsavedPrompt = false } = {}) => {
+    if (skipUnsavedPrompt || page !== 'profile' || !profileHasUnsavedChanges) return true
+    return window.confirm(UNSAVED_PROFILE_CHANGES_MESSAGE)
+  }
+
+  const goProfile = (pid, ctx = null, unreg = false, returnPage = 'members', { skipUnsavedPrompt = false } = {}) => {
     if (!canViewProfile(pid, unreg)) return
+    if (!confirmLeavingDirtyProfile({ skipUnsavedPrompt })) return
     const normalizedReturnPage = returnPage === 'profile'
       ? (profileReturnPage === 'profile' ? 'members' : profileReturnPage)
       : returnPage
@@ -868,7 +895,8 @@ export default function App() {
     })
   }
 
-  const goBack = () => {
+  const goBack = ({ skipUnsavedPrompt = false } = {}) => {
+    if (!confirmLeavingDirtyProfile({ skipUnsavedPrompt })) return
     const targetPage = isMember
       ? (profileReturnPage === 'council_members' ? 'council_members' : 'orgtree')
       : profileReturnPage
@@ -881,11 +909,12 @@ export default function App() {
     })
   }
 
-  const navigate = (p) => {
+  const navigate = (p, { skipUnsavedPrompt = false } = {}) => {
     const allowed = isAdmin
-      ? ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches_map', 'people_locations_map', 'data_workbook', 'bible_reader', 'config']
+      ? ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches_map', 'bible_reader', 'config']
       : ['profile', 'orgtree', 'council_members', 'churches_map', 'bible_reader', 'my_questions']
     if (!allowed.includes(p)) return
+    if (!confirmLeavingDirtyProfile({ skipUnsavedPrompt })) return
     preloadRoute(p)
     startTransition(() => {
       setPage(p)
@@ -929,6 +958,7 @@ export default function App() {
           setPage('profile')
           setProfileReturnPage('orgtree')
         })
+        replaceRoute('profile', viewAsUser.person_id, viewAsUser.person_type === 'unregistered')
       }
     } else if (authUser?.role === 'admin') {
       // Exit impersonation: go back to admin dashboard
@@ -939,15 +969,54 @@ export default function App() {
         setIsUnreg(false)
         setOrgContext(null)
       })
+      replaceRoute('dashboard')
     }
   }, [viewAsUser])
 
-  const handleRegisterPerson = (name) => {
-    if (!isAdmin) return
-    preloadRoute('add_member')
-    setPrefill(name || '')
-    setShowAdd(true)
-  }
+  // Handle browser back/forward
+  useEffect(() => {
+    const handler = () => {
+      if (!authUser) return
+      const { page: newPage, pid, unreg } = parseRoute(window.location.pathname)
+      const isAdminNow = authUser.role === 'admin' && !viewAsUser
+      const adminAllowed = ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches_map', 'bible_reader', 'config']
+      const memberAllowed = ['profile', 'orgtree', 'council_members', 'churches_map', 'bible_reader', 'my_questions']
+      if (newPage === 'profile') {
+        startTransition(() => {
+          if (pid) setSelected(pid)
+          setIsUnreg(unreg)
+          setPage('profile')
+        })
+        return
+      }
+      const allowed = isAdminNow ? adminAllowed : memberAllowed
+      if (newPage && allowed.includes(newPage)) {
+        startTransition(() => {
+          setPage(newPage)
+          setSelected(null)
+          setOrgContext(null)
+          setIsUnreg(false)
+        })
+      } else {
+        const defaultPage = isAdminNow ? 'dashboard' : 'profile'
+        window.history.replaceState(null, '', pageToPath(defaultPage))
+        startTransition(() => setPage(defaultPage))
+      }
+    }
+    window.addEventListener('popstate', handler)
+    return () => window.removeEventListener('popstate', handler)
+  }, [authUser, viewAsUser])
+
+  // Sync URL with page state after React commits (push only when URL doesn't already match)
+  // replaceState cases (login, logout, auth-redirect, viewAs) set the URL before this fires,
+  // so the check below skips them — preventing unwanted history entries.
+  useEffect(() => {
+    if (!authUser) return
+    const expected = pageToPath(page, selectedPid, isUnregistered)
+    if (window.location.pathname !== expected) {
+      window.history.pushState({ page, pid: selectedPid, unreg: isUnregistered }, '', expected)
+    }
+  }, [page, selectedPid, isUnregistered, authUser])
 
   const handleViewProfile = (pid, ctx) => {
     if (!canViewProfile(pid, false)) return
@@ -1022,17 +1091,6 @@ export default function App() {
           {isAdmin && (
             <>
               <div className="nav-section-label" style={{ marginTop: 16 }}>إجراءات</div>
-              <button
-                className="nav-item"
-                onClick={() => { preloadRoute('add_member'); navigate('members'); setShowAdd(true) }}
-                onMouseEnter={() => { preloadRoute('members'); preloadRoute('add_member') }}
-                onFocus={() => { preloadRoute('members'); preloadRoute('add_member') }}
-                title="إضافة عضو جديد"
-                aria-label="إضافة عضو جديد"
-              >
-                <UserPlus size={18} className="icon"/>
-                <span className="nav-item-label">إضافة عضو جديد</span>
-              </button>
               <button className="nav-item" onClick={() => { setShowViewAsPicker(true); closeSidebarOnMobile() }} title="عرض بصفة مستخدم" aria-label="عرض بصفة مستخدم">
                 <Eye size={18} className="icon"/>
                 <span className="nav-item-label">عرض بصفة مستخدم</span>
@@ -1127,7 +1185,10 @@ export default function App() {
             </span>
             <div style={{ flex: 1 }}/>
             <button
-              onClick={() => setViewAsUser(null)}
+              onClick={() => {
+                if (!confirmLeavingDirtyProfile()) return
+                setViewAsUser(null)
+              }}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
                 background: '#0f2744', color: 'white', border: 'none',
@@ -1153,11 +1214,6 @@ export default function App() {
             <span className="topbar-title">{PAGE_TITLES[page] || ''}</span>
           </div>
           <div className="topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {isAdmin && page === 'members' && (
-              <button className="btn btn-gold btn-sm" onClick={() => setShowAdd(true)}>
-                <UserPlus size={15}/> إضافة عضو
-              </button>
-            )}
             {!viewAsUser && (
               <NotificationBell
                 onOpenQuestionnaire={(qid) => { navigate(authUser?.role === 'admin' ? 'questionnaires' : 'my_questions') }}
@@ -1205,21 +1261,21 @@ export default function App() {
               <Members
                 onSelectPerson={pid => goProfile(pid, null, false, 'members')}
                 onSelectUnregistered={uid => goProfile(uid, null, true, 'members')}
-                onAdd={() => setShowAdd(true)}
                 toast={toast}
               />
             )}
 
             {page === 'profile' && (
-              <ProfileRouteErrorBoundary resetKey={`${selectedPid}-${isUnregistered ? 'unreg' : 'reg'}`} onBack={goBack}>
+              <ProfileRouteErrorBoundary resetKey={`${selectedPid}-${isUnregistered ? 'unreg' : 'reg'}`} onBack={() => goBack({ skipUnsavedPrompt: true })}>
                 <Profile
                   personId={selectedPid}
                   isUnregistered={isUnregistered}
-                  onBack={goBack}
+                  onBack={() => goBack({ skipUnsavedPrompt: true })}
                   toast={toast}
                   orgContext={orgContext}
                   onViewProfile={(pid, unreg) => goProfile(pid, null, !!unreg, page)}
-                  onPromoted={handlePromoted}
+                  onPromoted={(newPid) => handlePromoted(newPid, { skipUnsavedPrompt: true })}
+                  onUnsavedChangesChange={setProfileHasUnsavedChanges}
                   currentUser={effectiveUser}
                   // Council members or impersonating admin viewing others → read-only
                   readOnly={!!(viewAsUser) || (isMember && String(selectedPid) !== String(effectiveUser?.person_id))}
@@ -1230,7 +1286,6 @@ export default function App() {
             {page === 'orgtree' && (
               <OrgTree
                 toast={toast}
-                onRegisterPerson={isAdmin ? handleRegisterPerson : undefined}
                 onViewProfile={(pid, ctx) => handleViewProfile(pid, ctx)}
                 onViewUnregisteredProfile={uid => {
                   if (isMember && !canViewProfile(uid, true)) return
@@ -1254,7 +1309,6 @@ export default function App() {
             {isAdmin && page === 'general_secretariat' && (
               <GeneralSecretariatTree
                 toast={toast}
-                onRegisterPerson={isAdmin ? handleRegisterPerson : undefined}
                 onViewProfile={(pid, ctx) => goProfile(pid, ctx, false, 'general_secretariat')}
                 onViewUnregisteredProfile={uid => {
                   goProfile(uid, null, true, 'general_secretariat')
@@ -1277,14 +1331,6 @@ export default function App() {
               <ChurchesMap toast={toast} />
             )}
 
-            {isAdmin && page === 'people_locations_map' && (
-              <PeopleLocationsMap toast={toast} />
-            )}
-
-            {isAdmin && page === 'data_workbook' && (
-              <DataWorkbookAdmin toast={toast} />
-            )}
-
             {page === 'bible_reader' && (
               <BibleReader toast={toast} externalTarget={bibleReaderTarget} />
             )}
@@ -1303,22 +1349,12 @@ export default function App() {
         </main>
       </div>
 
-      {authUser?.role === 'admin' && showAdd && (
-        <Suspense fallback={<ModalLoader />}>
-          <AddMemberModal
-            onClose={() => { setShowAdd(false); setPrefill('') }}
-            onAdded={(pid) => { setShowAdd(false); setPrefill(''); goProfile(pid, null, false, 'members') }}
-            toast={toast}
-            prefillName={prefillName}
-          />
-        </Suspense>
-      )}
-
       {/* ── View As Picker Modal ── */}
       {showViewAsPicker && (
         <ViewAsPicker
           currentAdminUser={authUser}
           onSelect={user => {
+            if (!confirmLeavingDirtyProfile()) return
             setViewAsUser(user)
             setShowViewAsPicker(false)
           }}
