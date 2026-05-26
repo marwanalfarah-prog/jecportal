@@ -38,6 +38,13 @@ SCD_LOGICAL_SHEETS: set[str] = {
     "auth_users",
     "mottos",
     "motto_youth_groups",
+    "churches",
+    "institution_logos",
+    "parishes",
+    "youth_groups",
+    "youth_group_social_media",
+    "youth_group_social_media_ages",
+    "youth_group_special_logos",
 }
 
 SCD_WORKBOOK_SHEET_NAMES: dict[str, str] = {
@@ -54,6 +61,13 @@ SCD_WORKBOOK_TO_LOGICAL_SHEETS: dict[str, str] = {
     workbook_name: logical_name
     for logical_name, workbook_name in SCD_WORKBOOK_SHEET_NAMES.items()
 }
+
+SCD_METADATA_COLUMNS = [
+    "scd_active_from",
+    "scd_active_to",
+    "scd_currently_active_flag",
+    "scd_changed_by_user",
+]
 
 
 def logical_sheet_name(sheet_name: str) -> str:
@@ -342,6 +356,25 @@ class Database:
             return df
         return df.drop(columns=columns_to_drop)
 
+    def _ensure_scd_columns_for_save(self, sheet: str, df: pd.DataFrame) -> pd.DataFrame:
+        logical_name = logical_sheet_name(sheet)
+        if logical_name not in SCD_LOGICAL_SHEETS or df is None:
+            return df
+        prepared = df.copy()
+        now = pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+        for col in SCD_METADATA_COLUMNS:
+            if col in prepared.columns:
+                continue
+            if col == "scd_active_from":
+                prepared[col] = now
+            elif col == "scd_active_to":
+                prepared[col] = ""
+            elif col == "scd_currently_active_flag":
+                prepared[col] = True
+            else:
+                prepared[col] = "admin"
+        return prepared
+
     _SHEET_DTYPES: dict[str, dict[str, Any]] = {
         "mobile_numbers": {"mobile_number_record_id": str, "mobile_number": str, "type": str, "mobile_number_type": str},
         "mobile_number_family_relations": {"mobile_number_record_id": str, "family_relation": str},
@@ -403,6 +436,7 @@ class Database:
             df = self._canonicalize_sheet_columns(logical_name, df)
             df = self._strip_legacy_sheet_columns(logical_name, df)
             df = self.normalize_boolean_columns(df)
+            df = self._ensure_scd_columns_for_save(logical_name, df)
             if logical_name == "persons":
                 drop_cols = [col for col in self.person_sheet_address_projection_columns if col in df.columns]
                 if drop_cols:

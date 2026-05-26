@@ -1,0 +1,27 @@
+﻿school_logo_id,institution_type,institution_name,institution_section,logo_file_name,scd_active_from,scd_active_to,scd_currently_active_flag,scd_changed_by_user
+SCLG000001,school,البطريركيّة اللاتينيّة,,SCLG000001.png,2026-05-26 20:10:50,,True,admin
+SCLG000002,school,أكاديميّة كاترينا للأطفال,,SCLG000002.png,2026-05-26 20:10:50,,True,admin
+SCLG000003,school,كليّة دي لاسال - الفرير,,SCLG000003.png,2026-05-26 20:10:50,,True,admin
+SCLG000004,school,المدرسة الإنجليزيّة الحديثة,,SCLG000004.png,2026-05-26 20:10:50,,True,admin
+UNLG000001,university,جامعة الحسين التقنيّة,,UNLG000001.png,2026-05-26 20:10:50,,True,admin
+UNLG000002,university,الجامعة الهاشميّة,,UNLG000002.png,2026-05-26 20:10:50,,True,admin
+UNLG000003,university,جامعة البلقاء التطبيقيّة,,UNLG000003.png,2026-05-26 20:10:50,,True,admin
+UNLG000004,university,جامعة العلوم والتكنولوجيا الأردنيّة,,UNLG000004.png,2026-05-26 20:10:50,,True,admin
+SCLG000005,school,أكاديميّة لوريت,,SCLG000005.png,2026-05-26 20:10:50,,True,admin
+SCLG000006,school,الأردنيّة الدوليّة,,SCLG000006.png,2026-05-26 20:10:50,,True,admin
+SCLG000007,school,الأسقفيّة الإنجيليّة العربيّة,,SCLG000007.png,2026-05-26 20:10:50,,True,admin
+UNLG000005,university,جامعة مؤتة,,UNLG000005.png,2026-05-26 20:10:50,,True,admin
+UNLG000006,university,الجامعة الأردنيّة,,UNLG000006.png,2026-05-26 20:10:50,,True,admin
+COLG000001,company,الأمانة العامة للشبيبة المسيحية / النيابة البطريركيّة اللاتينيّة,,COLG000001.png,2026-05-26 20:10:50,,True,admin
+COLG000002,company,كابيتال بنك,,COLG000002.png,2026-05-26 20:10:50,,True,admin
+COLG000003,company,Caritas,,COLG000003.png,2026-05-26 20:10:50,,True,admin
+COLG000004,company,البنك العربي,,COLG000004.png,2026-05-26 20:10:50,,True,admin
+COLG000005,company,مدفوعاتكم,,COLG000005.png,2026-05-26 20:10:50,,True,admin
+COLG000006,company,Amazon,,COLG000006.png,2026-05-26 20:10:50,,True,admin
+COLG000007,company,بنك الإسكان,,COLG000007.png,2026-05-26 20:10:50,,True,admin
+COLG000008,company,بنك الإتحاد,,COLG000008.png,2026-05-26 20:10:50,,True,admin
+COLG000009,company,Concentrix,,COLG000009.png,2026-05-26 20:10:50,,True,admin
+COLG000010,company,مدارس البطريركيّة اللاتينيّة,,COLG000010.png,2026-05-26 20:10:50,,True,admin
+COLG000011,company,كلّية دي لا سال - الفرير,,COLG000011.png,2026-05-26 20:10:50,,True,admin
+COLG000012,company,مدارس البطريركيّة اللاتينيّة - الزرقاء الجنوبي,,COLG000012.png,2026-05-26 20:10:50,,True,admin
+COLG000013,company,كنيسة مار يوسف - جبل عمان,,COLG000013.png,2026-05-26 20:10:50,,True,admin

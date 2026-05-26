@@ -217,17 +217,38 @@ def _scd_filter_active(df: pd.DataFrame) -> pd.DataFrame:
         return df if df is not None else pd.DataFrame()
     if SCD_CURRENTLY_ACTIVE_FLAG_COL not in df.columns:
         return df
-    return df[df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False].copy()
+    inactive_mask = _scd_inactive_mask(df[SCD_CURRENTLY_ACTIVE_FLAG_COL])
+    return df[~inactive_mask].copy()
+
+
+def _scd_inactive_mask(flag_series: pd.Series) -> pd.Series:
+    """Return True for inactive SCD flags, accepting bools and CSV-loaded strings."""
+    bool_false_mask = flag_series == False
+    text_false_mask = flag_series.astype(str).str.strip().str.lower().isin({"false", "0", "no", "n", "f"})
+    return bool_false_mask | text_false_mask
+
+
+def _scd_active_mask(df: pd.DataFrame) -> pd.Series:
+    """Return True for active SCD rows, accepting bools and CSV-loaded strings."""
+    if df is None:
+        return pd.Series(dtype=bool)
+    if df.empty or SCD_CURRENTLY_ACTIVE_FLAG_COL not in df.columns:
+        return pd.Series(True, index=df.index)
+    return ~_scd_inactive_mask(df[SCD_CURRENTLY_ACTIVE_FLAG_COL])
 
 
 def _scd_new_metadata(changed_by: str) -> dict:
     """Return SCD metadata dict for a newly-inserted active row."""
     return {
-        SCD_ACTIVE_FROM_COL: pd.Timestamp.now(),
-        SCD_ACTIVE_TO_COL: None,
+        SCD_ACTIVE_FROM_COL: _scd_timestamp(),
+        SCD_ACTIVE_TO_COL: "",
         SCD_CURRENTLY_ACTIVE_FLAG_COL: True,
-        SCD_CHANGED_BY_USER_COL: changed_by,
+        SCD_CHANGED_BY_USER_COL: changed_by or "admin",
     }
+
+
+def _scd_timestamp() -> str:
+    return pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _scd_ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -235,9 +256,17 @@ def _scd_ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
     if df is None or df.empty:
         return df if df is not None else pd.DataFrame()
     df = df.copy()
+    now = _scd_timestamp()
     for col in SCD_METADATA_COLUMNS:
         if col not in df.columns:
-            df[col] = True if col == SCD_CURRENTLY_ACTIVE_FLAG_COL else None
+            if col == SCD_ACTIVE_FROM_COL:
+                df[col] = now
+            elif col == SCD_ACTIVE_TO_COL:
+                df[col] = ""
+            elif col == SCD_CURRENTLY_ACTIVE_FLAG_COL:
+                df[col] = True
+            else:
+                df[col] = "admin"
     return df
 
 
@@ -287,8 +316,111 @@ def _scd_split(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Split a DataFrame into (active_df, inactive_df) based on scd_currently_active_flag."""
     if df.empty or SCD_CURRENTLY_ACTIVE_FLAG_COL not in df.columns:
         return df, pd.DataFrame(columns=df.columns)
-    inactive_mask = df[SCD_CURRENTLY_ACTIVE_FLAG_COL] == False
+    inactive_mask = _scd_inactive_mask(df[SCD_CURRENTLY_ACTIVE_FLAG_COL])
     return df[~inactive_mask].copy(), df[inactive_mask].copy()
+
+
+def _scd_sheet_active_df(sheet_name: str, columns: list[str] | None = None) -> pd.DataFrame:
+    df = _scd_filter_active(store.get(sheet_name, pd.DataFrame()).copy())
+    if columns is not None:
+        for col in columns:
+            if col not in df.columns:
+                df[col] = None
+        return df[columns].copy()
+    return df
+
+
+def _scd_row_key(row: dict, key_columns: list[str]) -> tuple[str, ...]:
+    return tuple(_scd_val_for_compare(row.get(col)) for col in key_columns)
+
+
+def _scd_replace_rows_by_key(
+    target_store: dict[str, pd.DataFrame],
+    sheet_name: str,
+    rows: list[dict],
+    business_columns: list[str],
+    key_columns: list[str],
+    *,
+    changed_by: str = "admin",
+) -> bool:
+    """Replace the active business rows for a sheet using SCD close-and-insert semantics."""
+    existing = _scd_ensure_columns(target_store.get(sheet_name, pd.DataFrame()).copy())
+    for col in business_columns:
+        if col not in existing.columns:
+            existing[col] = None
+
+    active_df, inactive_df = _scd_split(existing)
+    inactive_rows = inactive_df.replace({np.nan: None}).to_dict(orient="records") if not inactive_df.empty else []
+    active_rows = active_df.replace({np.nan: None}).to_dict(orient="records") if not active_df.empty else []
+
+    old_active_by_key: dict[tuple[str, ...], list[dict]] = {}
+    for row in active_rows:
+        key = _scd_row_key(row, key_columns)
+        if all(part == "" for part in key):
+            continue
+        old_active_by_key.setdefault(key, []).append(row)
+
+    new_by_key: dict[tuple[str, ...], dict] = {}
+    new_key_order: list[tuple[str, ...]] = []
+    for raw_row in rows or []:
+        new_row = {col: raw_row.get(col) for col in business_columns}
+        key = _scd_row_key(new_row, key_columns)
+        if all(part == "" for part in key) or key in new_by_key:
+            continue
+        new_by_key[key] = new_row
+        new_key_order.append(key)
+
+    now = _scd_timestamp()
+    final_rows: list[dict] = list(inactive_rows)
+    changed = False
+
+    for key in new_key_order:
+        new_row = new_by_key[key]
+        old_rows = old_active_by_key.get(key, [])
+        old_row = old_rows[0] if old_rows else None
+
+        if old_row is None:
+            final_rows.append({**new_row, **_scd_new_metadata(changed_by)})
+            changed = True
+            continue
+
+        unchanged = all(
+            _scd_val_for_compare(old_row.get(col)) == _scd_val_for_compare(new_row.get(col))
+            for col in business_columns
+        )
+        if unchanged:
+            final_rows.append(old_row)
+        else:
+            closed = dict(old_row)
+            closed[SCD_ACTIVE_TO_COL] = now
+            closed[SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+            closed[SCD_CHANGED_BY_USER_COL] = changed_by
+            final_rows.append(closed)
+            final_rows.append({**new_row, **_scd_new_metadata(changed_by)})
+            changed = True
+
+        for duplicate_old in old_rows[1:]:
+            closed = dict(duplicate_old)
+            closed[SCD_ACTIVE_TO_COL] = now
+            closed[SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+            closed[SCD_CHANGED_BY_USER_COL] = changed_by
+            final_rows.append(closed)
+            changed = True
+
+    for key, old_rows in old_active_by_key.items():
+        if key in new_by_key:
+            continue
+        for old_row in old_rows:
+            closed = dict(old_row)
+            closed[SCD_ACTIVE_TO_COL] = now
+            closed[SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+            closed[SCD_CHANGED_BY_USER_COL] = changed_by
+            final_rows.append(closed)
+            changed = True
+
+    final_columns = business_columns + [col for col in SCD_METADATA_COLUMNS if col not in business_columns]
+    target_store[sheet_name] = pd.DataFrame(final_rows, columns=final_columns)
+    return changed
 
 
 def invalidate_enriched_cache():
@@ -1259,7 +1391,7 @@ def replace_mobile_number_rows(target_store: dict[str, pd.DataFrame], person_id,
                 _scd_rows_equal(existing_lnk, linked_job_rows, MOBILE_NUMBER_LINKED_JOB_COLUMNS)):
             return
 
-    now = pd.Timestamp.now()
+    now = _scd_timestamp()
     new_scd = _scd_new_metadata(changed_by)
 
     mobile_df = _scd_ensure_columns(target_store.get(MOBILE_NUMBER_SHEET, pd.DataFrame()).copy())
@@ -1267,7 +1399,7 @@ def replace_mobile_number_rows(target_store: dict[str, pd.DataFrame], person_id,
     if not mobile_df.empty and "person_id" in mobile_df.columns and MOBILE_NUMBER_RECORD_ID_COL in mobile_df.columns:
         active_person_mask = (
             (mobile_df["person_id"].astype(str) == person_key) &
-            (mobile_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            _scd_active_mask(mobile_df)
         )
         for raw_rid in mobile_df[active_person_mask][MOBILE_NUMBER_RECORD_ID_COL].tolist():
             rid = _normalize_mobile_number_record_id(raw_rid)
@@ -1285,7 +1417,7 @@ def replace_mobile_number_rows(target_store: dict[str, pd.DataFrame], person_id,
     if not family_df.empty and MOBILE_NUMBER_RECORD_ID_COL in family_df.columns and existing_record_ids:
         active_sat_mask = (
             family_df[MOBILE_NUMBER_RECORD_ID_COL].astype(str).isin(existing_record_ids) &
-            (family_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            _scd_active_mask(family_df)
         )
         if active_sat_mask.any():
             family_df.loc[active_sat_mask, SCD_ACTIVE_TO_COL] = now
@@ -1299,7 +1431,7 @@ def replace_mobile_number_rows(target_store: dict[str, pd.DataFrame], person_id,
     if not personal_primary_df.empty and MOBILE_NUMBER_RECORD_ID_COL in personal_primary_df.columns and existing_record_ids:
         active_prim_mask = (
             personal_primary_df[MOBILE_NUMBER_RECORD_ID_COL].astype(str).isin(existing_record_ids) &
-            (personal_primary_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            _scd_active_mask(personal_primary_df)
         )
         if active_prim_mask.any():
             personal_primary_df.loc[active_prim_mask, SCD_ACTIVE_TO_COL] = now
@@ -1313,7 +1445,7 @@ def replace_mobile_number_rows(target_store: dict[str, pd.DataFrame], person_id,
     if not linked_jobs_df.empty and MOBILE_NUMBER_RECORD_ID_COL in linked_jobs_df.columns and existing_record_ids:
         active_lnk_mask = (
             linked_jobs_df[MOBILE_NUMBER_RECORD_ID_COL].astype(str).isin(existing_record_ids) &
-            (linked_jobs_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            _scd_active_mask(linked_jobs_df)
         )
         if active_lnk_mask.any():
             linked_jobs_df.loc[active_lnk_mask, SCD_ACTIVE_TO_COL] = now
@@ -1900,7 +2032,7 @@ def replace_school_rows(target_store: dict[str, pd.DataFrame], person_id, rows, 
                 _scd_rows_equal(existing_grds, school_grade_rows, SCHOOL_GRADE_COLUMNS)):
             return
 
-    now = pd.Timestamp.now()
+    now = _scd_timestamp()
     new_scd = _scd_new_metadata(changed_by)
 
     schools_df = _scd_ensure_columns(target_store.get(SCHOOL_SHEET, pd.DataFrame()).copy())
@@ -1908,7 +2040,7 @@ def replace_school_rows(target_store: dict[str, pd.DataFrame], person_id, rows, 
     if not schools_df.empty and "person_id" in schools_df.columns and SCHOOL_RECORD_ID_COL in schools_df.columns:
         active_mask = (
             (schools_df["person_id"].astype(str) == person_key) &
-            (schools_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            _scd_active_mask(schools_df)
         )
         for raw_rid in schools_df[active_mask][SCHOOL_RECORD_ID_COL].tolist():
             rid = _normalize_school_record_id(raw_rid)
@@ -1926,7 +2058,7 @@ def replace_school_rows(target_store: dict[str, pd.DataFrame], person_id, rows, 
     if not school_sections_df.empty and SCHOOL_RECORD_ID_COL in school_sections_df.columns and existing_record_ids:
         active_sec_mask = (
             school_sections_df[SCHOOL_RECORD_ID_COL].astype(str).isin(existing_record_ids) &
-            (school_sections_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            _scd_active_mask(school_sections_df)
         )
         if active_sec_mask.any():
             school_sections_df.loc[active_sec_mask, SCD_ACTIVE_TO_COL] = now
@@ -1940,7 +2072,7 @@ def replace_school_rows(target_store: dict[str, pd.DataFrame], person_id, rows, 
     if not school_grades_df.empty and SCHOOL_RECORD_ID_COL in school_grades_df.columns and existing_record_ids:
         active_grd_mask = (
             school_grades_df[SCHOOL_RECORD_ID_COL].astype(str).isin(existing_record_ids) &
-            (school_grades_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            _scd_active_mask(school_grades_df)
         )
         if active_grd_mask.any():
             school_grades_df.loc[active_grd_mask, SCD_ACTIVE_TO_COL] = now
@@ -2334,7 +2466,7 @@ def replace_email_rows(target_store: dict[str, pd.DataFrame], person_id, rows, c
                 _scd_rows_equal(existing_lnk, linked_job_rows, EMAIL_LINKED_JOB_COLUMNS)):
             return
 
-    now = pd.Timestamp.now()
+    now = _scd_timestamp()
     new_scd = _scd_new_metadata(changed_by)
 
     emails_df = _scd_ensure_columns(target_store.get(EMAIL_SHEET, pd.DataFrame()).copy())
@@ -2342,7 +2474,7 @@ def replace_email_rows(target_store: dict[str, pd.DataFrame], person_id, rows, c
     if not emails_df.empty and "person_id" in emails_df.columns and EMAIL_RECORD_ID_COL in emails_df.columns:
         active_mask = (
             (emails_df["person_id"].astype(str) == person_key) &
-            (emails_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            _scd_active_mask(emails_df)
         )
         for raw_rid in emails_df[active_mask][EMAIL_RECORD_ID_COL].tolist():
             rid = _normalize_email_record_id(raw_rid)
@@ -2360,7 +2492,7 @@ def replace_email_rows(target_store: dict[str, pd.DataFrame], person_id, rows, c
     if not family_df.empty and EMAIL_RECORD_ID_COL in family_df.columns and existing_record_ids:
         active_fam_mask = (
             family_df[EMAIL_RECORD_ID_COL].astype(str).isin(existing_record_ids) &
-            (family_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            _scd_active_mask(family_df)
         )
         if active_fam_mask.any():
             family_df.loc[active_fam_mask, SCD_ACTIVE_TO_COL] = now
@@ -2374,7 +2506,7 @@ def replace_email_rows(target_store: dict[str, pd.DataFrame], person_id, rows, c
     if not personal_primary_df.empty and EMAIL_RECORD_ID_COL in personal_primary_df.columns and existing_record_ids:
         active_prim_mask = (
             personal_primary_df[EMAIL_RECORD_ID_COL].astype(str).isin(existing_record_ids) &
-            (personal_primary_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            _scd_active_mask(personal_primary_df)
         )
         if active_prim_mask.any():
             personal_primary_df.loc[active_prim_mask, SCD_ACTIVE_TO_COL] = now
@@ -2388,7 +2520,7 @@ def replace_email_rows(target_store: dict[str, pd.DataFrame], person_id, rows, c
     if not linked_jobs_df.empty and EMAIL_RECORD_ID_COL in linked_jobs_df.columns and existing_record_ids:
         active_lnk_mask = (
             linked_jobs_df[EMAIL_RECORD_ID_COL].astype(str).isin(existing_record_ids) &
-            (linked_jobs_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            _scd_active_mask(linked_jobs_df)
         )
         if active_lnk_mask.any():
             linked_jobs_df.loc[active_lnk_mask, SCD_ACTIVE_TO_COL] = now
@@ -2670,14 +2802,14 @@ def replace_job_rows(target_store: dict[str, pd.DataFrame], person_id, rows, cha
     if _scd_rows_equal(existing_jobs, prepared_rows, JOB_BASE_COLUMNS):
         return id_map
 
-    now = pd.Timestamp.now()
+    now = _scd_timestamp()
     new_scd = _scd_new_metadata(changed_by)
 
     jobs_df = _scd_ensure_columns(target_store.get(JOB_SHEET, pd.DataFrame()).copy())
     if not jobs_df.empty and "person_id" in jobs_df.columns:
         active_mask = (
             (jobs_df["person_id"].astype(str) == person_key) &
-            (jobs_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            _scd_active_mask(jobs_df)
         )
         if active_mask.any():
             jobs_df.loc[active_mask, SCD_ACTIVE_TO_COL] = now
@@ -2840,10 +2972,8 @@ def _refresh_youth_group_indexes():
     _youth_group_id_by_name = {}
     _youth_group_id_by_safe_key = {}
 
-    df = store.get(YOUTH_GROUP_SHEET, pd.DataFrame())
+    df = _scd_sheet_active_df(YOUTH_GROUP_SHEET)
     df, changed = _normalize_youth_group_column_names(df)
-    if changed:
-        store[YOUTH_GROUP_SHEET] = df
     if df.empty:
         return
 
@@ -2947,7 +3077,7 @@ def _create_youth_group_id_for_name(name: str) -> str:
             next_gid = gid
         candidate += 1
 
-    yg_df = store.get(YOUTH_GROUP_SHEET, pd.DataFrame()).copy()
+    yg_df = _scd_sheet_active_df(YOUTH_GROUP_SHEET).copy()
     yg_df, _ = _normalize_youth_group_column_names(yg_df)
     if yg_df.empty:
         yg_df = pd.DataFrame(columns=[
@@ -2978,25 +3108,45 @@ def _create_youth_group_id_for_name(name: str) -> str:
     if YOUTH_GROUP_NAME_COL in yg_df.columns:
         yg_df = yg_df.drop(columns=[YOUTH_GROUP_NAME_COL])
 
-    yg_df = pd.concat([
-        yg_df,
-        pd.DataFrame([{
-            YOUTH_GROUP_ID_COL: next_gid,
-            YOUTH_GROUP_PATRON_COL: patron,
-            YOUTH_GROUP_SHORT_NAME_COL: short_name,
-            YOUTH_GROUP_PARISH_ID_COL: None,
-            YOUTH_GROUP_USE_PARISH_LOGO_COL: False,
-            YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL: False,
-        }]),
-    ], ignore_index=True)
-    store[YOUTH_GROUP_SHEET] = yg_df
+    rows = yg_df.replace({np.nan: None}).to_dict(orient="records")
+    rows.append({
+        YOUTH_GROUP_ID_COL: next_gid,
+        YOUTH_GROUP_PATRON_COL: patron,
+        YOUTH_GROUP_SHORT_NAME_COL: short_name,
+        YOUTH_GROUP_PARISH_ID_COL: None,
+        YOUTH_GROUP_USE_PARISH_LOGO_COL: False,
+        YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL: False,
+    })
+    _scd_replace_rows_by_key(
+        store,
+        YOUTH_GROUP_SHEET,
+        rows,
+        [
+            YOUTH_GROUP_ID_COL,
+            YOUTH_GROUP_PATRON_COL,
+            YOUTH_GROUP_SHORT_NAME_COL,
+            YOUTH_GROUP_PARISH_ID_COL,
+            YOUTH_GROUP_USE_PARISH_LOGO_COL,
+            YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL,
+        ],
+        [YOUTH_GROUP_ID_COL],
+        changed_by="admin",
+    )
     _refresh_youth_group_indexes()
     return next_gid
 
 
 def _ensure_youth_group_catalog() -> bool:
     changed = False
-    yg_df = store.get(YOUTH_GROUP_SHEET, pd.DataFrame()).copy()
+    youth_group_columns = [
+        YOUTH_GROUP_ID_COL,
+        YOUTH_GROUP_PATRON_COL,
+        YOUTH_GROUP_SHORT_NAME_COL,
+        YOUTH_GROUP_PARISH_ID_COL,
+        YOUTH_GROUP_USE_PARISH_LOGO_COL,
+        YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL,
+    ]
+    yg_df = _scd_sheet_active_df(YOUTH_GROUP_SHEET).copy()
     yg_df, renamed = _normalize_youth_group_column_names(yg_df)
     changed = changed or renamed
 
@@ -3087,19 +3237,20 @@ def _ensure_youth_group_catalog() -> bool:
             continue
         row[YOUTH_GROUP_ID_COL] = None
 
-    if normalized_rows != yg_df.replace({np.nan: None}).to_dict(orient="records"):
+    current_rows = [
+        {col: row.get(col) for col in youth_group_columns}
+        for row in yg_df.replace({np.nan: None}).to_dict(orient="records")
+    ]
+    if normalized_rows != current_rows:
         changed = True
 
-    store[YOUTH_GROUP_SHEET] = pd.DataFrame(
+    _scd_replace_rows_by_key(
+        store,
+        YOUTH_GROUP_SHEET,
         normalized_rows,
-        columns=[
-            YOUTH_GROUP_ID_COL,
-            YOUTH_GROUP_PATRON_COL,
-            YOUTH_GROUP_SHORT_NAME_COL,
-            YOUTH_GROUP_PARISH_ID_COL,
-            YOUTH_GROUP_USE_PARISH_LOGO_COL,
-            YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL,
-        ],
+        youth_group_columns,
+        [YOUTH_GROUP_ID_COL],
+        changed_by="admin",
     )
     _refresh_youth_group_indexes()
 
@@ -3118,11 +3269,18 @@ def _ensure_youth_group_catalog() -> bool:
         _create_youth_group_id_for_name(name)
         changed = True
 
-    yg_df = store.get(YOUTH_GROUP_SHEET, pd.DataFrame()).copy()
+    yg_df = _scd_sheet_active_df(YOUTH_GROUP_SHEET, columns=youth_group_columns).copy()
     if not yg_df.empty:
         yg_df = yg_df.drop_duplicates(subset=[YOUTH_GROUP_ID_COL], keep="first")
         yg_df = yg_df.sort_values(by=[YOUTH_GROUP_SHORT_NAME_COL, YOUTH_GROUP_ID_COL], na_position="last").reset_index(drop=True)
-        store[YOUTH_GROUP_SHEET] = yg_df
+        _scd_replace_rows_by_key(
+            store,
+            YOUTH_GROUP_SHEET,
+            yg_df.replace({np.nan: None}).to_dict(orient="records"),
+            youth_group_columns,
+            [YOUTH_GROUP_ID_COL],
+            changed_by="admin",
+        )
         _refresh_youth_group_indexes()
 
     return changed
@@ -3759,7 +3917,7 @@ def _ensure_responsibility_schema() -> bool:
 
 def _ensure_youth_group_special_logo_schema() -> bool:
     changed = False
-    special_logos = store.get(YOUTH_GROUP_SPECIAL_LOGO_SHEET, pd.DataFrame()).copy()
+    special_logos = _scd_sheet_active_df(YOUTH_GROUP_SPECIAL_LOGO_SHEET, columns=YOUTH_GROUP_SPECIAL_LOGO_COLUMNS).copy()
 
     if special_logos.empty:
         special_logos = pd.DataFrame(columns=YOUTH_GROUP_SPECIAL_LOGO_COLUMNS)
@@ -3778,7 +3936,14 @@ def _ensure_youth_group_special_logo_schema() -> bool:
     if normalized_rows != current_rows:
         changed = True
 
-    store[YOUTH_GROUP_SPECIAL_LOGO_SHEET] = pd.DataFrame(normalized_rows, columns=YOUTH_GROUP_SPECIAL_LOGO_COLUMNS)
+    _scd_replace_rows_by_key(
+        store,
+        YOUTH_GROUP_SPECIAL_LOGO_SHEET,
+        normalized_rows,
+        YOUTH_GROUP_SPECIAL_LOGO_COLUMNS,
+        [SPECIAL_LOGO_ID_COL],
+        changed_by="admin",
+    )
     return changed
 
 
@@ -4206,14 +4371,14 @@ def replace_person_title(target_store: dict[str, pd.DataFrame], person_id, title
     if _scd_rows_equal(existing, incoming, PERSON_TITLE_COLUMNS):
         return
 
-    now = pd.Timestamp.now()
+    now = _scd_timestamp()
     new_scd = _scd_new_metadata(changed_by)
 
     current_df = _scd_ensure_columns(target_store.get(PERSON_TITLE_SHEET, pd.DataFrame()).copy())
     if not current_df.empty and "person_id" in current_df.columns:
         active_mask = (
             (current_df["person_id"].apply(lambda v: str(_normalize_person_id(v))) == person_key) &
-            (current_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            _scd_active_mask(current_df)
         )
         if active_mask.any():
             current_df.loc[active_mask, SCD_ACTIVE_TO_COL] = now
@@ -4237,14 +4402,14 @@ def replace_person_school_system_sector(target_store: dict[str, pd.DataFrame], p
     if _scd_rows_equal(existing, incoming, PERSON_SCHOOL_SYSTEM_SECTOR_COLUMNS):
         return
 
-    now = pd.Timestamp.now()
+    now = _scd_timestamp()
     new_scd = _scd_new_metadata(changed_by)
 
     current_df = _scd_ensure_columns(target_store.get(PERSON_SCHOOL_SYSTEM_SECTOR_SHEET, pd.DataFrame()).copy())
     if not current_df.empty and "person_id" in current_df.columns:
         active_mask = (
             (current_df["person_id"].apply(lambda v: str(_normalize_person_id(v))) == person_key) &
-            (current_df[SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            _scd_active_mask(current_df)
         )
         if active_mask.any():
             current_df.loc[active_mask, SCD_ACTIVE_TO_COL] = now

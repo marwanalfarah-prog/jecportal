@@ -9,6 +9,7 @@ from flask import jsonify, request, send_from_directory
 
 from core import state as S
 from core.database import SCD_LOGICAL_SHEETS as _SCD_LOGICAL_SHEETS
+from core.database import logical_sheet_name as _logical_sheet_name
 from core.routes_auth import (
     _current_user,
     _get_council_access,
@@ -640,7 +641,7 @@ def replace_profile_sub_rows(store: dict, pid, sheet, rows, *, compare_as_string
             if S._scd_rows_equal(existing_hist, history_rows, hist_cols or [S.PERSON_YOUTH_GROUP_RECORD_ID_COL, "age_group", "start_date", "end_date"]):
                 return
 
-        now = pd.Timestamp.now()
+        now = S._scd_timestamp()
         new_scd = S._scd_new_metadata(changed_by)
 
         df = S._scd_ensure_columns(store.get(sheet, pd.DataFrame()))
@@ -650,7 +651,7 @@ def replace_profile_sub_rows(store: dict, pid, sheet, rows, *, compare_as_string
                 person_mask = df["person_id"].astype(str) == str(pid)
             else:
                 person_mask = df["person_id"] == pid
-            active_mask = person_mask & (df[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+            active_mask = person_mask & S._scd_active_mask(df)
             if S.PERSON_YOUTH_GROUP_RECORD_ID_COL in df.columns:
                 deactivate_record_ids = set(df.loc[active_mask, S.PERSON_YOUTH_GROUP_RECORD_ID_COL].dropna().astype(str))
             if active_mask.any():
@@ -666,7 +667,7 @@ def replace_profile_sub_rows(store: dict, pid, sheet, rows, *, compare_as_string
         if S.PERSON_YOUTH_GROUP_RECORD_ID_COL in history_df.columns and deactivate_record_ids:
             hist_active_mask = (
                 history_df[S.PERSON_YOUTH_GROUP_RECORD_ID_COL].astype(str).isin(deactivate_record_ids)
-                & (history_df[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+                & S._scd_active_mask(history_df)
             )
             if hist_active_mask.any():
                 history_df.loc[hist_active_mask, S.SCD_ACTIVE_TO_COL] = now
@@ -692,11 +693,11 @@ def replace_profile_sub_rows(store: dict, pid, sheet, rows, *, compare_as_string
 
         if "person_id" in df.columns:
             if compare_as_string:
-                active_mask = (df["person_id"].astype(str) == str(pid)) & (df[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+                active_mask = (df["person_id"].astype(str) == str(pid)) & S._scd_active_mask(df)
             else:
-                active_mask = (df["person_id"] == pid) & (df[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+                active_mask = (df["person_id"] == pid) & S._scd_active_mask(df)
             if active_mask.any():
-                now = pd.Timestamp.now()
+                now = S._scd_timestamp()
                 df.loc[active_mask, S.SCD_ACTIVE_TO_COL] = now
                 df.loc[active_mask, S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
                 df.loc[active_mask, S.SCD_CHANGED_BY_USER_COL] = changed_by
@@ -776,7 +777,7 @@ def remove_profile_rows_by_person_id(
                 if str(value).strip()
             }
 
-    now = pd.Timestamp.now()
+    now = S._scd_timestamp()
     for sheet in sheet_names:
         df = store.get(sheet, pd.DataFrame())
         if sheet in _SCD_LOGICAL_SHEETS:
@@ -789,7 +790,7 @@ def remove_profile_rows_by_person_id(
                 if record_ids:
                     hist_mask = (
                         df[S.PERSON_YOUTH_GROUP_RECORD_ID_COL].astype(str).isin(record_ids)
-                        & (df[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+                        & S._scd_active_mask(df)
                     )
                     if hist_mask.any():
                         df.loc[hist_mask, S.SCD_ACTIVE_TO_COL] = now
@@ -800,9 +801,9 @@ def remove_profile_rows_by_person_id(
             if df.empty or "person_id" not in df.columns:
                 continue
             if compare_as_string:
-                active_mask = (df["person_id"].astype(str) == str(pid)) & (df[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+                active_mask = (df["person_id"].astype(str) == str(pid)) & S._scd_active_mask(df)
             else:
-                active_mask = (df["person_id"] == pid) & (df[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+                active_mask = (df["person_id"] == pid) & S._scd_active_mask(df)
             if active_mask.any():
                 df.loc[active_mask, S.SCD_ACTIVE_TO_COL] = now
                 df.loc[active_mask, S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
@@ -872,7 +873,7 @@ def update_profile_membership_archive_state(
         return jsonify({"error": "membership not found"}), 404
 
     # Only touch currently-active SCD rows
-    scd_active_mask = memberships_df[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False
+    scd_active_mask = S._scd_active_mask(memberships_df)
     combined_mask = pd.Series(False, index=memberships_df.index)
     for youth_group_id in youth_group_ids:
         if compare_as_string:
@@ -892,7 +893,7 @@ def update_profile_membership_archive_state(
         combined_mask = combined_mask | mask
 
     # SCD deactivate matching active rows, then insert new rows with updated archived flag
-    now = pd.Timestamp.now()
+    now = S._scd_timestamp()
     changed_by = _changed_by_from_current_user() or "system"
     new_scd = S._scd_new_metadata(changed_by)
     active_rows = memberships_df[combined_mask].to_dict(orient="records")
@@ -1426,15 +1427,21 @@ def register_registered_routes(app):
         err = _require_admin()
         if err:
             return err
+        sheet = _logical_sheet_name(sheet)
         if sheet not in S.store:
             return jsonify({"error": "not found"}), 404
-        return jsonify(S.df_to_json(S.store[sheet]))
+        df = S.store[sheet]
+        if sheet in _SCD_LOGICAL_SHEETS:
+            df = S._scd_filter_active(df)
+            df = df.drop(columns=[c for c in S.SCD_METADATA_COLUMNS if c in df.columns])
+        return jsonify(S.df_to_json(df))
 
     @app.put("/api/table/<sheet>")
     def put_table(sheet):
         err = _require_admin()
         if err:
             return err
+        sheet = _logical_sheet_name(sheet)
         if sheet not in S.store:
             return jsonify({"error": "not found"}), 404
         if sheet in _SCD_LOGICAL_SHEETS:
@@ -1521,10 +1528,10 @@ def register_registered_routes(app):
             all_persons = S._scd_ensure_columns(S.store["persons"].copy())
             person_mask = (
                 (all_persons["person_id"] == pid)
-                & (all_persons[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+                & S._scd_active_mask(all_persons)
             )
             if person_mask.any():
-                now = pd.Timestamp.now()
+                now = S._scd_timestamp()
                 current_row = all_persons[person_mask].iloc[0].to_dict()
                 all_persons.loc[person_mask, S.SCD_ACTIVE_TO_COL] = now
                 all_persons.loc[person_mask, S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
@@ -1672,9 +1679,13 @@ def register_registered_routes(app):
             return err
         with S.lock:
             persons = S._scd_ensure_columns(S.store["persons"])
-            reg_mask = (persons["person_id"] == pid) & (persons["registered"].apply(S._bool_registered))
+            reg_mask = (
+                (persons["person_id"] == pid)
+                & (persons["registered"].apply(S._bool_registered))
+                & S._scd_active_mask(persons)
+            )
             if reg_mask.any():
-                now = pd.Timestamp.now()
+                now = S._scd_timestamp()
                 persons.loc[reg_mask, S.SCD_ACTIVE_TO_COL] = now
                 persons.loc[reg_mask, S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
                 persons.loc[reg_mask, S.SCD_CHANGED_BY_USER_COL] = "admin"
@@ -2023,10 +2034,10 @@ def register_unregistered_routes(app):
             all_unreg = S._scd_ensure_columns(S.unreg_store.get("persons", pd.DataFrame()).copy())
             uid_mask = (
                 (all_unreg["person_id"].astype(str) == str(uid))
-                & (all_unreg[S.SCD_CURRENTLY_ACTIVE_FLAG_COL] != False)
+                & S._scd_active_mask(all_unreg)
             )
             if uid_mask.any():
-                now = pd.Timestamp.now()
+                now = S._scd_timestamp()
                 current_row = all_unreg[uid_mask].iloc[0].to_dict()
                 all_unreg.loc[uid_mask, S.SCD_ACTIVE_TO_COL] = now
                 all_unreg.loc[uid_mask, S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False

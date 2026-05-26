@@ -90,11 +90,10 @@ def _clean_text(value):
 
 def _changed_by_from_current_user() -> str:
     user = auth_exports["_current_user"]()
-    if not user:
-        return "system"
-    if user.get("role") == "admin":
+    if not user or user.get("role") == "admin":
         return "admin"
-    return str(user.get("person_id", "system"))
+    person_id = user.get("person_id")
+    return str(person_id) if person_id is not None and str(person_id).strip() else "admin"
 
 
 def _normalize_verse_id(value) -> str:
@@ -808,7 +807,7 @@ def _save_mottos_to_sheets(payload: dict, changed_by: str = "admin") -> None:
     if not isinstance(rows, list):
         rows = []
 
-    now = pd.Timestamp.now()
+    now = S._scd_timestamp()
 
     # Build incoming data maps indexed by motto_id
     new_motto_data: dict[str, dict] = {}
@@ -1201,7 +1200,7 @@ def _recover_school_logo_rows_from_files() -> list[dict]:
 
 
 def _migrate_school_logo_storage() -> bool:
-    current_df = S.store.get(S.SCHOOL_LOGO_SHEET, pd.DataFrame()).copy()
+    current_df = S._scd_filter_active(S.store.get(S.SCHOOL_LOGO_SHEET, pd.DataFrame()).copy())
     if current_df.empty and S.SCHOOL_LOGO_SHEET not in S.store:
         return False
 
@@ -1268,7 +1267,14 @@ def _migrate_school_logo_storage() -> bool:
         })
 
     if changed:
-        S.store[S.SCHOOL_LOGO_SHEET] = _school_logo_rows_df(migrated_rows)
+        S._scd_replace_rows_by_key(
+            S.store,
+            S.SCHOOL_LOGO_SHEET,
+            _school_logo_rows_df(migrated_rows).replace({pd.NA: None}).to_dict(orient="records"),
+            S.SCHOOL_LOGO_COLUMNS,
+            [S.SCHOOL_LOGO_ID_COL],
+            changed_by="admin",
+        )
         S.db.save_excel_sheets(S.store)
     return changed
 
@@ -1279,7 +1285,7 @@ def _school_logo_rows_df(rows: list[dict] | None = None) -> pd.DataFrame:
 
 
 def _school_logo_sheet_rows() -> list[dict]:
-    df = S.store.get(S.SCHOOL_LOGO_SHEET, pd.DataFrame()).copy()
+    df = S._scd_filter_active(S.store.get(S.SCHOOL_LOGO_SHEET, pd.DataFrame()).copy())
     if df.empty:
         return []
     for col in S.SCHOOL_LOGO_COLUMNS:
@@ -1290,11 +1296,18 @@ def _school_logo_sheet_rows() -> list[dict]:
 
 
 def _ensure_school_logo_sheet() -> bool:
-    current_df = S.store.get(S.SCHOOL_LOGO_SHEET, pd.DataFrame()).copy()
+    current_df = S._scd_filter_active(S.store.get(S.SCHOOL_LOGO_SHEET, pd.DataFrame()).copy())
 
     if current_df.empty and S.SCHOOL_LOGO_SHEET not in S.store:
         recovered_rows = _recover_school_logo_rows_from_files()
-        S.store[S.SCHOOL_LOGO_SHEET] = _school_logo_rows_df(recovered_rows)
+        S._scd_replace_rows_by_key(
+            S.store,
+            S.SCHOOL_LOGO_SHEET,
+            _school_logo_rows_df(recovered_rows).replace({pd.NA: None}).to_dict(orient="records"),
+            S.SCHOOL_LOGO_COLUMNS,
+            [S.SCHOOL_LOGO_ID_COL],
+            changed_by="admin",
+        )
         S.db.save_excel_sheets(S.store)
         return True
 
@@ -1311,12 +1324,26 @@ def _ensure_school_logo_sheet() -> bool:
     if not current_rows:
         recovered_rows = _recover_school_logo_rows_from_files()
         if recovered_rows:
-            S.store[S.SCHOOL_LOGO_SHEET] = _school_logo_rows_df(recovered_rows)
+            S._scd_replace_rows_by_key(
+                S.store,
+                S.SCHOOL_LOGO_SHEET,
+                _school_logo_rows_df(recovered_rows).replace({pd.NA: None}).to_dict(orient="records"),
+                S.SCHOOL_LOGO_COLUMNS,
+                [S.SCHOOL_LOGO_ID_COL],
+                changed_by="admin",
+            )
             S.db.save_excel_sheets(S.store)
             return True
 
     if current_rows != _normalize_school_logo_entries(current_rows):
-        S.store[S.SCHOOL_LOGO_SHEET] = _school_logo_rows_df(current_rows)
+        S._scd_replace_rows_by_key(
+            S.store,
+            S.SCHOOL_LOGO_SHEET,
+            _school_logo_rows_df(current_rows).replace({pd.NA: None}).to_dict(orient="records"),
+            S.SCHOOL_LOGO_COLUMNS,
+            [S.SCHOOL_LOGO_ID_COL],
+            changed_by="admin",
+        )
         S.db.save_excel_sheets(S.store)
         return True
 
@@ -1331,9 +1358,16 @@ def _load_school_logos() -> dict:
     return {"entries": _school_logo_sheet_rows()}
 
 
-def _save_school_logos(payload: dict) -> None:
+def _save_school_logos(payload: dict, *, changed_by: str = "admin") -> None:
     entries = _normalize_school_logo_entries(payload.get("entries")) if isinstance(payload, dict) else []
-    S.store[S.SCHOOL_LOGO_SHEET] = _school_logo_rows_df(entries)
+    S._scd_replace_rows_by_key(
+        S.store,
+        S.SCHOOL_LOGO_SHEET,
+        _school_logo_rows_df(entries).replace({pd.NA: None}).to_dict(orient="records"),
+        S.SCHOOL_LOGO_COLUMNS,
+        [S.SCHOOL_LOGO_ID_COL],
+        changed_by=changed_by,
+    )
     S.db.save_excel_sheets(S.store)
     _migrate_school_logo_storage()
 
@@ -1717,7 +1751,7 @@ def register_config_routes(app):
             }
             entries.append(entry)
             payload["entries"] = entries
-            _save_school_logos(payload)
+            _save_school_logos(payload, changed_by=_changed_by_from_current_user())
 
         return jsonify({"ok": True, "entry": _serialize_school_logo_entry(entry)}), 201
 
@@ -1735,7 +1769,7 @@ def register_config_routes(app):
             if len(filtered) == len(entries):
                 return jsonify({"error": "entry not found"}), 404
             payload["entries"] = filtered
-            _save_school_logos(payload)
+            _save_school_logos(payload, changed_by=_changed_by_from_current_user())
 
         if target_entry:
             logo_path = _locate_school_logo_file(target_entry)
@@ -1788,7 +1822,7 @@ def register_config_routes(app):
 
             entries[idx] = {**entries[idx], "logo_file_name": file_name}
             payload["entries"] = entries
-            _save_school_logos(payload)
+            _save_school_logos(payload, changed_by=_changed_by_from_current_user())
 
         return jsonify({"ok": True, "entry": _serialize_school_logo_entry(entries[idx])})
 

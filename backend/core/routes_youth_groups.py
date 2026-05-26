@@ -45,6 +45,14 @@ def _first_present(row: dict | None, *keys: str):
     return None
 
 
+def _changed_by_from_current_user() -> str:
+    user = auth_exports["_current_user"]()
+    if not user or user.get("role") == "admin":
+        return "admin"
+    person_id = user.get("person_id")
+    return str(person_id) if person_id is not None and str(person_id).strip() else "admin"
+
+
 def _pid_key(value) -> str | None:
     norm = S._normalize_person_id(value)
     if norm is None:
@@ -204,7 +212,7 @@ def _normalize_social_media_id(value) -> str | None:
 def _next_social_media_id_sequence(rows: list[dict] | None = None) -> int:
     candidates = rows if isinstance(rows, list) else []
     if not candidates:
-        df = S.store.get(S.YOUTH_GROUP_SOCIAL_MEDIA_SHEET, pd.DataFrame()).copy()
+        df = S._scd_filter_active(S.store.get(S.YOUTH_GROUP_SOCIAL_MEDIA_SHEET, pd.DataFrame()).copy())
         if not df.empty:
             candidates = df.replace({pd.NA: None}).to_dict(orient="records")
 
@@ -219,14 +227,14 @@ def _next_social_media_id_sequence(rows: list[dict] | None = None) -> int:
 
 
 def _raw_social_media_sheet_rows() -> list[dict]:
-    df = S.store.get(S.YOUTH_GROUP_SOCIAL_MEDIA_SHEET, pd.DataFrame()).copy()
+    df = S._scd_filter_active(S.store.get(S.YOUTH_GROUP_SOCIAL_MEDIA_SHEET, pd.DataFrame()).copy())
     if df.empty:
         return []
     return df.where(pd.notna(df), None).to_dict(orient="records")
 
 
 def _raw_social_media_age_group_sheet_rows() -> list[dict]:
-    df = S.store.get(S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_SHEET, pd.DataFrame()).copy()
+    df = S._scd_filter_active(S.store.get(S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_SHEET, pd.DataFrame()).copy())
     if df.empty:
         return []
     return df.where(pd.notna(df), None).to_dict(orient="records")
@@ -399,17 +407,20 @@ def _ensure_youth_group_social_media_storage() -> bool:
     current_age_rows = _canonical_social_media_age_group_sheet_rows()
 
     has_legacy_columns = False
-    main_df = S.store.get(S.YOUTH_GROUP_SOCIAL_MEDIA_SHEET, pd.DataFrame()).copy()
+    main_df = S._scd_filter_active(S.store.get(S.YOUTH_GROUP_SOCIAL_MEDIA_SHEET, pd.DataFrame()).copy())
     if not main_df.empty:
         has_legacy_columns = any(
-            col not in S.YOUTH_GROUP_SOCIAL_MEDIA_COLUMNS and col != "id"
+            col not in S.YOUTH_GROUP_SOCIAL_MEDIA_COLUMNS and col not in S.SCD_METADATA_COLUMNS and col != "id"
             for col in main_df.columns
         )
 
-    age_df = S.store.get(S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_SHEET, pd.DataFrame()).copy()
+    age_df = S._scd_filter_active(S.store.get(S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_SHEET, pd.DataFrame()).copy())
     has_age_sheet_schema_mismatch = age_df.empty and S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_SHEET not in S.store
     if not age_df.empty:
-        has_age_sheet_schema_mismatch = any(col not in S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_COLUMNS for col in age_df.columns)
+        has_age_sheet_schema_mismatch = any(
+            col not in S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_COLUMNS and col not in S.SCD_METADATA_COLUMNS
+            for col in age_df.columns
+        )
 
     changed = (
         has_legacy_columns
@@ -418,13 +429,21 @@ def _ensure_youth_group_social_media_storage() -> bool:
         or migrated_age_rows != current_age_rows
     )
 
-    S.store[S.YOUTH_GROUP_SOCIAL_MEDIA_SHEET] = pd.DataFrame(
+    S._scd_replace_rows_by_key(
+        S.store,
+        S.YOUTH_GROUP_SOCIAL_MEDIA_SHEET,
         migrated_main_rows,
-        columns=S.YOUTH_GROUP_SOCIAL_MEDIA_COLUMNS,
+        S.YOUTH_GROUP_SOCIAL_MEDIA_COLUMNS,
+        [S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL],
+        changed_by="admin",
     )
-    S.store[S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_SHEET] = pd.DataFrame(
+    S._scd_replace_rows_by_key(
+        S.store,
+        S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_SHEET,
         migrated_age_rows,
-        columns=S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_COLUMNS,
+        S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_COLUMNS,
+        [S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL, "age_group"],
+        changed_by="admin",
     )
     return changed
 
@@ -446,7 +465,7 @@ def _group_social_media(group_id: str) -> list[dict]:
     return out
 
 
-def _save_group_social_media(group_id: str, rows: list[dict]):
+def _save_group_social_media(group_id: str, rows: list[dict], *, changed_by: str = "admin"):
     _ensure_youth_group_social_media_storage()
 
     current_rows = _canonical_social_media_sheet_rows()
@@ -489,13 +508,21 @@ def _save_group_social_media(group_id: str, rows: list[dict]):
         clean.append(normalized_main_row)
         clean_age_rows.extend(_social_media_age_group_rows(social_media_id, normalized_entry.get("age_groups")))
 
-    S.store[S.YOUTH_GROUP_SOCIAL_MEDIA_SHEET] = pd.DataFrame(
+    S._scd_replace_rows_by_key(
+        S.store,
+        S.YOUTH_GROUP_SOCIAL_MEDIA_SHEET,
         retained_rows + clean,
-        columns=S.YOUTH_GROUP_SOCIAL_MEDIA_COLUMNS,
+        S.YOUTH_GROUP_SOCIAL_MEDIA_COLUMNS,
+        [S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL],
+        changed_by=changed_by,
     )
-    S.store[S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_SHEET] = pd.DataFrame(
+    S._scd_replace_rows_by_key(
+        S.store,
+        S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_SHEET,
         retained_age_rows + clean_age_rows,
-        columns=S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_COLUMNS,
+        S.YOUTH_GROUP_SOCIAL_MEDIA_AGE_GROUP_COLUMNS,
+        [S.YOUTH_GROUP_SOCIAL_MEDIA_ID_COL, "age_group"],
+        changed_by=changed_by,
     )
 
 
@@ -575,7 +602,7 @@ def _normalize_special_logo_entry(entry: dict) -> dict:
 
 
 def _special_logo_rows_df() -> pd.DataFrame:
-    df = S.store.get(S.YOUTH_GROUP_SPECIAL_LOGO_SHEET, pd.DataFrame()).copy()
+    df = S._scd_filter_active(S.store.get(S.YOUTH_GROUP_SPECIAL_LOGO_SHEET, pd.DataFrame()).copy())
     if df.empty:
         return pd.DataFrame(columns=S.YOUTH_GROUP_SPECIAL_LOGO_COLUMNS)
     for col in S.YOUTH_GROUP_SPECIAL_LOGO_COLUMNS:
@@ -596,7 +623,7 @@ def _maybe_migrate_legacy_special_logos() -> bool:
     if not os.path.exists(legacy_path):
         return False
 
-    existing_df = S.store.get(S.YOUTH_GROUP_SPECIAL_LOGO_SHEET, pd.DataFrame())
+    existing_df = S._scd_filter_active(S.store.get(S.YOUTH_GROUP_SPECIAL_LOGO_SHEET, pd.DataFrame()))
     if existing_df is not None and not existing_df.empty:
         return False
 
@@ -615,9 +642,13 @@ def _maybe_migrate_legacy_special_logos() -> bool:
                 **normalized,
             })
 
-    S.store[S.YOUTH_GROUP_SPECIAL_LOGO_SHEET] = pd.DataFrame(
+    S._scd_replace_rows_by_key(
+        S.store,
+        S.YOUTH_GROUP_SPECIAL_LOGO_SHEET,
         S.normalize_youth_group_special_logo_rows(rows),
-        columns=S.YOUTH_GROUP_SPECIAL_LOGO_COLUMNS,
+        S.YOUTH_GROUP_SPECIAL_LOGO_COLUMNS,
+        [S.SPECIAL_LOGO_ID_COL],
+        changed_by="admin",
     )
     S.save()
     return True
@@ -643,7 +674,7 @@ def _group_special_logos(group_id: str) -> list[dict]:
     return out
 
 
-def _save_group_special_logos(group_id: str, rows: list[dict]):
+def _save_group_special_logos(group_id: str, rows: list[dict], *, changed_by: str = "admin"):
     _maybe_migrate_legacy_special_logos()
 
     with S.lock:
@@ -662,9 +693,13 @@ def _save_group_special_logos(group_id: str, rows: list[dict]):
             })
 
         normalized_rows = S.normalize_youth_group_special_logo_rows(existing_rows)
-        S.store[S.YOUTH_GROUP_SPECIAL_LOGO_SHEET] = pd.DataFrame(
+        S._scd_replace_rows_by_key(
+            S.store,
+            S.YOUTH_GROUP_SPECIAL_LOGO_SHEET,
             normalized_rows,
-            columns=S.YOUTH_GROUP_SPECIAL_LOGO_COLUMNS,
+            S.YOUTH_GROUP_SPECIAL_LOGO_COLUMNS,
+            [S.SPECIAL_LOGO_ID_COL],
+            changed_by=changed_by,
         )
         S.save()
 
@@ -726,7 +761,7 @@ def _parish_inherited_fields(parish: dict | None) -> dict:
 
 
 def _parish_by_id() -> dict[str, dict]:
-    parishes_df = S.store.get(S.PARISH_SHEET, pd.DataFrame()).copy()
+    parishes_df = S._scd_filter_active(S.store.get(S.PARISH_SHEET, pd.DataFrame()).copy())
     if parishes_df.empty:
         return {}
 
@@ -752,7 +787,7 @@ def _churches_for_parish(parish_id: str | None) -> list[dict]:
     if not pid:
         return []
 
-    churches_df = S.store.get(S.CHURCH_SHEET, pd.DataFrame()).copy()
+    churches_df = S._scd_filter_active(S.store.get(S.CHURCH_SHEET, pd.DataFrame()).copy())
     if churches_df.empty:
         return []
 
@@ -818,7 +853,7 @@ def _group_meta(group_id: str) -> dict:
         "special_logos": [],
     }
 
-    yg = S.store.get(S.YOUTH_GROUP_SHEET, pd.DataFrame())
+    yg = S._scd_filter_active(S.store.get(S.YOUTH_GROUP_SHEET, pd.DataFrame()).copy())
     if yg.empty or S.YOUTH_GROUP_ID_COL not in yg.columns:
         return meta
 
@@ -1250,7 +1285,8 @@ def register_youth_group_routes(app):
             return jsonify({"error": "invalid parish_id"}), 400
 
         with S.lock:
-            yg = S.store.get(S.YOUTH_GROUP_SHEET, pd.DataFrame()).copy()
+            changed_by = _changed_by_from_current_user()
+            yg = S._scd_filter_active(S.store.get(S.YOUTH_GROUP_SHEET, pd.DataFrame()).copy())
             if yg.empty or S.YOUTH_GROUP_ID_COL not in yg.columns:
                 return jsonify({"error": "not found"}), 404
 
@@ -1273,7 +1309,21 @@ def register_youth_group_routes(app):
             yg.loc[mask, S.YOUTH_GROUP_PARISH_ID_COL] = parish_id
             yg.loc[mask, S.YOUTH_GROUP_USE_PARISH_LOGO_COL] = use_parish_logo
             yg.loc[mask, S.YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL] = inherit_parish_social_media
-            S.store[S.YOUTH_GROUP_SHEET] = yg
+            S._scd_replace_rows_by_key(
+                S.store,
+                S.YOUTH_GROUP_SHEET,
+                yg.replace({pd.NA: None}).to_dict(orient="records"),
+                [
+                    S.YOUTH_GROUP_ID_COL,
+                    S.YOUTH_GROUP_PATRON_COL,
+                    S.YOUTH_GROUP_SHORT_NAME_COL,
+                    S.YOUTH_GROUP_PARISH_ID_COL,
+                    S.YOUTH_GROUP_USE_PARISH_LOGO_COL,
+                    S.YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL,
+                ],
+                [S.YOUTH_GROUP_ID_COL],
+                changed_by=changed_by,
+            )
             S.db.save_excel_sheets(S.store)
             S.invalidate_enriched_cache()
 
@@ -1312,7 +1362,8 @@ def register_youth_group_routes(app):
             normalized_rows.append(norm)
 
         with S.lock:
-            yg = S.store.get(S.YOUTH_GROUP_SHEET, pd.DataFrame()).copy()
+            changed_by = _changed_by_from_current_user()
+            yg = S._scd_filter_active(S.store.get(S.YOUTH_GROUP_SHEET, pd.DataFrame()).copy())
             if yg.empty or S.YOUTH_GROUP_ID_COL not in yg.columns:
                 return jsonify({"error": "not found"}), 404
 
@@ -1324,8 +1375,22 @@ def register_youth_group_routes(app):
                 return jsonify({"error": "not found"}), 404
 
             yg.loc[mask, S.YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL] = inherit_parish_social_media
-            S.store[S.YOUTH_GROUP_SHEET] = yg
-            _save_group_social_media(group_id, normalized_rows)
+            S._scd_replace_rows_by_key(
+                S.store,
+                S.YOUTH_GROUP_SHEET,
+                yg.replace({pd.NA: None}).to_dict(orient="records"),
+                [
+                    S.YOUTH_GROUP_ID_COL,
+                    S.YOUTH_GROUP_PATRON_COL,
+                    S.YOUTH_GROUP_SHORT_NAME_COL,
+                    S.YOUTH_GROUP_PARISH_ID_COL,
+                    S.YOUTH_GROUP_USE_PARISH_LOGO_COL,
+                    S.YOUTH_GROUP_INHERIT_PARISH_SOCIAL_COL,
+                ],
+                [S.YOUTH_GROUP_ID_COL],
+                changed_by=changed_by,
+            )
+            _save_group_social_media(group_id, normalized_rows, changed_by=changed_by)
             S.db.save_excel_sheets(S.store)
             S.invalidate_enriched_cache()
 
@@ -1422,7 +1487,7 @@ def register_youth_group_routes(app):
             "logo_file_name": dest_name,
         }
         entries.append(new_entry)
-        _save_group_special_logos(group_id, entries)
+        _save_group_special_logos(group_id, entries, changed_by=_changed_by_from_current_user())
 
         return jsonify({
             "ok": True,
@@ -1475,7 +1540,7 @@ def register_youth_group_routes(app):
                 for item in entries:
                     item["is_active"] = False
 
-        _save_group_special_logos(group_id, entries)
+        _save_group_special_logos(group_id, entries, changed_by=_changed_by_from_current_user())
 
         meta = _group_meta(group_id)
         special_logo_url = _effective_group_special_logo_url(group_id, meta)

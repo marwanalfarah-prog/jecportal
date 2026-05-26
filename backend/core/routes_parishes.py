@@ -63,8 +63,16 @@ def _church_id_value(church: dict | None) -> str:
     return _clean_text(row.get(S.CHURCH_ID_COL) or row.get("id"))
 
 
+def _changed_by_from_current_user() -> str:
+    user = auth_exports["_current_user"]()
+    if not user or user.get("role") == "admin":
+        return "admin"
+    person_id = user.get("person_id")
+    return str(person_id) if person_id is not None and str(person_id).strip() else "admin"
+
+
 def _youth_groups_by_parish() -> dict[str, list[dict]]:
-    yg = S.store.get(S.YOUTH_GROUP_SHEET, pd.DataFrame())
+    yg = S._scd_filter_active(S.store.get(S.YOUTH_GROUP_SHEET, pd.DataFrame()).copy())
     if yg.empty:
         return {}
     if S.YOUTH_GROUP_ID_COL not in yg.columns or S.YOUTH_GROUP_PARISH_ID_COL not in yg.columns:
@@ -402,8 +410,8 @@ def _church_rows_df(rows: list[dict], valid_parish_ids: set[str]) -> pd.DataFram
 
 
 def _ensure_church_sheets() -> None:
-    parishes_df = S.store.get(S.PARISH_SHEET, pd.DataFrame()).copy()
-    churches_df = S.store.get(S.CHURCH_SHEET, pd.DataFrame()).copy()
+    parishes_df = S._scd_filter_active(S.store.get(S.PARISH_SHEET, pd.DataFrame()).copy())
+    churches_df = S._scd_filter_active(S.store.get(S.CHURCH_SHEET, pd.DataFrame()).copy())
 
     if parishes_df.empty:
         parishes_df = pd.DataFrame(columns=S.PARISH_COLUMNS)
@@ -423,14 +431,28 @@ def _ensure_church_sheets() -> None:
     church_rows = churches_df[S.CHURCH_COLUMNS].where(pd.notna(churches_df[S.CHURCH_COLUMNS]), None).to_dict(orient="records")
     normalized_churches = _normalize_church_rows(church_rows, valid_parish_ids)
 
-    S.store[S.PARISH_SHEET] = _parish_rows_df(normalized_parishes)
-    S.store[S.CHURCH_SHEET] = _church_rows_df(normalized_churches, valid_parish_ids)
+    S._scd_replace_rows_by_key(
+        S.store,
+        S.PARISH_SHEET,
+        _parish_rows_df(normalized_parishes).replace({pd.NA: None}).to_dict(orient="records"),
+        S.PARISH_COLUMNS,
+        [S.PARISH_ID_COL],
+        changed_by="admin",
+    )
+    S._scd_replace_rows_by_key(
+        S.store,
+        S.CHURCH_SHEET,
+        _church_rows_df(normalized_churches, valid_parish_ids).replace({pd.NA: None}).to_dict(orient="records"),
+        S.CHURCH_COLUMNS,
+        [S.CHURCH_ID_COL],
+        changed_by="admin",
+    )
 
 
 def _load_payload() -> dict:
     _ensure_church_sheets()
-    parishes_df = S.store.get(S.PARISH_SHEET, pd.DataFrame()).copy()
-    churches_df = S.store.get(S.CHURCH_SHEET, pd.DataFrame()).copy()
+    parishes_df = S._scd_filter_active(S.store.get(S.PARISH_SHEET, pd.DataFrame()).copy())
+    churches_df = S._scd_filter_active(S.store.get(S.CHURCH_SHEET, pd.DataFrame()).copy())
 
     parishes = _normalize_parish_rows(
         parishes_df[S.PARISH_COLUMNS].where(pd.notna(parishes_df[S.PARISH_COLUMNS]), None).to_dict(orient="records")
@@ -445,11 +467,25 @@ def _load_payload() -> dict:
     return {"parishes": parishes, "churches": churches}
 
 
-def _save_payload(payload: dict):
+def _save_payload(payload: dict, *, changed_by: str = "admin"):
     normalized = _normalize_payload(payload)
     valid_parish_ids = {_parish_id_value(row) for row in normalized["parishes"]}
-    S.store[S.PARISH_SHEET] = _parish_rows_df(normalized["parishes"])
-    S.store[S.CHURCH_SHEET] = _church_rows_df(normalized["churches"], valid_parish_ids)
+    S._scd_replace_rows_by_key(
+        S.store,
+        S.PARISH_SHEET,
+        _parish_rows_df(normalized["parishes"]).replace({pd.NA: None}).to_dict(orient="records"),
+        S.PARISH_COLUMNS,
+        [S.PARISH_ID_COL],
+        changed_by=changed_by,
+    )
+    S._scd_replace_rows_by_key(
+        S.store,
+        S.CHURCH_SHEET,
+        _church_rows_df(normalized["churches"], valid_parish_ids).replace({pd.NA: None}).to_dict(orient="records"),
+        S.CHURCH_COLUMNS,
+        [S.CHURCH_ID_COL],
+        changed_by=changed_by,
+    )
     S.db.save_excel_sheets(S.store)
 
 
@@ -528,7 +564,7 @@ def register_churches_routes(app):
                 "governorate": governorate,
             }
             parishes.append(parish)
-            _save_payload({"parishes": parishes, "churches": payload["churches"]})
+            _save_payload({"parishes": parishes, "churches": payload["churches"]}, changed_by=_changed_by_from_current_user())
 
         parish_id_value = _parish_id_value(parish)
         logo_url = f"/api/parishes/{parish_id_value}/logo" if _parish_logo_filename(parish_id_value) else None
@@ -555,7 +591,7 @@ def register_churches_routes(app):
             next_rows = [p for p in parishes if _parish_id_value(p) != target]
             if len(next_rows) == len(parishes):
                 return jsonify({"error": "not found"}), 404
-            _save_payload({"parishes": next_rows, "churches": churches})
+            _save_payload({"parishes": next_rows, "churches": churches}, changed_by=_changed_by_from_current_user())
 
         return jsonify({"ok": True})
 
@@ -606,7 +642,7 @@ def register_churches_routes(app):
                 "governorate": governorate,
             }
             parishes[idx] = updated
-            _save_payload({"parishes": parishes, "churches": payload["churches"]})
+            _save_payload({"parishes": parishes, "churches": payload["churches"]}, changed_by=_changed_by_from_current_user())
 
         updated_parish_id = _parish_id_value(updated)
         logo_url = f"/api/parishes/{updated_parish_id}/logo" if _parish_logo_filename(updated_parish_id) else None
@@ -652,7 +688,7 @@ def register_churches_routes(app):
                 "lng": lng,
             }
             churches.append(church)
-            _save_payload({"parishes": parishes, "churches": churches})
+            _save_payload({"parishes": parishes, "churches": churches}, changed_by=_changed_by_from_current_user())
 
         response_church = {
             **church,
@@ -685,7 +721,7 @@ def register_churches_routes(app):
             next_rows = [c for c in churches if _church_id_value(c) != target]
             if len(next_rows) == len(churches):
                 return jsonify({"error": "not found"}), 404
-            _save_payload({"parishes": payload["parishes"], "churches": next_rows})
+            _save_payload({"parishes": payload["parishes"], "churches": next_rows}, changed_by=_changed_by_from_current_user())
 
         return jsonify({"ok": True})
 
@@ -737,7 +773,7 @@ def register_churches_routes(app):
                 "lng": lng,
             }
             churches[idx] = church
-            _save_payload({"parishes": parishes, "churches": churches})
+            _save_payload({"parishes": parishes, "churches": churches}, changed_by=_changed_by_from_current_user())
 
         response_church = {
             **church,

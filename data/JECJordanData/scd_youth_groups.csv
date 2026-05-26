@@ -1,0 +1,31 @@
+﻿youth_group_id,youth_group_patron,youth_group_short_name,parish_id,use_parish_logo,inherit_parish_social_media,scd_active_from,scd_active_to,scd_currently_active_flag,scd_changed_by_user
+YG027,مار يوسف,أدر,PA004,False,False,2026-05-26 20:10:50,,True,admin
+YG009,القديس جورج الشهيد,إربد,PA005,True,False,2026-05-26 20:10:50,,True,admin
+YG006,القديس بولس الرسول,الجبيهة,PA006,False,False,2026-05-26 20:10:50,,True,admin
+YG002,الحبل بلا دنس,الحصن,PA007,False,False,2026-05-26 20:10:50,,True,admin
+YG001,ارتفاع الصليب,الرميمين,PA009,False,False,2026-05-26 20:10:50,,True,admin
+YG016,دون أوريونه,الزرقاء الجديدة,PA002,False,False,2026-05-26 20:10:50,,True,admin
+YG008,القديس بيوس العاشر,الزرقاء الجنوبي,PA003,False,False,2026-05-26 20:10:50,,True,admin
+YG003,الرسل,الزرقاء الشمالي,PA010,False,False,2026-05-26 20:10:50,,True,admin
+YG017,دون بوسكو,السالزيان,PA022,False,False,2026-05-26 20:10:50,,True,admin
+YG015,انتقال السيدة,السلط,PA011,False,False,2026-05-26 20:10:50,,True,admin
+YG026,مار ميخائيل,السماكية,PA012,False,False,2026-05-26 20:10:50,,True,admin
+YG005,العذراء الناصرية,الصويفية,PA013,False,False,2026-05-26 20:10:50,,True,admin
+YG029,نجمة البحر,العقبة,PA014,True,True,2026-05-26 20:10:50,,True,admin
+YG022,قلب مريم الطاهر,الفحيص,PA001,False,False,2026-05-26 20:10:50,,True,admin
+YG020,سيدة الوردية,الكرك,PA016,True,False,2026-05-26 20:10:50,,True,admin
+YG014,,الكلدان,,False,False,2026-05-26 20:10:50,,True,admin
+YG030,يسوع الملك,المصدار,PA017,False,False,2026-05-26 20:10:50,,True,admin
+YG012,القديس يوسف,المفرق,PA018,False,False,2026-05-26 20:10:50,,True,admin
+YG019,سيدة الكرمل,الهاشمي الشمالي,PA023,False,False,2026-05-26 20:10:50,,True,admin
+YG025,مار إلياس,الوهادنة,PA019,True,True,2026-05-26 20:10:50,,True,admin
+YG023,قلب يسوع الأقدس,تلاع العلي,PA020,False,False,2026-05-26 20:10:50,,True,admin
+YG011,القديس يوحنا دي لا سال,جبل الحسين,PA021,False,False,2026-05-26 20:10:50,,True,admin
+YG028,مار يوسف,جبل عمان,PA024,False,False,2026-05-26 20:10:50,,True,admin
+YG013,القديسة تريزا الطفل يسوع,صافوط,PA026,False,False,2026-05-26 20:10:50,,True,admin
+YG007,القديس بولس الرسول,عجلون,PA027,True,False,2026-05-26 20:10:50,,True,admin
+YG018,سيدة الجبل,عنجرة,PA028,True,False,2026-05-26 20:10:50,,True,admin
+YG010,القديس يوحنا المعمدان,مادبا,PA029,False,False,2026-05-26 20:10:50,,True,admin
+YG004,العذراء أم الكنيسة,ماركا,PA030,True,False,2026-05-26 20:10:50,,True,admin
+YG021,شهداء الأردن,مرج الحمام,PA032,False,False,2026-05-26 20:10:50,,True,admin
+YG024,قلب يسوع الأقدس,ناعور,PA015,False,False,2026-05-26 20:10:50,,True,admin
