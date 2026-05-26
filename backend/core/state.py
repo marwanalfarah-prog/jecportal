@@ -22,14 +22,14 @@ os.makedirs(PROFILE_PHOTOS_DIR, exist_ok=True)
 
 SHEETS = [
     "persons", "nationality", "mobile_numbers", "mobile_number_family_relations", "personal_mobile_number_primary", "mobile_number_linked_jobs", "emails", "email_family_relations", "personal_email_primary", "email_linked_jobs", "social_media", "schools", "school_sections", "school_grades",
-    "higher_education", "jobs", "timestamps", "responsibilities",
+    "higher_education", "jobs", "responsibilities",
     "person_youth_group", "person_youth_group_age_history", "hobbies_skills", "person_health_conditions", "person_special_notes", "addresses", "person_titles", "person_school_system_sectors", "parishes", "churches", "youth_groups", "youth_group_social_media", "youth_group_social_media_ages", "youth_group_special_logos",
     "lkp_nationality_iso_codes", "institution_logos", "lkp_person_titles", "mottos", "motto_youth_groups",
 ]
 
 UNREG_SHEETS = [
     "persons", "nationality", "mobile_numbers", "mobile_number_family_relations", "personal_mobile_number_primary", "mobile_number_linked_jobs", "emails", "email_family_relations", "personal_email_primary", "email_linked_jobs", "social_media", "schools", "school_sections", "school_grades",
-    "higher_education", "jobs", "timestamps", "responsibilities",
+    "higher_education", "jobs", "responsibilities",
     "person_youth_group", "person_youth_group_age_history", "hobbies_skills", "person_health_conditions", "person_special_notes", "addresses", "person_titles", "person_school_system_sectors",
 ]
 
@@ -3104,7 +3104,7 @@ def _ensure_youth_group_catalog() -> bool:
     _refresh_youth_group_indexes()
 
     legacy_names = set()
-    for sheet in ("person_youth_group", "responsibilities", "timestamps"):
+    for sheet in ("person_youth_group", "responsibilities"):
         df = store.get(sheet, pd.DataFrame())
         if df.empty:
             continue
@@ -3130,7 +3130,7 @@ def _ensure_youth_group_catalog() -> bool:
 
 def _migrate_group_columns_in_store() -> bool:
     changed = False
-    for sheet in ("person_youth_group", "responsibilities", "timestamps"):
+    for sheet in ("person_youth_group", "responsibilities"):
         df = store.get(sheet, pd.DataFrame()).copy()
         if df.empty:
             continue

@@ -975,6 +975,69 @@ function nodeGSGroupKeys(node) {
   return keys
 }
 
+// ── API boundary conversion ───────────────────────────────────────────────────
+// Hull storage uses clean Arabic display names only (e.g. "الأمانة العامة", "لجنة الإعلام").
+// reportsToHeadId is stored as a separate "reports_to" edge in the edges table.
+//
+// nodeToGSApi      : internal node → API node (hulls:[], strips inAmanah/inGroup/reportsToHeadId)
+// nodeFromGSApi    : API node + reportsToMap → internal node
+// extractReportsToEdges: generates reports_to edges from nodes' reportsToHeadId
+// buildReportsToMap    : builds memberId->headId map from a reports_to edges array
+
+const GS_AMANAH_HULL = 'الأمانة العامة'
+
+function computeGSHullNames(node) {
+  const c = classifyGSRole(node.role || '')
+  const hulls = []
+
+  if (c) {
+    const defaultInAmanah = ['secretary_general', 'spiritual_guide', 'spiritual_guide_assistant',
+      'reports_to_sg', 'committee_head', 'middle_east_coordinator'].includes(c.tier)
+    const effInAmanah = node.inAmanah !== undefined && node.inAmanah !== null ? node.inAmanah : defaultInAmanah
+    if (effInAmanah) hulls.push(GS_AMANAH_HULL)
+  }
+
+  if (!c || !effectiveGSInGroup(node)) return hulls
+
+  if (c.tier === 'committee_head' || c.tier === 'committee_member') {
+    hulls.push(c.committeeKey)
+  } else if (['project_head', 'project_director', 'project_employee', 'project_member'].includes(c.tier)) {
+    hulls.push(c.project)
+  } else if (c.tier === 'store_manager' || c.tier === 'store_employee') {
+    hulls.push('شبيبة ستور')
+  }
+
+  return hulls
+}
+
+function nodeToGSApi(node) {
+  const { inAmanah: _a, inGroup: _g, reportsToHeadId: _r, ...rest } = node
+  return { ...rest, hulls: computeGSHullNames(node) }
+}
+
+function nodeFromGSApi(node, reportsToMap = {}) {
+  const hulls = Array.isArray(node.hulls) ? node.hulls : []
+  const { hulls: _h, ...rest } = node
+  const inAmanah = hulls.includes(GS_AMANAH_HULL)
+  const inGroup  = hulls.some(h => h !== GS_AMANAH_HULL)
+  const reportsToHeadId = reportsToMap[rest.id] || null
+  return { ...rest, inAmanah, inGroup, reportsToHeadId }
+}
+
+function buildReportsToMap(edges) {
+  const map = {}
+  for (const e of (edges || [])) {
+    if (e.type === 'reports_to') map[e.from] = e.to
+  }
+  return map
+}
+
+function extractReportsToEdges(nodes) {
+  return (nodes || [])
+    .filter(n => n.reportsToHeadId)
+    .map(n => ({ id: `reports_to_${n.id}`, from: n.id, to: n.reportsToHeadId, type: 'reports_to' }))
+}
+
 function computeGSAutoEdges(nodes) {
   const autoEdges = []
   const nodeById = Object.fromEntries(nodes.map(n => [n.id, n]))
@@ -1811,9 +1874,11 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
       const periodId = currentPeriod?.id
       api.getOrgTree(GS_GROUP_KEY, periodId)
         .then(data => {
-          const refreshedNodes = data.nodes || []
+          const rawEdges = data.edges || []
+          const reportsToMap = buildReportsToMap(rawEdges)
+          const refreshedNodes = (data.nodes || []).map(n => nodeFromGSApi(n, reportsToMap))
           setNodes(refreshedNodes)
-          setEdges(data.edges || [])
+          setEdges(rawEdges.filter(e => e.type !== 'reports_to'))
           setCurrentPeriod(data.period || currentPeriod)
           setPeriods(data.periods || periods)
         })
@@ -1920,15 +1985,19 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
     try {
       const linkedNodes = await syncUnregisteredNodes(nodes)
       const hasActivePeriod = currentPeriod && !currentPeriod.to_date
-      const res = await api.putOrgTree(GS_GROUP_KEY, { nodes: linkedNodes, edges, period_id: hasActivePeriod ? currentPeriod?.id : undefined, new_period: periodMeta, close_current: hasActivePeriod })
+      const res = await api.putOrgTree(GS_GROUP_KEY, { nodes: linkedNodes.map(nodeToGSApi), edges: [...edges, ...extractReportsToEdges(linkedNodes)], period_id: hasActivePeriod ? currentPeriod?.id : undefined, new_period: periodMeta, close_current: hasActivePeriod })
       const data = await api.getOrgTree(GS_GROUP_KEY)
-      setNodes(data.nodes || [])
-      setEdges(data.edges || [])
+      const rawEdges = data.edges || []
+      const reportsToMap = buildReportsToMap(rawEdges)
+      const savedNodes = (data.nodes || []).map(n => nodeFromGSApi(n, reportsToMap))
+      const savedEdges = rawEdges.filter(e => e.type !== 'reports_to')
+      setNodes(savedNodes)
+      setEdges(savedEdges)
       setCurrentPeriod(data.period || res.period || currentPeriod)
       setPeriods(data.periods || res.periods || periods)
       setDirty(false); setStructuralDirty(false)
       toast('تم الحفظ ✓', 'success')
-      applyTidy(data.nodes || linkedNodes, data.edges || edges)
+      applyTidy(savedNodes, savedEdges)
     } catch (err) {
       if (err.message?.includes('409')) toast('تتداخل الفترة مع فترة موجودة', 'error')
       else toast('خطأ في الحفظ', 'error')
@@ -1940,7 +2009,7 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
     setSaving(true)
     try {
       const linkedNodes = await syncUnregisteredNodes(nodes)
-      const res = await api.putOrgTree(GS_GROUP_KEY, { nodes: linkedNodes, edges, period_id: period?.id })
+      const res = await api.putOrgTree(GS_GROUP_KEY, { nodes: linkedNodes.map(nodeToGSApi), edges: [...edges, ...extractReportsToEdges(linkedNodes)], period_id: period?.id })
       setCurrentPeriod(res.period || period)
       setPeriods(res.periods || periods)
       setDirty(false); setStructuralDirty(false)
@@ -1982,8 +2051,10 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
   }
 
   function loadTreeIntoView(data, fallbackPeriod = null, nextPeriods = null) {
-    const nextNodes = data?.nodes || []
-    const nextEdges = data?.edges || []
+    const rawEdges = data?.edges || []
+    const reportsToMap = buildReportsToMap(rawEdges)
+    const nextNodes = (data?.nodes || []).map(n => nodeFromGSApi(n, reportsToMap))
+    const nextEdges = rawEdges.filter(e => e.type !== 'reports_to')
 
     if (!nextNodes.length) {
       setNodes([])

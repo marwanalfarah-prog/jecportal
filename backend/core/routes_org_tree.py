@@ -13,7 +13,7 @@ os.makedirs(ORG_TREES_DIR, exist_ok=True)
 ORG_TREE_PERIODS_CSV = os.path.join(S.db.csv_dir, "org_tree_periods.csv")
 ORG_TREE_NODES_CSV = os.path.join(S.db.csv_dir, "org_tree_nodes.csv")
 ORG_TREE_EDGES_CSV = os.path.join(S.db.csv_dir, "org_tree_edges.csv")
-ORG_TREE_NODE_HULLS_CSV = os.path.join(S.db.csv_dir, "org_tree_node_hulls.csv")
+ORG_TREE_HULLS_CSV = os.path.join(S.db.csv_dir, "org_tree_hulls.csv")
 
 ORG_TREE_PERIOD_COLUMNS = ["group_id", "period_id", "jec_year", "from_date", "to_date"]
 
@@ -29,7 +29,7 @@ def _next_period_id() -> str:
 
 ORG_TREE_NODE_COLUMNS = ["period_id", "node_id", "person_id", "role"]
 ORG_TREE_EDGE_COLUMNS = ["period_id", "from_node_id", "to_node_id", "edge_type"]
-ORG_TREE_NODE_HULL_COLUMNS = ["period_id", "node_id", "hull"]
+ORG_TREE_HULL_COLUMNS = ["node_id", "hull"]
 
 _PERSON_LOOKUP_CACHE_VERSION = None
 _REGISTERED_PERSON_ROWS: dict = {}
@@ -85,7 +85,7 @@ def _resolve_group_id(group_ref: str) -> str:
 
 
 def _uses_json_storage(group_ref: str | None) -> bool:
-    return (_canonical_group_ref(group_ref) or group_ref) == GS_GROUP_ID
+    return False
 
 
 def _none_if_blank(value):
@@ -209,36 +209,57 @@ def _edge_to_csv_record(period_id: str, edge: dict) -> dict:
     }
 
 
-def _load_csv_node_hulls(period_id: str) -> dict[str, list[str]]:
+def _load_csv_hulls(node_ids: set[str]) -> dict[str, list[str]]:
     result: dict[str, list[str]] = {}
-    for row in _read_csv_records(ORG_TREE_NODE_HULLS_CSV, ORG_TREE_NODE_HULL_COLUMNS):
-        if row.get("period_id") != period_id:
-            continue
+    wanted = {str(node_id).strip() for node_id in (node_ids or set()) if str(node_id or "").strip()}
+    if not wanted:
+        return result
+    for row in _read_csv_records(ORG_TREE_HULLS_CSV, ORG_TREE_HULL_COLUMNS):
         nid = _none_if_blank(row.get("node_id"))
         hull = _none_if_blank(row.get("hull"))
+        if nid not in wanted:
+            continue
         if nid and hull:
             result.setdefault(nid, []).append(hull)
     return result
 
 
-def _save_csv_node_hulls(period_id: str, nodes: list):
-    rows = _read_csv_records(ORG_TREE_NODE_HULLS_CSV, ORG_TREE_NODE_HULL_COLUMNS)
-    kept = [row for row in rows if row.get("period_id") != period_id]
+def _save_csv_hulls(nodes: list, *, remove_node_ids: set[str] | None = None):
+    rows = _read_csv_records(ORG_TREE_HULLS_CSV, ORG_TREE_HULL_COLUMNS)
+    node_ids = {
+        _csv_value(node.get("id"))
+        for node in (nodes or [])
+        if _none_if_blank(node.get("id")) is not None
+    }
+    stale_node_ids = {
+        str(node_id).strip()
+        for node_id in (remove_node_ids or set())
+        if str(node_id or "").strip()
+    }
+    replaced_node_ids = node_ids | stale_node_ids
+    kept = [row for row in rows if _none_if_blank(row.get("node_id")) not in replaced_node_ids]
     for node in (nodes or []):
         nid = _csv_value(node.get("id"))
         for hull in (node.get("hulls") or []):
             hull_str = _none_if_blank(str(hull) if hull is not None else None)
             if nid and hull_str:
-                kept.append({"period_id": period_id, "node_id": nid, "hull": hull_str})
-    _write_csv_records(ORG_TREE_NODE_HULLS_CSV, ORG_TREE_NODE_HULL_COLUMNS, kept)
+                kept.append({"node_id": nid, "hull": hull_str})
+    _write_csv_records(ORG_TREE_HULLS_CSV, ORG_TREE_HULL_COLUMNS, kept)
 
 
-def _delete_csv_node_hulls(period_id: str):
-    rows = _read_csv_records(ORG_TREE_NODE_HULLS_CSV, ORG_TREE_NODE_HULL_COLUMNS)
+def _delete_csv_hulls(node_ids: set[str]):
+    delete_ids = {
+        str(node_id).strip()
+        for node_id in (node_ids or set())
+        if str(node_id or "").strip()
+    }
+    if not delete_ids:
+        return
+    rows = _read_csv_records(ORG_TREE_HULLS_CSV, ORG_TREE_HULL_COLUMNS)
     _write_csv_records(
-        ORG_TREE_NODE_HULLS_CSV,
-        ORG_TREE_NODE_HULL_COLUMNS,
-        [row for row in rows if row.get("period_id") != period_id],
+        ORG_TREE_HULLS_CSV,
+        ORG_TREE_HULL_COLUMNS,
+        [row for row in rows if _none_if_blank(row.get("node_id")) not in delete_ids],
     )
 
 
@@ -268,7 +289,7 @@ def _load_csv_tree_data(group_id: str, period_id: str) -> dict:
         for row in _read_csv_records(ORG_TREE_EDGES_CSV, ORG_TREE_EDGE_COLUMNS)
         if row.get("period_id") == period_id
     ]
-    hulls_map = _load_csv_node_hulls(period_id)
+    hulls_map = _load_csv_hulls({node.get("id") for node in nodes})
     for node in nodes:
         nid = node.get("id")
         if nid in hulls_map:
@@ -278,6 +299,12 @@ def _load_csv_tree_data(group_id: str, period_id: str) -> dict:
 
 def _save_csv_tree_data(group_id: str, period_id: str, data: dict):
     node_rows = _read_csv_records(ORG_TREE_NODES_CSV, ORG_TREE_NODE_COLUMNS)
+    old_node_ids = {
+        _none_if_blank(row.get("node_id"))
+        for row in node_rows
+        if row.get("period_id") == period_id
+    }
+    old_node_ids = {node_id for node_id in old_node_ids if node_id}
     kept_nodes = [row for row in node_rows if row.get("period_id") != period_id]
     kept_nodes.extend(_node_to_csv_record(period_id, node) for node in (data.get("nodes") or []))
     _write_csv_records(ORG_TREE_NODES_CSV, ORG_TREE_NODE_COLUMNS, kept_nodes)
@@ -287,11 +314,17 @@ def _save_csv_tree_data(group_id: str, period_id: str, data: dict):
     kept_edges.extend(_edge_to_csv_record(period_id, edge) for edge in (data.get("edges") or []))
     _write_csv_records(ORG_TREE_EDGES_CSV, ORG_TREE_EDGE_COLUMNS, kept_edges)
 
-    _save_csv_node_hulls(period_id, data.get("nodes") or [])
+    _save_csv_hulls(data.get("nodes") or [], remove_node_ids=old_node_ids)
 
 
 def _delete_csv_tree_data(group_id: str, period_id: str):
     node_rows = _read_csv_records(ORG_TREE_NODES_CSV, ORG_TREE_NODE_COLUMNS)
+    delete_node_ids = {
+        _none_if_blank(row.get("node_id"))
+        for row in node_rows
+        if row.get("period_id") == period_id
+    }
+    delete_node_ids = {node_id for node_id in delete_node_ids if node_id}
     _write_csv_records(
         ORG_TREE_NODES_CSV,
         ORG_TREE_NODE_COLUMNS,
@@ -305,12 +338,12 @@ def _delete_csv_tree_data(group_id: str, period_id: str):
         [row for row in edge_rows if row.get("period_id") != period_id],
     )
 
-    _delete_csv_node_hulls(period_id)
+    _delete_csv_hulls(delete_node_ids)
 
 
 def _csv_storage_mtime() -> float:
     mtimes = []
-    for path in (ORG_TREE_PERIODS_CSV, ORG_TREE_NODES_CSV, ORG_TREE_EDGES_CSV, ORG_TREE_NODE_HULLS_CSV):
+    for path in (ORG_TREE_PERIODS_CSV, ORG_TREE_NODES_CSV, ORG_TREE_EDGES_CSV, ORG_TREE_HULLS_CSV):
         try:
             mtimes.append(os.path.getmtime(path))
         except OSError:

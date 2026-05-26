@@ -26,7 +26,6 @@ SCD_LOGICAL_SHEETS: set[str] = {
     "school_grades",
     "higher_education",
     "jobs",
-    "timestamps",
     "responsibilities",
     "person_youth_group",
     "person_youth_group_age_history",

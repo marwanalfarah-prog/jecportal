@@ -1,6 +1,6 @@
 import os
 import re
-from datetime import date, datetime
+from datetime import date
 from urllib.parse import urlparse
 
 import numpy as np
@@ -310,8 +310,6 @@ def collect_profile_validation_errors(body: dict, person_fields: dict, *, addres
     _validate_row_date_fields(body.get("higher_education", []), "التعليم الجامعي", errors)
     _validate_row_date_fields(body.get("jobs", []), "الوظائف", errors)
     _validate_row_date_fields(body.get("responsibilities", []), "المسؤوليات", errors)
-    _validate_row_date_fields(body.get("timestamps", []), "السجلات الزمنية", errors)
-
     for index, row in enumerate(body.get("higher_education", []) or [], start=1):
         if not isinstance(row, dict):
             continue
@@ -534,7 +532,7 @@ def build_profile_record(
         "person": person_data,
         "avatar_initial": S.avatar_initial_from_person(person_data),
         "photo": photo_url_template.format(pid=pid) if ext else None,
-        "timestamps": get_profile_sub_rows(store, pid, "timestamps", compare_as_string=compare_as_string),
+        "timestamps": [],
         "nationality": get_profile_sub_rows(store, pid, "nationality", compare_as_string=compare_as_string),
         "mobile_numbers": get_profile_sub_rows(store, pid, "mobile_numbers", compare_as_string=compare_as_string),
         "emails": get_profile_sub_rows(store, pid, "emails", compare_as_string=compare_as_string),
@@ -603,87 +601,6 @@ def _request_youth_group_ids(body: dict | None) -> list[str]:
         seen.add(group_id)
         group_ids.append(group_id)
     return group_ids
-
-
-def _profile_timestamp_rows(store: dict, pid, *, compare_as_string: bool) -> list[dict]:
-    timestamps_df = store.get("timestamps", pd.DataFrame())
-    if timestamps_df.empty or "person_id" not in timestamps_df.columns:
-        return []
-
-    if compare_as_string:
-        rows = timestamps_df[timestamps_df["person_id"].astype(str) == str(pid)]
-    else:
-        rows = timestamps_df[timestamps_df["person_id"] == pid]
-    return S.df_to_json(rows)
-
-
-def _timestamp_group_ids_from_rows(*row_groups) -> list[str]:
-    seen: set[str] = set()
-    group_ids: list[str] = []
-    for rows in row_groups:
-        for row in rows or []:
-            if not isinstance(row, dict):
-                continue
-            group_id = S.youth_group_id(row.get(S.YOUTH_GROUP_ID_COL)) or S._normalize_text(row.get(S.YOUTH_GROUP_ID_COL))
-            if not group_id or group_id in seen:
-                continue
-            seen.add(group_id)
-            group_ids.append(group_id)
-    return group_ids
-
-
-def _seed_missing_timestamp_rows(timestamp_rows, *, membership_rows=None, responsibility_rows=None) -> list[dict]:
-    relevant_group_ids = _timestamp_group_ids_from_rows(membership_rows, responsibility_rows)
-    base_rows = [dict(row) for row in (timestamp_rows or []) if isinstance(row, dict)]
-    if not relevant_group_ids:
-        return base_rows
-
-    existing_group_ids = set(_timestamp_group_ids_from_rows(base_rows))
-    missing_group_ids = [group_id for group_id in relevant_group_ids if group_id not in existing_group_ids]
-    if not missing_group_ids:
-        return base_rows
-
-    timestamp_text = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    for group_id in missing_group_ids:
-        base_rows.append({
-            "timestamp": timestamp_text,
-            S.YOUTH_GROUP_ID_COL: group_id,
-        })
-    return base_rows
-
-
-def ensure_profile_timestamp_rows(
-    store: dict,
-    pid,
-    *,
-    compare_as_string: bool,
-    timestamp_rows=_MISSING,
-    membership_rows=None,
-    responsibility_rows=None,
-) -> list[dict]:
-    if timestamp_rows is not _MISSING:
-        return [] if timestamp_rows is None else timestamp_rows
-
-    if membership_rows is None:
-        membership_rows = get_profile_sub_rows(
-            store,
-            pid,
-            S.PERSON_YOUTH_GROUP_SHEET,
-            compare_as_string=compare_as_string,
-        )
-    if responsibility_rows is None:
-        responsibility_rows = get_profile_sub_rows(
-            store,
-            pid,
-            S.RESPONSIBILITY_SHEET,
-            compare_as_string=compare_as_string,
-        )
-
-    return _seed_missing_timestamp_rows(
-        _profile_timestamp_rows(store, pid, compare_as_string=compare_as_string),
-        membership_rows=membership_rows,
-        responsibility_rows=responsibility_rows,
-    )
 
 
 def replace_profile_sub_rows(store: dict, pid, sheet, rows, *, compare_as_string: bool, changed_by: str = "system"):
@@ -1599,14 +1516,6 @@ def register_registered_routes(app):
                 mobile_rows=body.get("mobile_numbers", []),
                 email_rows=body.get("emails", []),
             )
-            timestamp_rows = ensure_profile_timestamp_rows(
-                S.store,
-                pid,
-                compare_as_string=False,
-                timestamp_rows=body["timestamps"] if "timestamps" in body else _MISSING,
-                membership_rows=body.get("person_youth_group") if "person_youth_group" in body else None,
-                responsibility_rows=body.get("responsibilities") if "responsibilities" in body else None,
-            )
 
             changed_by = _changed_by_from_current_user()
             all_persons = S._scd_ensure_columns(S.store["persons"].copy())
@@ -1637,7 +1546,6 @@ def register_registered_routes(app):
                 "social_media": body.get("social_media", []),
                 "schools": body.get("schools", []),
                 "higher_education": body.get("higher_education", []),
-                "timestamps": timestamp_rows,
                 "responsibilities": body.get("responsibilities", []),
                 "person_youth_group": body.get("person_youth_group", []),
                 "hobbies_skills": body.get("hobbies_skills", []),
@@ -1662,7 +1570,6 @@ def register_registered_routes(app):
                     "addresses",
                     "schools",
                     "higher_education",
-                    "timestamps",
                     "responsibilities",
                     "person_youth_group",
                     "hobbies_skills",
@@ -1710,14 +1617,6 @@ def register_registered_routes(app):
                 mobile_rows=body.get("mobile_numbers", []),
                 email_rows=body.get("emails", []),
             )
-            timestamp_rows = ensure_profile_timestamp_rows(
-                S.store,
-                new_id,
-                compare_as_string=False,
-                timestamp_rows=body["timestamps"] if "timestamps" in body else _MISSING,
-                membership_rows=body.get("person_youth_group", []),
-                responsibility_rows=body.get("responsibilities", []),
-            )
 
             changed_by = _changed_by_from_current_user()
             p["person_id"] = new_id
@@ -1739,7 +1638,6 @@ def register_registered_routes(app):
                     "addresses": person_payload["addresses_rows"],
                     "schools": body.get("schools", []),
                     "higher_education": body.get("higher_education", []),
-                    "timestamps": timestamp_rows,
                     "responsibilities": body.get("responsibilities", []),
                     "person_youth_group": body.get("person_youth_group", []),
                     "hobbies_skills": body.get("hobbies_skills", []),
@@ -1757,7 +1655,6 @@ def register_registered_routes(app):
                     "addresses",
                     "schools",
                     "higher_education",
-                    "timestamps",
                     "responsibilities",
                     "person_youth_group",
                     "hobbies_skills",
@@ -1992,14 +1889,6 @@ def register_unregistered_routes(app):
                 mobile_rows=body.get("mobile_numbers", []),
                 email_rows=body.get("emails", []),
             )
-            timestamp_rows = ensure_profile_timestamp_rows(
-                S.unreg_store,
-                new_uid,
-                compare_as_string=True,
-                timestamp_rows=body["timestamps"] if "timestamps" in body else _MISSING,
-                membership_rows=body.get("person_youth_group", []),
-                responsibility_rows=body.get("responsibilities", []),
-            )
 
             changed_by = _changed_by_from_current_user()
             p["person_id"] = new_uid
@@ -2025,7 +1914,6 @@ def register_unregistered_routes(app):
                     "social_media": body.get("social_media", []),
                     "schools": body.get("schools", []),
                     "higher_education": body.get("higher_education", []),
-                    "timestamps": timestamp_rows,
                     "responsibilities": body.get("responsibilities", []),
                     "person_youth_group": body.get("person_youth_group", []),
                     "hobbies_skills": body.get("hobbies_skills", []),
@@ -2043,7 +1931,6 @@ def register_unregistered_routes(app):
                     "social_media",
                     "schools",
                     "higher_education",
-                    "timestamps",
                     "responsibilities",
                     "person_youth_group",
                     "hobbies_skills",
@@ -2131,14 +2018,6 @@ def register_unregistered_routes(app):
                 mobile_rows=body.get("mobile_numbers") if "mobile_numbers" in body else None,
                 email_rows=body.get("emails") if "emails" in body else None,
             )
-            timestamp_rows = ensure_profile_timestamp_rows(
-                S.unreg_store,
-                uid,
-                compare_as_string=True,
-                timestamp_rows=body["timestamps"] if "timestamps" in body else _MISSING,
-                membership_rows=body.get("person_youth_group") if "person_youth_group" in body else None,
-                responsibility_rows=body.get("responsibilities") if "responsibilities" in body else None,
-            )
 
             changed_by = _changed_by_from_current_user()
             all_unreg = S._scd_ensure_columns(S.unreg_store.get("persons", pd.DataFrame()).copy())
@@ -2169,7 +2048,6 @@ def register_unregistered_routes(app):
                 "social_media": body.get("social_media", []),
                 "schools": body.get("schools", []),
                 "higher_education": body.get("higher_education", []),
-                "timestamps": timestamp_rows,
                 "responsibilities": body.get("responsibilities", []),
                 "person_youth_group": body.get("person_youth_group", []),
                 "hobbies_skills": body.get("hobbies_skills", []),
@@ -2202,7 +2080,6 @@ def register_unregistered_routes(app):
                         "social_media",
                         "schools",
                         "higher_education",
-                        "timestamps",
                         "responsibilities",
                         "person_youth_group",
                         "hobbies_skills",
@@ -2344,14 +2221,8 @@ def register_unregistered_routes(app):
             S.replace_person_title(S.store, new_pid, person_title, changed_by="admin")
             S.replace_person_school_system_sector(S.store, new_pid, school_system_sector, changed_by="admin")
 
-            for sheet in ("nationality", "mobile_numbers", "emails", "social_media", "addresses", "schools", "higher_education", "jobs", "timestamps", "responsibilities", "person_youth_group", "hobbies_skills", S.PERSON_HEALTH_CONDITION_SHEET, S.PERSON_SPECIAL_NOTE_SHEET):
+            for sheet in ("nationality", "mobile_numbers", "emails", "social_media", "addresses", "schools", "higher_education", "jobs", "responsibilities", "person_youth_group", "hobbies_skills", S.PERSON_HEALTH_CONDITION_SHEET, S.PERSON_SPECIAL_NOTE_SHEET):
                 rows = record.get(sheet, [])
-                if sheet == "timestamps":
-                    rows = _seed_missing_timestamp_rows(
-                        rows,
-                        membership_rows=record.get("person_youth_group", []),
-                        responsibility_rows=record.get("responsibilities", []),
-                    )
                 if rows:
                     replace_profile_sub_rows(S.store, new_pid, sheet, rows, compare_as_string=False, changed_by="admin")
             S.save()
@@ -2434,25 +2305,6 @@ def register_unregistered_routes(app):
                                 compare_as_string=True,
                             )
                             changed = True
-                    if sync_group_id:
-                        existing_timestamp_rows = _profile_timestamp_rows(
-                            S.unreg_store,
-                            existing_uid,
-                            compare_as_string=True,
-                        )
-                        seeded_timestamp_rows = _seed_missing_timestamp_rows(
-                            existing_timestamp_rows,
-                            membership_rows=[{S.YOUTH_GROUP_ID_COL: sync_group_id}],
-                        )
-                        if seeded_timestamp_rows != existing_timestamp_rows:
-                            replace_profile_sub_rows(
-                                S.unreg_store,
-                                existing_uid,
-                                "timestamps",
-                                seeded_timestamp_rows,
-                                compare_as_string=True,
-                            )
-                            changed = True
                     created[n.get("id")] = existing_uid
                     continue
 
@@ -2474,17 +2326,6 @@ def register_unregistered_routes(app):
                         new_uid,
                         S.PERSON_YOUTH_GROUP_SHEET,
                         _seed_current_membership_rows([], youth_group_id=sync_membership_group_id),
-                        compare_as_string=True,
-                    )
-                if sync_group_id:
-                    replace_profile_sub_rows(
-                        S.unreg_store,
-                        new_uid,
-                        "timestamps",
-                        [{
-                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                            S.YOUTH_GROUP_ID_COL: sync_group_id,
-                        }],
                         compare_as_string=True,
                     )
                 created[n.get("id")] = new_uid
