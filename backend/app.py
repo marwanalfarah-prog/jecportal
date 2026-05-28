@@ -13,6 +13,8 @@ from core.routes_config import register_config_routes
 from core.routes_youth_groups import register_youth_group_routes
 from core.routes_parishes import register_churches_routes
 from core.routes_bible_reader import register_bible_reader_routes
+from core.routes_registration import register_registration_routes
+from core.routes_requests import register_requests_routes
 
 
 app = Flask(__name__)
@@ -33,6 +35,8 @@ register_config_routes(app)
 register_youth_group_routes(app)
 register_churches_routes(app)
 register_bible_reader_routes(app)
+register_registration_routes(app)
+register_requests_routes(app)
 
 
 @app.get("/api/logo")

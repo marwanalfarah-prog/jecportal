@@ -7,7 +7,7 @@ import pandas as pd
 from flask import jsonify, request
 
 from core import state as S
-from core.routes_auth import _current_user, _get_council_access, _get_person_youth_groups
+from core.routes_auth import _changed_by_user_id, _current_user, _get_council_access, _get_person_youth_groups
 
 
 AGE_GROUP_ORDER = ['البراعم', 'الإعدادي', 'الثانوي', 'الجامعيّة', 'العاملة']
@@ -493,7 +493,7 @@ def register_promotions_routes(app):
         rules = _group_promotion_rules(rules_dict, yg)
 
         extra = body.get("extra_data") or {}
-        promo_changed_by = u["username"]
+        promo_changed_by = _changed_by_user_id(u)
 
         if person_type == "registered":
             try:

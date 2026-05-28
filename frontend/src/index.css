@@ -664,6 +664,14 @@ tbody td {
   gap: 18px;
 }
 
+.registration-step-one-shell {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0 24px;
+  box-sizing: border-box;
+}
+
 .profile-tabs {
   gap: 0;
   border-bottom: none;
@@ -2226,6 +2234,10 @@ tbody td {
 }
 
 @media (max-width: 640px) {
+  .registration-step-one-shell {
+    padding: 0 12px;
+  }
+
   .profile-two-column-layout,
   .profile-view-grid,
   .profile-name-columns {

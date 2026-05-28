@@ -70,6 +70,67 @@ def _has_person_link(user: dict) -> bool:
     return user.get("person_type") in ("registered", "unregistered") and person_id is not None and str(person_id).strip() != ""
 
 
+def _validate_auth_person_link(role: str, person_type: str | None, person_id) -> tuple[str | None, str | None]:
+    normalized_role = str(role or "member").strip() or "member"
+    normalized_person_id = S._normalize_person_id(person_id)
+
+    if normalized_person_id is None:
+        if normalized_role == "admin":
+            return None, None
+        return "person_id is required for non-admin auth users", None
+
+    actual_person_type = _person_type_from_person_id(normalized_person_id)
+    if actual_person_type is None:
+        return "linked person was not found or is no longer active", None
+
+    if person_type and person_type not in ("registered", "unregistered"):
+        return "invalid person_type", None
+    if person_type and person_type != actual_person_type:
+        return "person_type does not match the linked person", None
+
+    return None, actual_person_type
+
+
+def _auth_user_link_error(user: dict) -> str | None:
+    error, _actual_person_type = _validate_auth_person_link(
+        user.get("role") or "member",
+        user.get("person_type"),
+        user.get("person_id"),
+    )
+    return error
+
+
+def _deactivate_auth_users_for_person(person_id, *, changed_by: str = "admin") -> int:
+    person_key = S._normalize_person_id(person_id)
+    if person_key is None:
+        return 0
+
+    removed = 0
+    with auth_lock:
+        data = _load_auth()
+        kept_users = []
+        for user in data.get("users", []):
+            uid = S._normalize_person_id(user.get("person_id"))
+            if uid is not None and str(uid) == str(person_key):
+                removed += 1
+                continue
+            kept_users.append(user)
+        if removed:
+            data["users"] = kept_users
+            _save_auth(data, changed_by=changed_by)
+    return removed
+
+
+def _changed_by_user_id(user: dict | None, fallback: str = "admin") -> str:
+    if not user:
+        return fallback
+    person_id = S._normalize_person_id(user.get("person_id"))
+    if person_id is not None and str(person_id).strip():
+        return str(person_id)
+    username = str(user.get("username") or "").strip()
+    return username or fallback
+
+
 def _load_auth() -> dict:
     global _auth_cache_data, _auth_cache_token
 
@@ -132,6 +193,8 @@ def _load_auth() -> dict:
             continue
         person_id = S._normalize_person_id(user.get("person_id"))
         role = str(user.get("role") or "member").strip() or "member"
+        account_status = str(user.get("account_status") or "active").strip() or "active"
+        rejection_reason = user.get("rejection_reason") or None
         person_key = None if person_id is None else str(person_id)
         person_type = None
         if person_key is not None:
@@ -139,9 +202,18 @@ def _load_auth() -> dict:
                 person_type = "registered"
             elif person_key in unreg_person_ids:
                 person_type = "unregistered"
+
+        # For pending registrations, look them up in the full persons store (including pending)
+        if person_type is None and person_key is not None:
+            all_persons = S._scd_filter_active(S.store.get("persons", pd.DataFrame()))
+            if not all_persons.empty and "person_id" in all_persons.columns:
+                row = all_persons[all_persons["person_id"].astype(str) == person_key]
+                if not row.empty:
+                    person_type = "registered"
+
         if person_type and person_id is not None:
             if person_type == "registered":
-                display_name = reg_name_by_pid.get(person_key) or _get_person_name(person_type, person_id)
+                display_name = reg_name_by_pid.get(person_key) or _get_person_name_any(person_id)
             else:
                 display_name = unreg_name_by_pid.get(person_key) or _get_person_name(person_type, person_id)
         elif role == "admin":
@@ -155,6 +227,12 @@ def _load_auth() -> dict:
             "person_id": person_id,
             "person_type": person_type,
             "display_name": display_name,
+            "account_status": account_status,
+            "rejection_reason": rejection_reason,
+            "person_missing": bool(
+                (person_key is not None and person_type is None)
+                or (role != "admin" and person_key is None)
+            ),
         })
     payload = {"users": users}
     with _auth_cache_lock:
@@ -163,7 +241,7 @@ def _load_auth() -> dict:
     return deepcopy(payload)
 
 
-def _save_auth(data: dict):
+def _save_auth(data: dict, *, changed_by: str | None = None):
     persisted = {
         "users": [
             {
@@ -171,15 +249,18 @@ def _save_auth(data: dict):
                 "username": (str(u.get("username") or "")).strip().lower(),
                 "password_hash": str(u.get("password_hash") or "").strip(),
                 "role": str(u.get("role") or "member").strip() or "member",
+                "account_status": str(u.get("account_status") or "active").strip() or "active",
+                "rejection_reason": u.get("rejection_reason") or "",
             }
             for u in data.get("users", [])
         ]
     }
-    try:
-        current = _current_user()
-        changed_by = (current or {}).get("username") or "admin"
-    except Exception:
-        changed_by = "admin"
+    if changed_by is None:
+        try:
+            current = _current_user()
+            changed_by = _changed_by_user_id(current)
+        except Exception:
+            changed_by = "admin"
     S.db.save_auth(persisted, changed_by=changed_by)
     _invalidate_auth_cache()
 
@@ -196,6 +277,19 @@ def _ensure_admin():
             "display_name": "المدير",
         })
         _save_auth(data)
+
+
+def _get_person_name_any(pid) -> str:
+    """Look up name including pending (not-yet-approved) persons."""
+    try:
+        all_persons = S._scd_filter_active(S.store.get("persons", pd.DataFrame()))
+        if not all_persons.empty and "person_id" in all_persons.columns:
+            row = all_persons[all_persons["person_id"].astype(str) == str(pid)]
+            if not row.empty:
+                return _compose_person_full_name(row.iloc[0].to_dict()) or str(pid)
+    except Exception:
+        pass
+    return str(pid)
 
 
 def _get_person_name(person_type: str, pid) -> str:
@@ -219,6 +313,32 @@ def _get_person_name(person_type: str, pid) -> str:
     except Exception:
         pass
     return str(pid)
+
+
+def _get_person_youth_groups_any(person_type: str, pid) -> list:
+    """Like _get_person_youth_groups but includes pending/unapproved memberships (for the person's own view)."""
+    try:
+        if person_type is None and pid is not None:
+            person_type = _person_type_from_person_id(pid)
+        if person_type in ("registered", None):
+            pyg = S._scd_filter_active(S.store.get("person_youth_group", pd.DataFrame()))
+            if pyg.empty or "person_id" not in pyg.columns:
+                return []
+            rows = pyg[pyg["person_id"].astype(str) == str(pid)]
+            if S.YOUTH_GROUP_ID_COL not in rows.columns:
+                return []
+            return rows[S.YOUTH_GROUP_ID_COL].dropna().astype(str).unique().tolist()
+        elif person_type == "unregistered":
+            df = S._scd_filter_active(S.unreg_store.get("person_youth_group", pd.DataFrame()))
+            if df.empty or "person_id" not in df.columns:
+                return []
+            rows = df[df["person_id"].astype(str) == str(pid)]
+            if S.YOUTH_GROUP_ID_COL not in rows.columns:
+                return []
+            return rows[S.YOUTH_GROUP_ID_COL].dropna().astype(str).unique().tolist()
+    except Exception:
+        pass
+    return []
 
 
 def _get_person_youth_groups(person_type: str, pid) -> list:
@@ -381,7 +501,10 @@ def _current_user():
     if not uid:
         return None
     data = _load_auth()
-    return next((u for u in data["users"] if u["username"] == uid), None)
+    user = next((u for u in data["users"] if u["username"] == uid), None)
+    if user and _auth_user_link_error(user):
+        return None
+    return user
 
 
 def _require_admin():
@@ -410,13 +533,43 @@ def register_auth_routes(app):
         user = next((u for u in data["users"] if u["username"].lower() == username), None)
         if not user or user["password_hash"] != _hash_pw(password):
             return jsonify({"error": "اسم المستخدم أو كلمة المرور غير صحيحة"}), 401
+
+        link_error = _auth_user_link_error(user)
+        if link_error:
+            session.clear()
+            return jsonify({
+                "error": "تم تعطيل هذا الحساب لأن الملف الشخصي المرتبط به غير موجود.",
+                "account_status": "missing_person",
+            }), 403
+
+        account_status = user.get("account_status") or "active"
+        if account_status == "rejected_admin":
+            reason = user.get("rejection_reason") or ""
+            msg = "تم رفض طلب تسجيلك من قِبَل الإدارة."
+            if reason:
+                msg += f" السبب: {reason}"
+            return jsonify({"error": msg, "account_status": account_status}), 403
+        if account_status == "rejected_all_yg":
+            reason = user.get("rejection_reason") or ""
+            msg = "تم رفض طلب انضمامك إلى جميع فرق الشبيبة المطلوبة."
+            if reason:
+                msg += f" السبب: {reason}"
+            return jsonify({"error": msg, "account_status": account_status}), 403
+
         session["user_id"] = user["username"]
         safe = {k: v for k, v in user.items() if k != "password_hash"}
+        is_pending = account_status in ("pending", "pending_yg")
+        safe["is_pending"] = is_pending
+
         if _has_person_link(user):
-            youth_groups = _get_person_youth_groups(user["person_type"], user["person_id"])
+            youth_groups = _get_person_youth_groups_any(user["person_type"], user["person_id"])
             safe["youth_groups"] = youth_groups
-            safe["council_access"] = _get_council_access(user["person_type"], user["person_id"], youth_groups)
+            if not is_pending:
+                safe["council_access"] = _get_council_access(user["person_type"], user["person_id"], youth_groups)
+            else:
+                safe["council_access"] = {}
         else:
+            safe["youth_groups"] = []
             safe["council_access"] = {}
         return jsonify({"ok": True, "user": safe})
 
@@ -430,12 +583,19 @@ def register_auth_routes(app):
         u = _current_user()
         if not u:
             return jsonify({"user": None})
+        account_status = u.get("account_status") or "active"
         safe = {k: v for k, v in u.items() if k != "password_hash"}
+        is_pending = account_status in ("pending", "pending_yg")
+        safe["is_pending"] = is_pending
         if _has_person_link(u):
-            youth_groups = _get_person_youth_groups(u["person_type"], u["person_id"])
+            youth_groups = _get_person_youth_groups_any(u["person_type"], u["person_id"])
             safe["youth_groups"] = youth_groups
-            safe["council_access"] = _get_council_access(u["person_type"], u["person_id"], youth_groups)
+            if not is_pending:
+                safe["council_access"] = _get_council_access(u["person_type"], u["person_id"], youth_groups)
+            else:
+                safe["council_access"] = {}
         else:
+            safe["youth_groups"] = []
             safe["council_access"] = {}
         return jsonify({"user": safe})
 
@@ -472,6 +632,7 @@ def register_auth_routes(app):
                 "person_type": u.get("person_type"),
                 "person_id": u.get("person_id"),
                 "display_name": u.get("display_name") or _get_person_name(u.get("person_type"), S._normalize_person_id(u.get("person_id"))),
+                "person_missing": bool(u.get("person_missing")),
             })
         return jsonify({"users": users})
 
@@ -514,9 +675,13 @@ def register_auth_routes(app):
         body = request.json or {}
         username = (body.get("username") or "").strip().lower()
         password = body.get("password") or ""
-        role = body.get("role", "member")
+        role = str(body.get("role") or "member").strip() or "member"
         person_type = body.get("person_type")
         person_id = S._normalize_person_id(body.get("person_id"))
+        link_error, actual_person_type = _validate_auth_person_link(role, person_type, person_id)
+        if link_error:
+            return jsonify({"error": link_error}), 400
+        person_type = actual_person_type or None
         display_name = body.get("display_name") or _get_person_name(person_type, person_id)
 
         if not username or not password:
@@ -581,6 +746,18 @@ def register_auth_routes(app):
                     user["person_type"] = body["person_type"]
                 if "person_id" in body:
                     user["person_id"] = S._normalize_person_id(body["person_id"])
+
+            link_error, actual_person_type = _validate_auth_person_link(
+                user.get("role"),
+                user.get("person_type"),
+                user.get("person_id"),
+            )
+            if link_error:
+                return jsonify({"error": link_error}), 400
+            if actual_person_type:
+                user["person_type"] = actual_person_type
+            elif S._normalize_person_id(user.get("person_id")) is None:
+                user["person_type"] = None
 
             if me["username"].lower() == old_username and user.get("username"):
                 session["user_id"] = str(user.get("username")).strip().lower()
@@ -765,6 +942,8 @@ exports = {
     "_require_admin": _require_admin,
     "_require_auth": _require_auth,
     "_load_auth": _load_auth,
+    "_changed_by_user_id": _changed_by_user_id,
+    "_deactivate_auth_users_for_person": _deactivate_auth_users_for_person,
     "_get_person_name": _get_person_name,
     "_get_person_youth_groups": _get_person_youth_groups,
     "_get_council_access": _get_council_access,

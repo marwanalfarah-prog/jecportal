@@ -1,6 +1,6 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { Users, Plus, Trash2, RefreshCw, X, Search, ShieldCheck, User, Download, Copy, Check, Pencil } from 'lucide-react'
-import { api } from '../api.js'
+import { api, getApiErrorMessage } from '../api.js'
 import { EmptyState, ErrorState, LoadingState } from '../pageStates.jsx'
 
 function Badge({ children, color = 'navy' }) {
@@ -9,6 +9,7 @@ function Badge({ children, color = 'navy' }) {
     gold:  { bg: '#fffbeb', color: '#92400e', border: '#fde68a' },
     green: { bg: '#e8f8f0', color: '#1a7a45', border: '#a7f3d0' },
     gray:  { bg: '#f0f2f7', color: '#4a5568', border: '#e2e6ef' },
+    red:   { bg: '#fdecea', color: '#c62828', border: '#ef9a9a' },
   }
   const c = colors[color] || colors.gray
   return (
@@ -249,7 +250,9 @@ export default function UserManagement({ toast }) {
       setFormErr('')
       loadUsers()
     } catch (e) {
-      const msg = e.message?.includes('409') ? 'اسم المستخدم موجود مسبقاً' : 'حدث خطأ'
+      const msg = e.status === 409 || e.message?.includes('409')
+        ? 'اسم المستخدم موجود مسبقاً'
+        : getApiErrorMessage(e, 'حدث خطأ')
       setFormErr(msg)
     }
   }
@@ -303,8 +306,8 @@ export default function UserManagement({ toast }) {
       setConfirmPw('')
       loadUsers()
     } catch (e) {
-      if ((e.message || '').includes('409')) toast('اسم المستخدم موجود مسبقاً', 'error')
-      else toast('تعذر تحديث بيانات الدخول', 'error')
+      if (e.status === 409 || (e.message || '').includes('409')) toast('اسم المستخدم موجود مسبقاً', 'error')
+      else toast(getApiErrorMessage(e, 'تعذر تحديث بيانات الدخول'), 'error')
     }
   }
 
@@ -466,9 +469,10 @@ export default function UserManagement({ toast }) {
                       : <Badge color="green"><User size={11}/> عضو</Badge>}
                   </td>
                   <td style={{ padding: '10px 14px' }}>
-                    {u.person_type === 'registered'   && <Badge color="navy">مسجّل</Badge>}
-                    {u.person_type === 'unregistered' && <Badge color="gray">غير مسجّل</Badge>}
-                    {!u.person_type                   && <span style={{ color: '#9ba5bc' }}>—</span>}
+                    {u.person_missing                 && <Badge color="red">ملف مفقود</Badge>}
+                    {!u.person_missing && u.person_type === 'registered'   && <Badge color="navy">مسجّل</Badge>}
+                    {!u.person_missing && u.person_type === 'unregistered' && <Badge color="gray">غير مسجّل</Badge>}
+                    {!u.person_missing && !u.person_type                   && <span style={{ color: '#9ba5bc' }}>—</span>}
                   </td>
                   <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: '0.82rem', color: '#6b778f' }}>
                     {u.person_id ?? '—'}

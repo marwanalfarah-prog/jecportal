@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { LogIn, Eye, EyeOff, Lock, User } from 'lucide-react'
+import { LogIn, Eye, EyeOff, Lock, User, UserPlus } from 'lucide-react'
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin, onRegister }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPw,   setShowPw]   = useState(false)
@@ -179,6 +179,23 @@ export default function Login({ onLogin }) {
             )}
           </button>
         </div>
+
+        {onRegister && (
+          <div style={{ textAlign: 'center', padding: '0 32px 18px' }}>
+            <button
+              type="button"
+              onClick={onRegister}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: '#c9963c', fontSize: '0.82rem', fontFamily: 'var(--font-body)',
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                textDecoration: 'underline', textUnderlineOffset: 3,
+              }}
+            >
+              <UserPlus size={13} /> تسجيل عضو جديد
+            </button>
+          </div>
+        )}
 
         <div style={{
           textAlign: 'center', padding: '0 32px 20px',

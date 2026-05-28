@@ -303,4 +303,17 @@ export const api = {
   listBibleReaderBooks: () => req('/bible-reader/books'),
   getBibleReaderBook: (bookId) => req(`/bible-reader/books/${encodeURIComponent(bookId)}`),
   getBibleSongLyrics: () => req('/bible-reader/books-song-lyrics'),
+
+  // ── Registration ────────────────────────────────────────────────────────────
+  submitRegistration: (body) => req('/registration/submit', { method: 'POST', body }),
+  checkUsername: (username) => req(`/registration/check-username?username=${encodeURIComponent(username)}`),
+  myRegistrationStatus: () => req('/registration/my-status'),
+
+  // ── Requests ────────────────────────────────────────────────────────────────
+  getRequests: () => req('/requests'),
+  getRequestsHistory: () => req('/requests/history'),
+  adminApproveRequest: (personId, notes) => req(`/requests/${personId}/admin-approve`, { method: 'POST', body: { notes: notes || '' } }),
+  adminRejectRequest: (personId, reason) => req(`/requests/${personId}/admin-reject`, { method: 'POST', body: { reason: reason || '' } }),
+  ygApproveRequest: (recordId, notes) => req(`/requests/yg-approve/${encodeURIComponent(recordId)}`, { method: 'POST', body: { notes: notes || '' } }),
+  ygRejectRequest: (recordId, reason) => req(`/requests/yg-reject/${encodeURIComponent(recordId)}`, { method: 'POST', body: { reason: reason || '' } }),
 }

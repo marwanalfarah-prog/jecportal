@@ -12,6 +12,7 @@ from core.database import SCD_LOGICAL_SHEETS as _SCD_LOGICAL_SHEETS
 from core.database import logical_sheet_name as _logical_sheet_name
 from core.routes_auth import (
     _current_user,
+    _deactivate_auth_users_for_person,
     _get_council_access,
     _get_person_youth_groups,
     _require_admin,
@@ -577,6 +578,64 @@ def prepare_profile_person_payload(raw_person, *, addresses_rows=_MISSING, infer
     }
 
 
+def apply_profile_person_relationship_flags(body: dict, person_fields: dict) -> dict:
+    payload = body if isinstance(body, dict) else {}
+
+    school_rows = payload.get("schools", []) or []
+    has_current_school = any(
+        isinstance(row, dict) and S._to_bool(row.get("is_current"))
+        for row in school_rows
+    )
+    school_status = S.normalize_school_status(
+        person_fields.get(S.SCHOOL_STATUS_COL),
+        has_current_school=has_current_school,
+    )
+    person_fields[S.SCHOOL_STATUS_COL] = school_status
+    if school_status == S.SCHOOL_STATUS_STUDYING and not has_current_school and school_rows:
+        normalized_school_rows = []
+        made_current = False
+        for row in school_rows:
+            if not isinstance(row, dict):
+                continue
+            next_row = dict(row)
+            next_row["is_current"] = not made_current
+            if next_row["is_current"]:
+                next_row["end_date"] = None
+                made_current = True
+            normalized_school_rows.append(next_row)
+        payload["schools"] = normalized_school_rows
+    elif school_status != S.SCHOOL_STATUS_STUDYING:
+        normalized_school_rows = []
+        for row in school_rows:
+            if not isinstance(row, dict):
+                continue
+            next_row = dict(row)
+            next_row["is_current"] = False
+            normalized_school_rows.append(next_row)
+        payload["schools"] = normalized_school_rows
+
+    higher_rows = payload.get("higher_education", []) or []
+    if S.normalize_higher_education_rows(higher_rows):
+        person_fields[S.NO_HIGHER_EDUCATION_COL] = False
+    elif S._to_bool(person_fields.get(S.NO_HIGHER_EDUCATION_COL)):
+        payload["higher_education"] = []
+        person_fields[S.NO_HIGHER_EDUCATION_COL] = True
+    else:
+        person_fields[S.NO_HIGHER_EDUCATION_COL] = False
+
+    job_rows = payload.get("jobs", []) or []
+    normalized_job_rows, _ = S.normalize_job_rows(job_rows)
+    if normalized_job_rows:
+        person_fields[S.NOT_EMPLOYED_COL] = False
+    elif S._to_bool(person_fields.get(S.NOT_EMPLOYED_COL)):
+        payload["jobs"] = []
+        person_fields[S.NOT_EMPLOYED_COL] = True
+    else:
+        person_fields[S.NOT_EMPLOYED_COL] = False
+
+    return payload
+
+
 def prepare_profile_job_contact_rows(store: dict, pid, *, job_rows, mobile_rows, email_rows):
     prepared_job_rows, job_id_map = S.prepare_job_rows_for_person(store, pid, job_rows)
     mobile_rows_payload = None if mobile_rows is None else S.remap_job_links_in_mobile_rows(mobile_rows, job_id_map)
@@ -627,6 +686,30 @@ def replace_profile_sub_rows(store: dict, pid, sheet, rows, *, compare_as_string
         pid_key = str(pid)
         existing_memberships = S._scd_active_rows(
             store.get(sheet, pd.DataFrame()), "person_id", pid_key)
+        existing_approval_by_record_id = {}
+        for existing_row in existing_memberships:
+            record_id = S._normalize_person_youth_group_record_id(
+                existing_row.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL)
+            )
+            if record_id:
+                existing_approval_by_record_id[record_id] = {
+                    col: existing_row.get(col)
+                    for col in S.PERSON_YOUTH_GROUP_APPROVAL_COLUMNS
+                    if col in existing_row
+                }
+        for membership_row in membership_rows:
+            record_id = S._normalize_person_youth_group_record_id(
+                membership_row.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL)
+            )
+            existing_approval = existing_approval_by_record_id.get(record_id or "")
+            if not existing_approval:
+                continue
+            for col, existing_value in existing_approval.items():
+                if (
+                    S._scd_val_for_compare(membership_row.get(col)) == ""
+                    and S._scd_val_for_compare(existing_value) != ""
+                ):
+                    membership_row[col] = existing_value
         existing_pyg_rids = {
             str(r.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL))
             for r in existing_memberships
@@ -1590,7 +1673,39 @@ def register_registered_routes(app):
             photo_url_template="/api/person/{pid}/photo",
         )
         if not record:
-            return jsonify({"error": "not found"}), 404
+            # Allow viewing pending-registration profiles for: the person themselves,
+            # admins (who need to review before approving), and council members who
+            # have access to at least one of the person's youth groups.
+            viewer = _current_user()
+            can_view_pending = False
+            if viewer:
+                if viewer.get("role") == "admin":
+                    can_view_pending = True
+                elif viewer.get("person_id") is not None and str(viewer.get("person_id")) == str(pid):
+                    can_view_pending = True
+                else:
+                    # Council member: check if they have access to any of the person's pending YG memberships
+                    pyg = S._scd_filter_active(S.store.get("person_youth_group", pd.DataFrame()))
+                    if not pyg.empty and "person_id" in pyg.columns:
+                        person_yg_ids = set(
+                            pyg[pyg["person_id"].astype(str) == str(pid)][S.YOUTH_GROUP_ID_COL]
+                            .dropna().astype(str).tolist()
+                        )
+                        viewer_yg = _get_person_youth_groups(viewer.get("person_type"), viewer.get("person_id"))
+                        council_access = _get_council_access(viewer.get("person_type"), viewer.get("person_id"), viewer_yg)
+                        if person_yg_ids & set(council_access.keys()):
+                            can_view_pending = True
+
+            if can_view_pending:
+                all_active = S._scd_filter_active(S.store.get("persons", pd.DataFrame()))
+                record = build_profile_record(
+                    all_active, S.store, pid,
+                    compare_as_string=False,
+                    photo_path_getter=S.get_photo_path,
+                    photo_url_template="/api/person/{pid}/photo",
+                )
+            if not record:
+                return jsonify({"error": "not found"}), 404
         return jsonify(record)
 
     @app.post("/api/person/<int:pid>/photo")
@@ -1713,6 +1828,7 @@ def register_registered_routes(app):
                 addresses_rows=body.get("addresses") if "addresses" in body else None,
                 infer_addresses_from_payload=True,
             )
+            body = apply_profile_person_relationship_flags(body, p)
             validation_errors = collect_profile_validation_errors(
                 body,
                 p,
@@ -1814,6 +1930,7 @@ def register_registered_routes(app):
                 addresses_rows=body.get("addresses") if "addresses" in body else None,
                 infer_addresses_from_payload="addresses" not in body,
             )
+            body = apply_profile_person_relationship_flags(body, p)
             validation_errors = collect_profile_validation_errors(
                 body,
                 p,
@@ -1916,6 +2033,7 @@ def register_registered_routes(app):
             )
             remove_profile_photo_files(pid)
             S.save()
+            _deactivate_auth_users_for_person(pid, changed_by="admin")
         return jsonify({"ok": True})
 
     @app.patch("/api/person/<int:pid>/archive")
@@ -2016,7 +2134,14 @@ def _validate_promote_record(record):
 def register_unregistered_routes(app):
     @app.get("/api/unregistered")
     def get_unregistered():
+        cached_payload, cached_version, data_version = S.unreg_index_cache_state()
+        if cached_payload is not None and cached_version == data_version:
+            return jsonify(cached_payload)
+
         with S.unreg_lock:
+            cached_payload, cached_version, data_version = S.unreg_index_cache_state()
+            if cached_payload is not None and cached_version == data_version:
+                return jsonify(cached_payload)
             persons_df = S._project_primary_addresses(
                 S.unregistered_persons_view_df(),
                 S._scd_filter_active(S.unreg_store.get("addresses", pd.DataFrame())),
@@ -2051,6 +2176,17 @@ def register_unregistered_routes(app):
             job_map = pid_to_list_u(jobs, "job_title")
             comp_map = pid_to_list_u(jobs, S.EMPLOYER_NAME_COL)
             hob_map = pid_to_list_u(hob, "hobby_skill")
+
+            photo_ids: set[str] = set()
+            try:
+                for name in os.listdir(S.PROFILE_PHOTOS_DIR):
+                    if "." not in name:
+                        continue
+                    pid_part, ext = name.rsplit(".", 1)
+                    if ext.lower() in S.ALLOWED_EXTENSIONS:
+                        photo_ids.add(pid_part)
+            except OSError:
+                pass
 
             enriched = []
             for row in persons_df.to_dict(orient="records"):
@@ -2087,10 +2223,11 @@ def register_unregistered_routes(app):
                 row["_job_titles"] = job_map.get(uid, [])
                 row["_companies"] = comp_map.get(uid, [])
                 row["_hobbies"] = hob_map.get(uid, [])
-                _, ext = S.get_unreg_photo_path(uid)
-                row["_photo"] = f"/api/unregistered/{uid}/photo" if ext else None
+                row["_photo"] = f"/api/unregistered/{uid}/photo" if uid in photo_ids else None
                 row["archived"] = bool(youth_rows) and len(active_youth_rows) == 0
                 enriched.append(row)
+
+            S.set_unreg_index_cache(enriched, data_version)
         return jsonify(enriched)
 
     @app.get("/api/unregistered/<uid>")
@@ -2136,6 +2273,7 @@ def register_unregistered_routes(app):
                 infer_addresses_from_payload="addresses" not in body,
             )
             p = _populate_arabic_name_from_full_name(p, body.get("name"))
+            body = apply_profile_person_relationship_flags(body, p)
             validation_errors = collect_profile_validation_errors(
                 body,
                 p,
@@ -2287,6 +2425,7 @@ def register_unregistered_routes(app):
                 addresses_rows=body.get("addresses") if "addresses" in body else None,
                 infer_addresses_from_payload=True,
             )
+            body = apply_profile_person_relationship_flags(body, p)
             validation_errors = collect_profile_validation_errors(
                 body,
                 p,
@@ -2411,6 +2550,7 @@ def register_unregistered_routes(app):
                 remove_membership_history=True,
             )
             S._save_unreg_store()
+            _deactivate_auth_users_for_person(uid, changed_by="admin")
         remove_profile_photo_files(uid)
         return jsonify({"ok": True})
 

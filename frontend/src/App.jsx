@@ -1,6 +1,7 @@
 import { Component, Suspense, lazy, startTransition, useEffect, useState } from 'react'
-import { LayoutDashboard, Users, GitBranch, LogOut, ShieldCheck, User as UserIcon, Eye, X, Search, ClipboardList, Settings, Building2, ImageOff, Key, MapPin, BookOpenText, Menu } from 'lucide-react'
+import { LayoutDashboard, Users, GitBranch, LogOut, ShieldCheck, User as UserIcon, Eye, X, Search, ClipboardList, Settings, Building2, ImageOff, Key, MapPin, BookOpenText, Menu, UserPlus } from 'lucide-react'
 import Login from './pages/Login.jsx'
+import Registration from './pages/Registration.jsx'
 import { useToast, ToastContainer } from './useToast.jsx'
 import NotificationBell from './NotificationBell.jsx'
 import { api } from './api.js'
@@ -20,6 +21,7 @@ const Config = lazy(() => import('./pages/Config.jsx'))
 const YouthGroupAdmin = lazy(() => import('./pages/YouthGroupAdmin.jsx'))
 const ChurchesMap = lazy(() => import('./pages/ChurchesMap.jsx'))
 const BibleReader = lazy(() => import('./pages/BibleReader.jsx'))
+const Requests = lazy(() => import('./pages/Requests.jsx'))
 
 const ROUTE_PRELOADERS = {
   dashboard: () => import('./pages/Dashboard.jsx'),
@@ -35,6 +37,7 @@ const ROUTE_PRELOADERS = {
   youth_groups: () => import('./pages/YouthGroupAdmin.jsx'),
   churches_map: () => import('./pages/ChurchesMap.jsx'),
   bible_reader: () => import('./pages/BibleReader.jsx'),
+  requests: () => import('./pages/Requests.jsx'),
 }
 
 const preloadedRoutes = new Set()
@@ -62,6 +65,7 @@ const ROUTE_LOADING_TITLES = {
   config: 'جارٍ تحميل الإعدادات',
   my_questions: 'جارٍ تحميل استبياناتي',
   council_members: 'جارٍ تحميل أعضاء الفئة',
+  requests: 'جارٍ تحميل الطلبات',
 }
 
 function RouteLoader({ page, minHeight = 320, description = 'يتم تجهيز مكونات الصفحة الآن.' }) {
@@ -519,7 +523,9 @@ const PAGE_TITLES = {
 
 // ── URL routing utilities ────────────────────────────────────────────────────
 const PAGE_PATHS = {
-  dashboard:            '/',
+  login:                '/login',
+  register:             '/register',
+  dashboard:            '/dashboard',
   members:              '/members',
   orgtree:              '/orgtree',
   general_secretariat:  '/general-secretariat',
@@ -531,6 +537,8 @@ const PAGE_PATHS = {
   churches_map:         '/churches-map',
   bible_reader:         '/bible-reader',
   council_members:      '/council-members',
+  requests:             '/requests',
+  add_member:           '/add-member',
 }
 
 const PATH_PAGES = Object.fromEntries(
@@ -538,11 +546,11 @@ const PATH_PAGES = Object.fromEntries(
 )
 
 function parseRoute(pathname) {
+  if (pathname === '/') return { page: 'dashboard', pid: null, unreg: false }
   const unregMatch = pathname.match(/^\/profile\/unreg\/(.+)$/)
   if (unregMatch) return { page: 'profile', pid: unregMatch[1], unreg: true }
   const profileMatch = pathname.match(/^\/profile\/(.+)$/)
   if (profileMatch) return { page: 'profile', pid: profileMatch[1], unreg: false }
-  // /profile with no ID is ambiguous — auth will redirect to the right place
   const pg = PATH_PAGES[pathname]
   return { page: pg || null, pid: null, unreg: false }
 }
@@ -598,21 +606,28 @@ export default function App() {
   const [youthGroupLabels, setYouthGroupLabels] = useState({})
   const [memberMottoByGroup, setMemberMottoByGroup] = useState({})
   const [bibleReaderTarget, setBibleReaderTarget] = useState(null)
+  const [showRegistration, setShowRegistration] = useState(
+    () => window.location.pathname === '/register'
+  )
   const { toasts, toast }               = useToast()
 
   useEffect(() => {
     api.me().then(d => {
       const user = d.user || null
       setAuthUser(user)
-      if (user?.role === 'member') {
+      if (user?.is_pending) {
+        preloadRoute('requests')
+        startTransition(() => { setPage('requests') })
+        replaceRoute('requests')
+      } else if (user?.role === 'member') {
         setSelected(user.person_id)
         setIsUnreg(user.person_type === 'unregistered')
         setPage('profile')
         setProfileReturnPage('orgtree')
         replaceRoute('profile', user.person_id, user.person_type === 'unregistered')
-      } else if (user?.role === 'admin') {
+      } else if (user?.role === 'admin' && !user?.is_pending) {
         const { page: urlPage } = parseRoute(window.location.pathname)
-        const adminAllowed = ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches_map', 'bible_reader', 'config', 'profile']
+        const adminAllowed = ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches_map', 'bible_reader', 'config', 'profile', 'requests', 'add_member']
         if (!urlPage || !adminAllowed.includes(urlPage)) {
           setPage('dashboard')
           replaceRoute('dashboard')
@@ -647,10 +662,24 @@ export default function App() {
     return () => mediaQuery.removeListener(handleViewportChange)
   }, [])
 
+  // Sync URL for pre-auth pages (login / self-registration)
+  useEffect(() => {
+    if (authUser !== null) return  // null = logged out; undefined = still loading
+    const target = showRegistration ? '/register' : '/login'
+    if (window.location.pathname !== target) {
+      window.history.replaceState(null, '', target)
+    }
+  }, [authUser, showRegistration])
+
   const handleLogin = (user) => {
     setAuthUser(user)
     setViewAsUser(null)
-    if (user.role === 'member') {
+    setShowRegistration(false)
+    if (user?.is_pending) {
+      preloadRoute('requests')
+      startTransition(() => { setPage('requests') })
+      replaceRoute('requests')
+    } else if (user?.role === 'member') {
       preloadRoute('profile')
       startTransition(() => {
         setSelected(user.person_id)
@@ -661,9 +690,7 @@ export default function App() {
       replaceRoute('profile', user.person_id, user.person_type === 'unregistered')
     } else {
       preloadRoute('dashboard')
-      startTransition(() => {
-        setPage('dashboard')
-      })
+      startTransition(() => { setPage('dashboard') })
       replaceRoute('dashboard')
     }
   }
@@ -675,9 +702,9 @@ export default function App() {
     await api.logout()
     setProfileHasUnsavedChanges(false)
     setAuthUser(null)
-    setPage('dashboard')
+    setPage('login')
     setSelected(null)
-    replaceRoute('dashboard')
+    replaceRoute('login')
   }
 
   const closeSidebarOnMobile = () => {
@@ -736,9 +763,10 @@ export default function App() {
   const effectiveUser  = viewAsUser || authUser
   const isAdmin        = authUser?.role === 'admin' && !viewAsUser
   const isMember       = effectiveUser?.role === 'member'
+  const isPendingUser  = !isAdmin && (effectiveUser?.is_pending || effectiveUser?.account_status === 'pending' || effectiveUser?.account_status === 'pending_yg')
   // council_access: { youth_group_name: [age_group, ...] }
   const councilAccess  = effectiveUser?.council_access || {}
-  const isCouncil      = isMember && Object.keys(councilAccess).length > 0
+  const isCouncil      = isMember && !isPendingUser && Object.keys(councilAccess).length > 0
   const memberYouthGroups = [...new Set((effectiveUser?.youth_groups || []).filter(Boolean))]
   const memberYouthGroupsKey = memberYouthGroups.join('|')
 
@@ -842,12 +870,18 @@ export default function App() {
   }, [isMember, memberYouthGroupsKey])
 
   // ── Navigation ──────────────────────────────────────────────────────────────
-  const NAV = isAdmin ? [
+  const NAV = isPendingUser ? [
+    { id: 'requests',    label: 'حالة طلبي',              icon: ClipboardList },
+    { id: 'profile',     label: 'ملفي الشخصي (معلّق)',    icon: UserIcon },
+    { id: 'bible_reader', label: 'قارئ الكتاب المقدس',   icon: BookOpenText },
+    { id: 'churches_map', label: 'خريطة الكنائس',         icon: MapPin },
+  ] : isAdmin ? [
     { id: 'dashboard',           label: 'لوحة المعلومات',              icon: LayoutDashboard },
     { id: 'members',             label: 'الأعضاء',                      icon: Users },
     { id: 'orgtree',             label: 'الهيكل التنظيمي',             icon: GitBranch },
     { id: 'general_secretariat', label: 'الأمانة العامة',              icon: GitBranch },
     { id: 'users',               label: 'إدارة المستخدمين',            icon: ShieldCheck },
+    { id: 'requests',            label: 'طلبات التسجيل',               icon: ClipboardList },
     { id: 'questionnaires',       label: 'إدارة الاستبيانات',           icon: ClipboardList },
     { id: 'youth_groups',         label: 'ملف فرق الشبيبة',              icon: Building2 },
     { id: 'churches_map',         label: 'خريطة الكنائس',                 icon: MapPin },
@@ -857,6 +891,7 @@ export default function App() {
     { id: 'profile',         label: 'ملفي الشخصي',       icon: UserIcon },
     { id: 'orgtree',         label: 'الهيكل التنظيمي',   icon: GitBranch },
     ...(isCouncil ? [{ id: 'council_members', label: 'أعضاء فئتي', icon: Users }] : []),
+    ...(isCouncil ? [{ id: 'requests', label: 'طلبات الانضمام', icon: ClipboardList }] : []),
     { id: 'churches_map', label: 'خريطة الكنائس', icon: MapPin },
     { id: 'bible_reader', label: 'قارئ الكتاب المقدس', icon: BookOpenText },
     { id: 'my_questions', label: 'استبياناتي', icon: ClipboardList },
@@ -910,9 +945,11 @@ export default function App() {
   }
 
   const navigate = (p, { skipUnsavedPrompt = false } = {}) => {
-    const allowed = isAdmin
-      ? ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches_map', 'bible_reader', 'config']
-      : ['profile', 'orgtree', 'council_members', 'churches_map', 'bible_reader', 'my_questions']
+    const allowed = isPendingUser
+      ? ['requests', 'profile', 'bible_reader', 'churches_map']
+      : isAdmin
+        ? ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches_map', 'bible_reader', 'config', 'requests', 'add_member']
+        : ['profile', 'orgtree', 'council_members', 'churches_map', 'bible_reader', 'my_questions', 'requests', 'add_member']
     if (!allowed.includes(p)) return
     if (!confirmLeavingDirtyProfile({ skipUnsavedPrompt })) return
     preloadRoute(p)
@@ -979,8 +1016,8 @@ export default function App() {
       if (!authUser) return
       const { page: newPage, pid, unreg } = parseRoute(window.location.pathname)
       const isAdminNow = authUser.role === 'admin' && !viewAsUser
-      const adminAllowed = ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches_map', 'bible_reader', 'config']
-      const memberAllowed = ['profile', 'orgtree', 'council_members', 'churches_map', 'bible_reader', 'my_questions']
+      const adminAllowed = ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches_map', 'bible_reader', 'config', 'requests', 'add_member']
+      const memberAllowed = ['profile', 'orgtree', 'council_members', 'churches_map', 'bible_reader', 'my_questions', 'requests', 'add_member']
       if (newPage === 'profile') {
         startTransition(() => {
           if (pid) setSelected(pid)
@@ -1037,7 +1074,34 @@ export default function App() {
     )
   }
 
-  if (!authUser) return <Login onLogin={handleLogin}/>
+  if (!authUser) {
+    if (showRegistration) {
+      return (
+        <Registration
+          onComplete={(user) => { if (user) handleLogin(user); else setShowRegistration(false) }}
+          onBack={() => setShowRegistration(false)}
+          toast={toast}
+        />
+      )
+    }
+    return <Login onLogin={handleLogin} onRegister={() => setShowRegistration(true)}/>
+  }
+
+  // Add-member page (/add-member)
+  if (page === 'add_member') {
+    const exitAddMember = () => navigate(isAdmin ? 'members' : 'orgtree')
+    return (
+      <Registration
+        onComplete={() => {
+          exitAddMember()
+          toast('تم إرسال طلب التسجيل بنجاح! سيتلقى مراجعة الإدارة قريباً', 'success')
+        }}
+        onBack={exitAddMember}
+        loggedInUser={authUser}
+        toast={toast}
+      />
+    )
+  }
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
@@ -1088,13 +1152,25 @@ export default function App() {
             )
           })}
 
-          {isAdmin && (
+          {/* Create Profile button for ALL logged-in users */}
+          {!isPendingUser && (
             <>
               <div className="nav-section-label" style={{ marginTop: 16 }}>إجراءات</div>
-              <button className="nav-item" onClick={() => { setShowViewAsPicker(true); closeSidebarOnMobile() }} title="عرض بصفة مستخدم" aria-label="عرض بصفة مستخدم">
-                <Eye size={18} className="icon"/>
-                <span className="nav-item-label">عرض بصفة مستخدم</span>
+              <button
+                className={`nav-item${page === 'add_member' ? ' active' : ''}`}
+                onClick={() => navigate('add_member')}
+                title="تسجيل عضو جديد"
+                aria-label="تسجيل عضو جديد"
+              >
+                <UserPlus size={18} className="icon"/>
+                <span className="nav-item-label">تسجيل عضو جديد</span>
               </button>
+              {isAdmin && (
+                <button className="nav-item" onClick={() => { setShowViewAsPicker(true); closeSidebarOnMobile() }} title="عرض بصفة مستخدم" aria-label="عرض بصفة مستخدم">
+                  <Eye size={18} className="icon"/>
+                  <span className="nav-item-label">عرض بصفة مستخدم</span>
+                </button>
+              )}
             </>
           )}
 
@@ -1136,7 +1212,16 @@ export default function App() {
               <div style={{ color: 'white', fontSize: '0.82rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {authUser.display_name || authUser.username}
               </div>
-              <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.72rem' }}>مدير النظام</div>
+              {isPendingUser ? (
+                <div style={{ color: '#fbbf24', fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#fbbf24', display: 'inline-block' }} />
+                  بانتظار الموافقة
+                </div>
+              ) : (
+                <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.72rem' }}>
+                  {isAdmin ? 'مدير النظام' : isCouncil ? 'عضو مجلس' : 'عضو'}
+                </div>
+              )}
             </div>
           </div>
           <button
@@ -1161,6 +1246,28 @@ export default function App() {
       </aside>
 
       <div className={`main-content${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
+        {/* ── Pending registration banner ── */}
+        {isPendingUser && (
+          <div style={{
+            background: 'linear-gradient(90deg, #fffbeb, #fef3c7)',
+            padding: '10px 24px',
+            display: 'flex', alignItems: 'center', gap: 12,
+            boxShadow: '0 2px 8px rgba(251,191,36,0.2)',
+            zIndex: 50, position: 'relative', borderBottom: '1px solid #fde68a',
+          }}>
+            <span style={{ fontSize: '0.85rem' }}>⏳</span>
+            <span style={{ fontWeight: 700, color: '#92400e', fontSize: '0.88rem' }}>
+              حسابك قيد المراجعة — بعض الميزات مقيّدة حتى اكتمال الموافقات.
+            </span>
+            <button
+              onClick={() => navigate('requests')}
+              style={{ marginRight: 'auto', padding: '5px 14px', background: '#92400e', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.8rem', fontFamily: 'var(--font-body)', fontWeight: 700 }}
+            >
+              عرض حالة الطلب
+            </button>
+          </div>
+        )}
+
         {/* ── Impersonation banner ── */}
         {viewAsUser && (
           <div style={{
@@ -1343,6 +1450,14 @@ export default function App() {
               <MyQuestions
                 toast={toast}
                 onNavigate={(p) => navigate(p)}
+              />
+            )}
+
+            {page === 'requests' && (
+              <Requests
+                currentUser={effectiveUser}
+                toast={toast}
+                onViewProfile={(pid) => goProfile(pid, null, false, 'requests')}
               />
             )}
           </Suspense>

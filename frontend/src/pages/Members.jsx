@@ -516,9 +516,9 @@ function formatSocialMediaRows(rows) {
 }
 
 function formatSchoolRows(rows, person) {
-  const graduatedFromSchools = person?.school_graduated === true || formatExportPrimitive(person?.school_graduated).toLowerCase() === 'true'
+  const schoolStatus = formatExportPrimitive(person?.school_graduated)
   const system = joinExportParts([
-    graduatedFromSchools ? 'الحالة: متخرّج من المدارس' : 'الحالة: على مقاعد الدراسة',
+    schoolStatus ? `الحالة: ${schoolStatus}` : 'الحالة: على مقاعد الدراسة',
     person?.school_system,
     person?.school_system_sector,
     person?.school_final_gpa ? `المعدل: ${formatExportPrimitive(person.school_final_gpa)}` : '',

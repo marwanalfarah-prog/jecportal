@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import ReactDOM from 'react-dom'
-import { CheckCheck, Check, MessageSquare, FileText, X, Bell, Mail, Trash2 } from 'lucide-react'
+import { CheckCheck, Check, MessageSquare, FileText, X, Bell, Mail, Trash2, UserPlus, ShieldCheck, Users } from 'lucide-react'
 import { api } from './api.js'
 
 export default function NotificationBell({ onOpenQuestionnaire }) {
@@ -79,6 +79,65 @@ export default function NotificationBell({ onOpenQuestionnaire }) {
 
   const displayed = filter === 'unread' ? notifs.filter(n => !n.read) : notifs
   const readCount = Math.max(0, notifs.length - unread)
+
+  function notifMeta(n) {
+    switch (n.type) {
+      case 'new_questionnaire':
+        return {
+          iconBg: '#eef4ff', iconBorder: '#c5d8f8',
+          icon: <FileText size={18} color="#0f2744" />,
+          text: `استبيان جديد: ${n.questionnaire_title || ''}`,
+        }
+      case 'questionnaire_response':
+        return {
+          iconBg: '#fffbeb', iconBorder: '#fde68a',
+          icon: <MessageSquare size={18} color="#c9963c" />,
+          text: n.message || `${n.respondent_name || ''} أجاب على "${n.questionnaire_title || ''}"`,
+        }
+      case 'registration_pending_admin':
+        return {
+          iconBg: '#eef4ff', iconBorder: '#c5d8f8',
+          icon: <UserPlus size={18} color="#0f2744" />,
+          text: n.message || `طلب تسجيل جديد بانتظار مراجعتك`,
+        }
+      case 'registration_admin_approved':
+        return {
+          iconBg: '#f0fdf4', iconBorder: '#86efac',
+          icon: <ShieldCheck size={18} color="#166534" />,
+          text: n.message || `تمت الموافقة على بياناتك الشخصية`,
+        }
+      case 'registration_admin_rejected':
+        return {
+          iconBg: '#fef2f2', iconBorder: '#fca5a5',
+          icon: <ShieldCheck size={18} color="#991b1b" />,
+          text: n.message || `تم رفض طلب تسجيلك`,
+        }
+      case 'registration_pending_yg':
+        return {
+          iconBg: '#fffbeb', iconBorder: '#fde68a',
+          icon: <Users size={18} color="#92400e" />,
+          text: n.message || `طلب انضمام بانتظار موافقتك`,
+        }
+      case 'registration_yg_approved':
+        return {
+          iconBg: '#f0fdf4', iconBorder: '#86efac',
+          icon: <Users size={18} color="#166534" />,
+          text: n.message || `تمت الموافقة على عضويتك في الشبيبة`,
+        }
+      case 'registration_yg_rejected':
+        return {
+          iconBg: '#fef2f2', iconBorder: '#fca5a5',
+          icon: <Users size={18} color="#991b1b" />,
+          text: n.message || `تم رفض طلب انضمامك إلى الشبيبة`,
+        }
+      default:
+        return {
+          iconBg: '#fffbeb', iconBorder: '#fde68a',
+          icon: <MessageSquare size={18} color="#c9963c" />,
+          text: n.message || n.questionnaire_title || 'إشعار جديد',
+        }
+    }
+  }
 
   const panel = open && ReactDOM.createPortal(
     <div ref={dropRef} style={{
@@ -162,19 +221,21 @@ export default function NotificationBell({ onOpenQuestionnaire }) {
               </div>
             </div>
           </div>
-        ) : displayed.map(n => (
+        ) : displayed.map(n => {
+          const meta = notifMeta(n)
+          return (
           <div key={n.id}
             style={{ width: '100%', background: n.read ? 'white' : '#f0f7ff', borderBottom: '1px solid #f3f4f8', fontFamily: 'var(--font-body)', display: 'flex', alignItems: 'stretch', gap: 0, transition: 'background 0.12s' }}
             onMouseEnter={e => e.currentTarget.style.background = n.read ? '#f8f9fd' : '#e4effe'}
             onMouseLeave={e => e.currentTarget.style.background = n.read ? 'white' : '#f0f7ff'}>
             <button onClick={() => markRead(n)}
               style={{ flex: 1, width: '100%', padding: '14px 12px 14px 8px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'right', display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-            <div style={{ width: 42, height: 42, borderRadius: '50%', flexShrink: 0, background: n.type === 'new_questionnaire' ? '#eef4ff' : '#fffbeb', border: `2px solid ${n.type === 'new_questionnaire' ? '#c5d8f8' : '#fde68a'}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {n.type === 'new_questionnaire' ? <FileText size={18} color="#0f2744" /> : <MessageSquare size={18} color="#c9963c" />}
+            <div style={{ width: 42, height: 42, borderRadius: '50%', flexShrink: 0, background: meta.iconBg, border: `2px solid ${meta.iconBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {meta.icon}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: n.read ? 500 : 800, color: '#0f2744', fontSize: '0.88rem', lineHeight: 1.5, marginBottom: 3 }}>
-                {n.type === 'new_questionnaire' ? `استبيان جديد: ${n.questionnaire_title}` : `${n.respondent_name} أجاب على "${n.questionnaire_title}"`}
+                {meta.text}
               </div>
               {n.response_summary && (
                 <div style={{ fontSize: '0.78rem', color: '#6b7a99', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}>{n.response_summary}</div>
@@ -227,7 +288,7 @@ export default function NotificationBell({ onOpenQuestionnaire }) {
               </button>
             </div>
           </div>
-        ))}
+        )})}
       </div>
 
       {/* Footer */}

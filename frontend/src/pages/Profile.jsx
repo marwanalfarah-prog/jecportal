@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import {
-  ArrowRight, Pencil, Trash2, Plus, Check, Camera, UserX, Download,
+  ArrowRight, ArrowLeft, Pencil, Trash2, Plus, Check, Camera, UserX, Download,
   GraduationCap, Briefcase, Heart, Users, Shield,
   Phone, PhoneCall, Globe, School, GitBranch, Archive, ArchiveRestore, MapPin, Mail,
   Facebook, Instagram, Linkedin, ExternalLink, AlertCircle
@@ -397,8 +397,56 @@ function sanitizeDateInput(value) {
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : ''
 }
 
-function normalizeSchoolRows(rows, { dropEmpty = false, graduatedFromSchools = false } = {}) {
+const SCHOOL_STATUS_STUDYING = 'على مقاعد الدراسة'
+const SCHOOL_STATUS_GRADUATED = 'متخرج من المدارس'
+const SCHOOL_STATUS_NOT_ENROLLED = 'غير ملتزم بدراسة مدرسيّة'
+const SCHOOL_STATUS_OPTIONS = [
+  { value: SCHOOL_STATUS_STUDYING, label: SCHOOL_STATUS_STUDYING },
+  { value: SCHOOL_STATUS_GRADUATED, label: SCHOOL_STATUS_GRADUATED },
+  { value: SCHOOL_STATUS_NOT_ENROLLED, label: SCHOOL_STATUS_NOT_ENROLLED },
+]
+
+function hasCurrentSchoolRow(rows) {
+  return Array.isArray(rows) && rows.some((row) => toBoolDefaultFalse(row?.is_current))
+}
+
+function deriveDefaultSchoolStatus(ageGroups) {
+  const groups = Array.isArray(ageGroups) ? ageGroups.map(ag => String(ag || '').trim()).filter(Boolean) : []
+  const SCHOOL_GROUPS = new Set(['البراعم', 'الإعدادي', 'الثانوي'])
+  const GRADUATED_GROUPS = new Set(['الجامعيّة', 'العاملة'])
+  if (groups.some(ag => SCHOOL_GROUPS.has(ag))) return SCHOOL_STATUS_STUDYING
+  if (groups.some(ag => GRADUATED_GROUPS.has(ag))) return SCHOOL_STATUS_GRADUATED
+  return ''
+}
+
+function normalizeSchoolStatusValue(value, rows = []) {
+  const text = normalizeLooseInput(value)
+  if (text === SCHOOL_STATUS_STUDYING || text === SCHOOL_STATUS_GRADUATED || text === SCHOOL_STATUS_NOT_ENROLLED) {
+    return text
+  }
+
+  const lookup = text.toLowerCase()
+  if (lookup === 'true' || lookup === '1' || lookup === 'yes') return SCHOOL_STATUS_GRADUATED
+  if (lookup === 'false' || lookup === '0' || lookup === 'no') {
+    return hasCurrentSchoolRow(rows) ? SCHOOL_STATUS_STUDYING : SCHOOL_STATUS_NOT_ENROLLED
+  }
+  if (text === 'متخرّج من المدارس' || text === 'متخرج من المدارس') return SCHOOL_STATUS_GRADUATED
+  if (text === 'على مقاعد الدراسة') return SCHOOL_STATUS_STUDYING
+  if (text === 'غير ملتزم بدراسة مدرسية' || text === 'غير ملتزم بدراسة مدرسيّة') return SCHOOL_STATUS_NOT_ENROLLED
+
+  return hasCurrentSchoolRow(rows) ? SCHOOL_STATUS_STUDYING : SCHOOL_STATUS_NOT_ENROLLED
+}
+
+function isSchoolGraduatedStatus(value) {
+  return normalizeSchoolStatusValue(value) === SCHOOL_STATUS_GRADUATED
+}
+
+function normalizeSchoolRows(rows, { dropEmpty = false, graduatedFromSchools = false, schoolStatus = '' } = {}) {
   const source = Array.isArray(rows) ? rows : []
+  const normalizedSchoolStatus = schoolStatus ? normalizeSchoolStatusValue(schoolStatus, source) : ''
+  const forceNoCurrentSchool = graduatedFromSchools || (
+    normalizedSchoolStatus && normalizedSchoolStatus !== SCHOOL_STATUS_STUDYING
+  )
   const normalized = source
     .map((row) => ({
       school_record_id: normalizeLooseInput(row?.school_record_id),
@@ -414,7 +462,7 @@ function normalizeSchoolRows(rows, { dropEmpty = false, graduatedFromSchools = f
     .map((row) => ({
       ...row,
       end_date: row.is_current ? '' : row.end_date,
-      is_current: graduatedFromSchools ? false : row.is_current,
+      is_current: forceNoCurrentSchool ? false : row.is_current,
     }))
     .filter((row) => (dropEmpty ? row.school : true))
 
@@ -2633,8 +2681,13 @@ function CompactMultiSelect({ options, selected, onChange, placeholder = 'اخت
   )
 }
 
-function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches = {}, graduatedFromSchools = false, onGraduatedChange, schoolSystem = '', schoolSystemOptions = [], onSchoolSystemChange, schoolSystemSector = '', onSchoolSystemSectorChange, schoolFinalGpa = '', onSchoolFinalGpaChange, validationIssue = null }) {
-  const normalizedRows = normalizeSchoolRows(rows, { graduatedFromSchools })
+function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches = {}, schoolStatus = '', graduatedFromSchools = false, onSchoolStatusChange, onGraduatedChange, schoolSystem = '', schoolSystemOptions = [], onSchoolSystemChange, schoolSystemSector = '', onSchoolSystemSectorChange, schoolFinalGpa = '', onSchoolFinalGpaChange, validationIssue = null }) {
+  const normalizedSchoolStatus = schoolStatus
+    ? normalizeSchoolStatusValue(schoolStatus, rows)
+    : graduatedFromSchools ? SCHOOL_STATUS_GRADUATED : ''
+  const graduatedFromSchoolsStatus = normalizedSchoolStatus === SCHOOL_STATUS_GRADUATED
+  const allowCurrentSchool = normalizedSchoolStatus === SCHOOL_STATUS_STUDYING
+  const normalizedRows = normalizeSchoolRows(rows, { schoolStatus: normalizedSchoolStatus })
   const [open, setOpen] = useState(false)
   const [custom, setCustom] = useState(false)
   const [query, setQuery] = useState('')
@@ -2659,7 +2712,31 @@ function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches =
     setSectorPath(inferJordanSchoolSystemSectorPath(schoolSystemSector))
   }, [schoolSystemSector])
 
-  const commit = (nextRows) => onChange(normalizeSchoolRows(nextRows, { graduatedFromSchools }))
+  const emitSchoolStatusChange = (nextStatus, nextRows) => {
+    if (onSchoolStatusChange) {
+      onSchoolStatusChange(nextStatus, nextRows)
+      return
+    }
+    if (onGraduatedChange) {
+      onGraduatedChange(nextStatus === SCHOOL_STATUS_GRADUATED)
+      return
+    }
+    onChange(nextRows)
+  }
+  const commit = (nextRows, requestedStatus = normalizedSchoolStatus) => {
+    const preNormalizedRows = normalizeSchoolRows(nextRows, { schoolStatus: requestedStatus })
+    const resolvedStatus = (
+      requestedStatus === SCHOOL_STATUS_STUDYING && !hasCurrentSchoolRow(preNormalizedRows)
+    )
+      ? SCHOOL_STATUS_NOT_ENROLLED
+      : requestedStatus
+    const finalRows = normalizeSchoolRows(preNormalizedRows, { schoolStatus: resolvedStatus })
+    if (resolvedStatus !== normalizedSchoolStatus) {
+      emitSchoolStatusChange(resolvedStatus, finalRows)
+      return
+    }
+    onChange(finalRows)
+  }
   const sectorBranchOptions = Object.keys(JORDAN_SCHOOL_SYSTEM_BRANCH_OPTIONS)
   const sectorFinalOptions = sectorPath.type === 'الحقل'
     ? JORDAN_SCHOOL_SYSTEM_FIELD_OPTIONS
@@ -2699,7 +2776,7 @@ function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches =
         return changes.is_current ? { ...entry, is_current: false } : entry
       }
       const nextRow = { ...entry, ...changes }
-      if (graduatedFromSchools) nextRow.is_current = false
+      if (!allowCurrentSchool) nextRow.is_current = false
       if (Object.prototype.hasOwnProperty.call(changes, 'is_current') && changes.is_current) {
         nextRow.end_date = ''
       }
@@ -2708,7 +2785,7 @@ function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches =
       }
       return nextRow
     })
-    commit(nextRows)
+    commit(nextRows, changes.is_current ? SCHOOL_STATUS_STUDYING : normalizedSchoolStatus)
   }
 
   const addSchool = (value) => {
@@ -2718,7 +2795,7 @@ function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches =
       return
     }
     setMessage('')
-    commit([...normalizedRows, { school_record_id: '', school, section: '', start_date: '', end_date: '', is_current: true, grades_attended: [] }])
+    commit([...normalizedRows, { school_record_id: '', school, section: '', start_date: '', end_date: '', is_current: true, grades_attended: [] }], SCHOOL_STATUS_STUDYING)
     setOpen(false)
     setCustom(false)
     setQuery('')
@@ -2749,6 +2826,15 @@ function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches =
     commit(normalizedRows.filter((_, rowIndex) => rowIndex !== index))
   }
 
+  const handleSchoolStatusChange = (value) => {
+    const nextStatus = normalizeSchoolStatusValue(value, normalizedRows)
+    const sourceRows = nextStatus === SCHOOL_STATUS_STUDYING && normalizedRows.length && !hasCurrentSchoolRow(normalizedRows)
+      ? normalizedRows.map((row, index) => ({ ...row, is_current: index === 0 }))
+      : normalizedRows
+    const nextRows = normalizeSchoolRows(sourceRows, { schoolStatus: nextStatus })
+    emitSchoolStatusChange(nextStatus, nextRows)
+  }
+
   const availableOptions = Array.from(new Map(
     schoolOptions
       .map((option) => {
@@ -2764,7 +2850,7 @@ function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches =
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: '0.82rem', color: 'var(--gray-500)' }}>يمكن أن تكون مدرسة واحدة فقط نشطة، أو لا توجد مدرسة نشطة إذا كان الطالب متخرّجًا.</div>
+        <div style={{ fontSize: '0.82rem', color: 'var(--gray-500)' }}>يمكن أن تكون مدرسة واحدة فقط نشطة، أو لا توجد مدرسة نشطة إذا كان العضو متخرّجًا أو غير ملتزم بدراسة مدرسيّة.</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ minWidth: 180 }}>
             <ComboDropdown
@@ -2774,16 +2860,21 @@ function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches =
               placeholder="نظام الدراسة"
             />
           </div>
-          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', color: 'var(--navy)' }}>
-            <input
-              type="checkbox"
-              checked={Boolean(graduatedFromSchools)}
-              onChange={(event) => onGraduatedChange && onGraduatedChange(event.target.checked)}
+          <div
+            style={{ minWidth: 220, ...(validationMessageForTarget(validationIssue, 'person.school_graduated') ? PROFILE_VALIDATION_RING_STYLE : {}) }}
+            data-validation-id="person.school_graduated"
+            tabIndex={-1}
+          >
+            <SelectDropdown
+              value={normalizedSchoolStatus}
+              onChange={handleSchoolStatusChange}
+              options={SCHOOL_STATUS_OPTIONS}
+              placeholder="الحالة المدرسية"
             />
-            متخرّج من المدارس
-          </label>
+          </div>
         </div>
       </div>
+      <ValidationMessage message={validationMessageForTarget(validationIssue, 'person.school_graduated')} />
       {isJordanSchoolSystem ? (
         <div className="profile-two-column-layout">
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -2822,7 +2913,7 @@ function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches =
           {!sectorPath.type ? <div /> : null}
         </div>
       ) : null}
-      {graduatedFromSchools ? (
+      {graduatedFromSchoolsStatus ? (
         <div style={{ display: 'grid', gap: 6 }}>
           <label
             style={{ display: 'flex', flexDirection: 'column', gap: 4, ...(schoolFinalGpaError ? PROFILE_VALIDATION_WRAPPER_STYLE : {}) }}
@@ -2862,7 +2953,7 @@ function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches =
                   <input
                     type="checkbox"
                     checked={Boolean(row.is_current)}
-                    disabled={Boolean(graduatedFromSchools)}
+                    disabled={!allowCurrentSchool}
                     onChange={(event) => commitRowChanges(index, { is_current: event.target.checked })}
                   />
                   حاليًّا
@@ -2912,7 +3003,7 @@ function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches =
                       onChange={(event) => commitRowChanges(index, { end_date: sanitizeDateInput(event.target.value) })}
                     />
                   )}
-                  {row.is_current && !graduatedFromSchools && <div style={{ fontSize: '0.78rem', color: 'var(--gray-400)' }}>العضو ما يزال في هذه المدرسة</div>}
+                  {row.is_current && allowCurrentSchool && <div style={{ fontSize: '0.78rem', color: 'var(--gray-400)' }}>العضو ما يزال في هذه المدرسة</div>}
                 </label>
               </div>
               <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -2991,8 +3082,9 @@ function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches =
   )
 }
 
-function HigherEducationRowsEditor({ rows, onChange, universityOptions = [], majorOptions = [], degreeOptions = [], validationIssue = null }) {
+function HigherEducationRowsEditor({ rows, onChange, universityOptions = [], majorOptions = [], degreeOptions = [], noHigherEducation = false, onNoHigherEducationChange, validationIssue = null }) {
   const normalizedRows = normalizeHigherEducationRows(rows)
+  const noHigherEducationChecked = normalizedRows.length === 0 && toBoolDefaultFalse(noHigherEducation)
 
   const commit = (nextRows) => onChange(normalizeHigherEducationRows(nextRows))
 
@@ -3007,6 +3099,14 @@ function HigherEducationRowsEditor({ rows, onChange, universityOptions = [], maj
       state: 'current',
       final_gpa: '',
     }])
+  }
+
+  const handleNoHigherEducationChange = (checked) => {
+    if (onNoHigherEducationChange) {
+      onNoHigherEducationChange(checked)
+      return
+    }
+    if (checked) onChange([])
   }
 
   const commitRowChanges = (index, changes) => {
@@ -3054,6 +3154,17 @@ function HigherEducationRowsEditor({ rows, onChange, universityOptions = [], maj
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {normalizedRows.length === 0 ? (
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', color: 'var(--navy)' }}>
+          <input
+            type="checkbox"
+            checked={noHigherEducationChecked}
+            onChange={(event) => handleNoHigherEducationChange(event.target.checked)}
+          />
+          لم أدرس في جامعة أو كلّية
+        </label>
+      ) : null}
+
       {normalizedRows.map((row, index) => {
         const stateLabel = higherEducationStateLabel(row.state)
         const targetId = `higher_education.${index}`
@@ -3148,15 +3259,18 @@ function HigherEducationRowsEditor({ rows, onChange, universityOptions = [], maj
         )
       })}
 
-      <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={addRecord}>
-        + أضف سجل تعليم عالٍ
-      </button>
+      {!noHigherEducationChecked ? (
+        <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={addRecord}>
+          + أضف سجل تعليم عالٍ
+        </button>
+      ) : null}
     </div>
   )
 }
 
-function JobRowsEditor({ rows, onChange, jobTitleOptions = [], companyOptions = [], validationIssue = null }) {
+function JobRowsEditor({ rows, onChange, jobTitleOptions = [], companyOptions = [], notEmployed = false, onNotEmployedChange, validationIssue = null }) {
   const normalizedRows = normalizeJobRows(rows)
+  const notEmployedChecked = normalizedRows.length === 0 && toBoolDefaultFalse(notEmployed)
 
   const commit = (nextRows) => onChange(normalizeJobRows(nextRows))
 
@@ -3169,6 +3283,14 @@ function JobRowsEditor({ rows, onChange, jobTitleOptions = [], companyOptions = 
       is_current: true,
       state: 'current',
     }])
+  }
+
+  const handleNotEmployedChange = (checked) => {
+    if (onNotEmployedChange) {
+      onNotEmployedChange(checked)
+      return
+    }
+    if (checked) onChange([])
   }
 
   const commitRowChanges = (index, changes) => {
@@ -3210,6 +3332,17 @@ function JobRowsEditor({ rows, onChange, jobTitleOptions = [], companyOptions = 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {normalizedRows.length === 0 ? (
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', color: 'var(--navy)' }}>
+          <input
+            type="checkbox"
+            checked={notEmployedChecked}
+            onChange={(event) => handleNotEmployedChange(event.target.checked)}
+          />
+          لا أعمل
+        </label>
+      ) : null}
+
       {normalizedRows.map((row, index) => {
         const stateLabel = jobStateLabel(row.state)
         const targetId = `jobs.${index}`
@@ -3288,9 +3421,11 @@ function JobRowsEditor({ rows, onChange, jobTitleOptions = [], companyOptions = 
         )
       })}
 
-      <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={addRecord}>
-        + أضف سجل عمل
-      </button>
+      {!notEmployedChecked ? (
+        <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={addRecord}>
+          + أضف سجل عمل
+        </button>
+      ) : null}
     </div>
   )
 }
@@ -6242,7 +6377,7 @@ function ValidationMessage({ message }) {
 }
 
 // ── Main profile page ─────────────────────────────────────────────────────────
-export default function Profile({ personId, isUnregistered, onBack, toast, orgContext, onViewProfile, onPromoted, currentUser, readOnly = false, onUnsavedChangesChange }) {
+export default function Profile({ personId, isUnregistered, onBack, toast, orgContext, onViewProfile, onPromoted, currentUser, readOnly = false, onUnsavedChangesChange, registrationMode = false, onRegistrationNext = null }) {
   const [data, setData]           = useState(null)
   const [photo, setPhoto]         = useState(null)
   const [loadError, setLoadError] = useState('')
@@ -6258,7 +6393,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   const [promoteBlockedIssues, setPromoteBlockedIssues] = useState(null)
   const [activeTab, setActiveTab] = useState('info')
   const [filters, setFilters]     = useState({})
-  const [filtersResolved, setFiltersResolved] = useState(false)
+  const [filtersResolved, setFiltersResolved] = useState(!!registrationMode)
   const [activeJecYear, setActiveJecYear] = useState('')
   const [personTitles, setPersonTitles] = useState([])
   const [schoolBranches, setSchoolBranches] = useState({})
@@ -6273,15 +6408,17 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   const lastArchivableMemberships = useRef([])
   const isViewerAdmin = currentUser?.role === 'admin'
   const isViewingOwnProfile =
-    currentUser
+    !registrationMode
+    && currentUser
     && String(currentUser.person_id) === String(personId)
     && ((currentUser.person_type === 'unregistered') === !!isUnregistered)
-  const canFullyEditProfile = !readOnly && isViewerAdmin
-  const canEditOwnProfile = !readOnly && !isViewerAdmin && currentUser?.role === 'member' && isViewingOwnProfile
+  const canFullyEditProfile = registrationMode || (!readOnly && isViewerAdmin)
+  const canEditOwnProfile = !registrationMode && !readOnly && !isViewerAdmin && currentUser?.role === 'member' && isViewingOwnProfile
   const canEnterEditMode = canFullyEditProfile || canEditOwnProfile
 
   useEffect(() => {
     if (filtersLoaded.current) return
+    if (registrationMode) { filtersLoaded.current = true; return }
     let cancelled = false
     api.filters()
       .then((filtersResponse) => {
@@ -6483,20 +6620,37 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   }, [personTitles, personTitleMappings])
 
   useEffect(() => {
-    const requestId = ++loadRequestId.current
-    let cancelled = false
     dataRef.current = null
     savedDataRef.current = null
     lastArchivableMemberships.current = []
     setSaving(false)
-    setLoading(true)
     setLoadError('')
     setHasUnsavedChanges(false)
     setSaveError('')
     setValidationErrors([])
     setValidationIssue(null)
-    setData(null)
     setPhoto(null)
+
+    // Registration mode: skip API fetch, start with a blank profile in full edit mode
+    if (registrationMode) {
+      const emptyData = {
+        person: {}, nationality: [], mobile_numbers: [], emails: [],
+        social_media: [], addresses: [], schools: [], higher_education: [],
+        jobs: [], responsibilities: [], person_youth_group: [], hobbies_skills: [],
+        person_health_conditions: [], person_special_notes: [], timestamps: [],
+      }
+      savedDataRef.current = cloneProfileSnapshot(emptyData)
+      dataRef.current = emptyData
+      setData(emptyData)
+      setLoading(false)
+      setIsEditing(true)
+      return
+    }
+
+    const requestId = ++loadRequestId.current
+    let cancelled = false
+    setLoading(true)
+    setData(null)
     // Both registered and unregistered return the same shape:
     // { person: { person_id, ar_first_name, ..., title? }, nationality: [...], ... }
     const loader = isUnregistered
@@ -6552,13 +6706,17 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       d.nationality = normalizeNationalityRows(d.nationality, { lookup: nationalityIsoLookup })
       d.person_health_conditions = normalizePersonHealthConditionRows(d.person_health_conditions)
       d.person_special_notes = normalizePersonSpecialNoteRows(d.person_special_notes)
-      personData.school_graduated = toBoolDefaultFalse(personData.school_graduated)
+      d.higher_education = normalizeHigherEducationRows(d.higher_education)
+      personData.no_higher_education = d.higher_education.length ? false : toBoolDefaultFalse(personData.no_higher_education)
+      personData.not_employed = d.jobs.length ? false : toBoolDefaultFalse(personData.not_employed)
       personData.school_system = normalizeSchoolSystemValue(personData.school_system)
       personData.school_system_sector = normalizeLooseInput(personData.school_system_sector)
       personData.school_final_gpa = normalizeFinalGpaValue(personData.school_final_gpa)
-      d.schools = normalizeSchoolRows(d.schools, { graduatedFromSchools: personData.school_graduated })
-      d.higher_education = normalizeHigherEducationRows(d.higher_education)
       d.person_youth_group = normalizeYouthMembershipRows(d.person_youth_group)
+      personData.school_graduated = personData.school_graduated
+        ? normalizeSchoolStatusValue(personData.school_graduated, d.schools)
+        : deriveDefaultSchoolStatus(d.person_youth_group.map(m => m.current_age_group).filter(Boolean))
+      d.schools = normalizeSchoolRows(d.schools, { schoolStatus: personData.school_graduated })
       d.responsibilities = normalizeResponsibilityRows(d.responsibilities, {})
       d.addresses = normalizeAddressEditorRows(d.addresses, { ensureRow: false })
       d.person = personData
@@ -6594,15 +6752,14 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     })
   }, [activeJecYear])
 
-  async function persistProfile(nextData) {
-    let payload
+  function buildProfilePayload(nextData) {
     const SUB_KEYS = ['nationality', 'mobile_numbers', 'emails', 'social_media', 'schools', 'higher_education',
         'jobs', 'responsibilities', 'person_youth_group', 'hobbies_skills', 'person_health_conditions', 'person_special_notes', 'addresses']
     const stripId = (rows) =>
       Array.isArray(rows)
         ? rows.map(row => { const { person_id, ...rest } = row; return rest })
         : []
-    payload = {
+    const payload = {
       person: {
         ...(nextData.person || {}),
         country: normalizeCountryValue(nextData.person?.country),
@@ -6612,10 +6769,26 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       },
       ...Object.fromEntries(SUB_KEYS.map(k => [k, stripId(nextData[k])])),
     }
+    if (registrationMode) {
+      delete payload.person.title
+    }
     payload.nationality = serializeNationalityRows(payload.nationality, { dropEmpty: true })
-    payload.schools = normalizeSchoolRows(payload.schools, { dropEmpty: true, graduatedFromSchools: Boolean(nextData.person?.school_graduated) })
+    const schoolStatus = normalizeSchoolStatusValue(payload.person.school_graduated, payload.schools)
+    payload.person.school_graduated = schoolStatus
+    payload.person.school_final_gpa = isSchoolGraduatedStatus(schoolStatus)
+      ? normalizeFinalGpaValue(nextData.person?.school_final_gpa)
+      : ''
+    payload.schools = normalizeSchoolRows(payload.schools, { dropEmpty: true, schoolStatus })
     payload.higher_education = normalizeHigherEducationRows(payload.higher_education, { dropEmpty: true })
     payload.jobs = normalizeJobRows(payload.jobs, { dropEmpty: true })
+    payload.person.no_higher_education = payload.higher_education.length
+      ? false
+      : toBoolDefaultFalse(nextData.person?.no_higher_education)
+    if (payload.person.no_higher_education) payload.higher_education = []
+    payload.person.not_employed = payload.jobs.length
+      ? false
+      : toBoolDefaultFalse(nextData.person?.not_employed)
+    if (payload.person.not_employed) payload.jobs = []
     payload.responsibilities = normalizeResponsibilityRows(payload.responsibilities, { dropEmpty: true, activeJecYear })
     payload.emails = serializeEmailRows(payload.emails, { validJobIds: payload.jobs.map((row) => row.job_id) })
     payload.social_media = serializeSocialMediaRows(payload.social_media)
@@ -6623,13 +6796,41 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     payload.person_health_conditions = normalizePersonHealthConditionRows(payload.person_health_conditions, { dropEmpty: true })
     payload.person_special_notes = serializePersonSpecialNoteRows(payload.person_special_notes, { dropEmpty: true })
     payload.addresses = sanitizeAddressRows(payload.addresses)
+    return payload
+  }
 
+  async function persistProfile(nextData) {
+    const payload = buildProfilePayload(nextData)
     if (isUnregistered) {
       await api.updateUnregistered(personId, payload)
       return
     }
-
     await api.updatePerson(personId, payload)
+  }
+
+  async function handleRegistrationNext() {
+    if (!dataRef.current || saving) return
+    setSaveError('')
+    setValidationErrors([])
+    setValidationIssue(null)
+    const issue = validateProfileRequired(dataRef.current)
+    if (issue) {
+      setValidationIssue(issue)
+      setValidationErrors([issue.message])
+      if (issue.tab) setActiveTab(issue.tab)
+      return
+    }
+    setSaving(true)
+    try {
+      const payload = buildProfilePayload(dataRef.current)
+      onRegistrationNext?.(payload)
+    } catch (error) {
+      const message = getApiErrorMessage(error, 'خطأ في تجميع البيانات')
+      setSaveError(message)
+      toast?.(message, 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const discardUnsavedChanges = useCallback(() => {
@@ -6650,8 +6851,105 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     return true
   }, [discardUnsavedChanges, hasUnsavedChanges, isEditing])
 
+  function validateProfileRequired(d) {
+    const person = d?.person || {}
+    const arabicNameFields = [
+      { key: 'ar_first_name', label: 'الاسم الأول بالعربية' },
+      { key: 'ar_second_name', label: 'الاسم الثاني بالعربية' },
+      { key: 'ar_third_name', label: 'الاسم الثالث بالعربية' },
+      { key: 'ar_last_name', label: 'اسم العائلة بالعربية' },
+    ]
+    for (const { key, label } of arabicNameFields) {
+      if (!String(person[key] || '').trim()) {
+        return { tab: 'info', targetId: `person.${key}`, message: `${label} يجب أن يحتوي على قيمة.` }
+      }
+    }
+    if (!String(person.gender || '').trim()) {
+      return { tab: 'info', targetId: 'person.gender', message: 'الجنس يجب أن يكون ذكر أو أنثى فقط.' }
+    }
+    if (!person.birth_year || !person.birth_month || !person.birth_day) {
+      return { tab: 'info', targetId: 'person.birth_date', message: 'تاريخ الميلاد يجب أن يحتوي السنة والشهر واليوم وأن يكون تاريخًا صالحًا.' }
+    }
+    const nationalities = (d?.nationality || []).filter(r => String(r?.nationality || '').trim())
+    if (!nationalities.length) {
+      return { tab: 'info', targetId: 'nationality.0', message: 'يجب إدخال جنسية واحدة على الأقل.' }
+    }
+    const phones = (d?.mobile_numbers || []).filter(r => String(r?.mobile_number || '').trim())
+    if (!phones.length) {
+      return { tab: 'info', targetId: 'mobile_numbers.0', message: 'يجب إدخال رقم هاتف واحد على الأقل.' }
+    }
+    const hasValidAddress = (d?.addresses || []).some(
+      addr => String(addr?.country || '').trim() && String(addr?.governorate || '').trim()
+    )
+    if (!hasValidAddress) {
+      return { tab: 'address', targetId: 'addresses.0', message: 'يجب إدخال عنوان يحتوي على الدولة والمحافظة.' }
+    }
+    const memberships = normalizeYouthMembershipRows(d?.person_youth_group || [])
+    if (!memberships.length) {
+      return { tab: 'youth', targetId: 'person_youth_group.0', message: 'يجب إضافة عضوية شبيبة واحدة على الأقل.' }
+    }
+    for (let i = 0; i < memberships.length; i++) {
+      const m = memberships[i]
+      const historyAgeGroups = (m.age_group_history || []).filter(h => String(h?.age_group || '').trim())
+      if (!historyAgeGroups.length) {
+        return { tab: 'youth', targetId: `person_youth_group.${i}`, message: `عضوية الشبيبة #${i + 1}: يجب إضافة فئة عمرية واحدة على الأقل.` }
+      }
+      if (!String(m.youth_join_year || '').trim()) {
+        return { tab: 'youth', targetId: `person_youth_group.${i}`, message: `عضوية الشبيبة #${i + 1}: يجب تحديد سنة الانتساب.` }
+      }
+    }
+    if (!normalizeLooseInput(person.school_graduated)) {
+      return { tab: 'edu', targetId: 'person.school_graduated', message: 'يجب تحديد الحالة الدراسية.' }
+    }
+    const SCHOOL_AGE_GROUPS = new Set(['البراعم', 'الإعدادي', 'الثانوي'])
+    const currentAgeGroups = memberships.map(m => String(m.current_age_group || '').trim()).filter(Boolean)
+    const isInSchoolAgeGroup = currentAgeGroups.some(ag => SCHOOL_AGE_GROUPS.has(ag))
+    if (isInSchoolAgeGroup && normalizeSchoolStatusValue(person.school_graduated) === SCHOOL_STATUS_STUDYING) {
+      const schoolRows = (d?.schools || []).filter(r => String(r?.school || '').trim())
+      const hasSchoolWithClass = schoolRows.some(r => (r?.grades_attended || []).length > 0)
+      if (!hasSchoolWithClass) {
+        return { tab: 'edu', targetId: 'schools.0', message: 'يجب إضافة سجل مدرسي واحد على الأقل مع تحديد صف دراسي.' }
+      }
+    }
+    const hobbies = (d?.hobbies_skills || []).filter(r => String(r?.hobby_skill || '').trim())
+    if (!hobbies.length) {
+      return { tab: 'hobbies', targetId: 'hobbies_skills', message: 'يجب إضافة هواية أو مهارة واحدة على الأقل.' }
+    }
+    const HIGHER_EDU_AGE_GROUPS = new Set(['الجامعيّة', 'العاملة'])
+    const isHigherEduGroup = currentAgeGroups.some(ag => HIGHER_EDU_AGE_GROUPS.has(ag))
+    if (isHigherEduGroup) {
+      if (!toBoolDefaultFalse(person.no_higher_education)) {
+        const eduRows = (d?.higher_education || []).filter(r =>
+          String(r?.university_college || '').trim() && String(r?.major || '').trim() && String(r?.degree || '').trim()
+        )
+        if (!eduRows.length) {
+          return { tab: 'edu', targetId: 'higher_education.0', message: 'يجب إضافة سجل تعليم جامعي واحد على الأقل يحتوي على الجامعة والتخصص والدرجة العلمية.' }
+        }
+      }
+      if (!toBoolDefaultFalse(person.not_employed)) {
+        const jobRows = (d?.jobs || []).filter(r =>
+          String(r?.company || '').trim() && String(r?.job_title || '').trim()
+        )
+        if (!jobRows.length) {
+          return { tab: 'work', targetId: 'jobs.0', message: 'يجب إضافة سجل عمل واحد على الأقل يحتوي على اسم الشركة والمسمى الوظيفي.' }
+        }
+      }
+    }
+    return null
+  }
+
   async function handleSave() {
+    if (registrationMode) { handleRegistrationNext(); return true }
     if (!dataRef.current || saving || !hasUnsavedChanges) return true
+
+    const issue = validateProfileRequired(dataRef.current)
+    if (issue) {
+      setValidationIssue(issue)
+      setValidationErrors([issue.message])
+      if (issue.tab) setActiveTab(issue.tab)
+      toast('يرجى تصحيح الحقول المظللة ثم إعادة الحفظ', 'error')
+      return false
+    }
 
     setSaving(true)
     setSaveError('')
@@ -6712,9 +7010,24 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     if (key === 'jobs') {
       const normalizedJobs = normalizeJobRows(newRows)
       update({
+        person: {
+          ...(data.person || {}),
+          not_employed: normalizedJobs.length ? false : toBoolDefaultFalse(data.person?.not_employed),
+        },
         jobs: normalizedJobs,
         mobile_numbers: normalizeMobileNumberRows(data.mobile_numbers, { validJobIds: normalizedJobs.map((row) => row.job_id) }),
         emails: normalizeEmailRows(data.emails, { validJobIds: normalizedJobs.map((row) => row.job_id) }),
+      })
+      return
+    }
+    if (key === 'higher_education') {
+      const normalizedHigherEducation = normalizeHigherEducationRows(newRows)
+      update({
+        person: {
+          ...(data.person || {}),
+          no_higher_education: normalizedHigherEducation.length ? false : toBoolDefaultFalse(data.person?.no_higher_education),
+        },
+        higher_education: normalizedHigherEducation,
       })
       return
     }
@@ -6740,6 +7053,19 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       update({
         responsibilities: normalizeResponsibilityRows(newRows, { activeJecYear }),
       })
+      return
+    }
+    if (key === 'person_youth_group') {
+      const normalizedMemberships = normalizeYouthMembershipRows(newRows)
+      const currentSchoolGraduated = String(data.person?.school_graduated || '').trim()
+      if (!currentSchoolGraduated) {
+        const derivedStatus = deriveDefaultSchoolStatus(normalizedMemberships.map(m => m.current_age_group).filter(Boolean))
+        if (derivedStatus) {
+          update({ person_youth_group: newRows, person: { ...(data.person || {}), school_graduated: derivedStatus } })
+          return
+        }
+      }
+      update({ person_youth_group: newRows })
       return
     }
     update({ [key]: key === 'nationality' ? normalizeNationalityRows(newRows, { lookup: nationalityIsoLookup }) : newRows })
@@ -6840,6 +7166,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   }
 
   const handleBack = async () => {
+    if (registrationMode) { onBack?.(); return }
     if (!confirmDiscardUnsavedChanges({ discard: true })) return
     onBack()
   }
@@ -6967,22 +7294,25 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     .join('، ')
   const arabicDisplayName = [arabicProfileTitle, fullName].filter(Boolean).join(' ')
   const englishDisplayName = [englishTitleForPerson, englishFullName].filter(Boolean).join(' ')
-  const graduatedFromSchools = toBoolDefaultFalse(person?.school_graduated)
+  const schoolStatus = normalizeSchoolStatusValue(person?.school_graduated, schools)
+  const graduatedFromSchools = isSchoolGraduatedStatus(schoolStatus)
   const schoolSystem = normalizeSchoolSystemValue(person?.school_system)
   const schoolSystemSector = normalizeLooseInput(person?.school_system_sector)
   const schoolFinalGpa = normalizeFinalGpaValue(person?.school_final_gpa)
   const schoolSystemOptions = buildSchoolSystemOptions((Array.isArray(filters.school_system) ? filters.school_system : []).map(item => item?.value), schoolSystem)
-  const schoolViewRows = normalizeSchoolRows(schools, { graduatedFromSchools })
+  const schoolViewRows = normalizeSchoolRows(schools, { schoolStatus })
   const currentSchoolGrade = graduatedFromSchools ? '' : findHighestSchoolGrade(schoolViewRows)
   const higherEducationViewRows = normalizeHigherEducationRows(higher_education)
   const jobViewRows = normalizeJobRows(jobs)
+  const noHigherEducation = higherEducationViewRows.length ? false : toBoolDefaultFalse(person?.no_higher_education)
+  const notEmployed = jobViewRows.length ? false : toBoolDefaultFalse(person?.not_employed)
   const mobileNumberViewRows = normalizeMobileNumberRows(mobile_numbers, { validJobIds: jobViewRows.map((row) => row.job_id) })
   const emailViewRows = normalizeEmailRows(emails, { validJobIds: jobViewRows.map((row) => row.job_id) })
   const socialMediaViewRows = normalizeSocialMediaRows(social_media)
   const healthConditionRows = normalizePersonHealthConditionRows(person_health_conditions)
   const specialNoteRows = normalizePersonSpecialNoteRows(person_special_notes)
   const jobOptions = extractJobOptions(jobViewRows)
-  const schoolHeaderStatus = graduatedFromSchools ? 'متخرّج من المدارس' : 'على مقاعد الدراسة'
+  const schoolHeaderStatus = normalizeLooseInput(person?.school_graduated) ? schoolStatus : ''
   const schoolHeaderSystem = schoolSystemDisplayLabel(schoolSystem, schoolSystemSector)
   const profileTimestamps = Array.isArray(data?.timestamps) ? data.timestamps : []
 
@@ -7304,11 +7634,13 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     { id: 'health',  label: 'الصحة',               icon: Shield },
     { id: 'notes',   label: 'ملاحظات خاصة',        icon: Pencil },
     { id: 'hobbies', label: 'الهوايات',            icon: Heart },
-    { id: 'org', label: 'هيكل الشبيبة', icon: GitBranch },
-    { id: 'gsorg', label: 'الأمانة العامة', icon: GitBranch },
+    ...(!registrationMode ? [
+      { id: 'org',   label: 'هيكل الشبيبة',       icon: GitBranch },
+      { id: 'gsorg', label: 'الأمانة العامة',      icon: GitBranch },
+    ] : []),
   ]
 
-  const isViewMode = readOnly || !isEditing
+  const isViewMode = !registrationMode && (readOnly || !isEditing)
 
   return (
     <div className={`profile-page${isEditing ? ' profile-page-editing' : ''}`}>
@@ -7354,6 +7686,34 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       />
 
       {/* Back + saving indicator + action buttons */}
+      {registrationMode ? (
+        <div className="profile-toolbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
+          <button className="btn btn-ghost btn-sm" onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <ArrowRight size={15} /> رجوع
+          </button>
+          <div style={{ fontWeight: 800, color: 'var(--navy)', fontSize: '1rem', flex: 1, textAlign: 'center' }}>
+            تسجيل عضو جديد — الخطوة ١: البيانات الشخصية
+          </div>
+          {validationErrors.length > 0 && (
+            <div style={{ width: '100%', order: 10, background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '10px 14px', fontSize: '0.84rem', color: '#991b1b' }}>
+              {validationErrors.map((e, i) => <div key={i}>• {e}</div>)}
+            </div>
+          )}
+          {saveError && (
+            <div style={{ width: '100%', order: 11, background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '10px 14px', fontSize: '0.84rem', color: '#991b1b' }}>
+              {saveError}
+            </div>
+          )}
+          <button
+            className="btn btn-gold btn-sm"
+            onClick={handleRegistrationNext}
+            disabled={saving}
+            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            {saving ? 'جارٍ التجهيز…' : 'التالي — بيانات الدخول'} <ArrowLeft size={14} />
+          </button>
+        </div>
+      ) : (
       <div className="profile-toolbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <button className="btn btn-ghost btn-sm" onClick={handleBack}>
           <ArrowRight size={15} /> العودة للقائمة
@@ -7417,14 +7777,15 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
           </button>}
         </div>
       </div>
+      )}
 
-      {isEditing && saveError && (
+      {!registrationMode && isEditing && saveError && (
         <div className="am-field-error" style={{ marginBottom: 16 }}>
           <AlertCircle size={13} style={{ flexShrink: 0 }} /> {saveError}
         </div>
       )}
 
-      {isEditing && validationErrors.length > 0 && (
+      {!registrationMode && isEditing && validationErrors.length > 0 && (
         <div style={{ marginBottom: 16, border: '1px solid #fecaca', borderRadius: 'var(--radius-md)', background: '#fef2f2', padding: '12px 14px', display: 'grid', gap: 8 }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: '#991b1b', fontWeight: 700 }}>
             <AlertCircle size={15} /> يرجى تصحيح هذه الأخطاء قبل الحفظ
@@ -7452,7 +7813,17 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
 
       {/* Hero */}
       <div className="profile-hero" style={{ marginBottom: 20 }}>
-        {isUnregistered ? (
+        {registrationMode ? (
+          <div style={{
+            width: 80, height: 80, borderRadius: '50%', flexShrink: 0,
+            background: 'linear-gradient(135deg, #eef4ff, #c5d8f8)',
+            border: '2px solid #c5d8f8',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '1.8rem', color: '#0f2744',
+          }}>
+            {initials || '؟'}
+          </div>
+        ) : isUnregistered ? (
           <UnregisteredProfileAvatar uid={personId} initials={initials} photoUrl={photo}
             onPhotoChange={setPhoto} toast={toast} canUpload={canFullyEditProfile} />
         ) : (
@@ -7730,7 +8101,9 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                 <div className="profile-name-columns">
                   <div className="profile-name-section">
                     <div className="profile-name-section-title">الاسم بالعربية</div>
-                    <InlineSelectField label="اللقب" value={person?.title} onChange={updateArabicTitle} options={personTitleOptions(person?.title)} />
+                    {!registrationMode && (
+                      <InlineSelectField label="اللقب" value={person?.title} onChange={updateArabicTitle} options={personTitleOptions(person?.title)} />
+                    )}
                     <InlineComboField label="الاسم الأول" value={person?.ar_first_name} onChange={v => updateField('ar_first_name', v)} options={opts('ar_first_name')} error={validationMessageForTarget(validationIssue, 'person.ar_first_name')} targetId="person.ar_first_name" />
                     <InlineComboField label="الاسم الثاني" value={person?.ar_second_name} onChange={v => updateField('ar_second_name', v)} options={opts('ar_second_name')} error={validationMessageForTarget(validationIssue, 'person.ar_second_name')} targetId="person.ar_second_name" />
                     <InlineComboField label="الاسم الثالث" value={person?.ar_third_name} onChange={v => updateField('ar_third_name', v)} options={opts('ar_third_name')} error={validationMessageForTarget(validationIssue, 'person.ar_third_name')} targetId="person.ar_third_name" />
@@ -7742,7 +8115,9 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                   </div>
                   <div className="profile-name-section profile-name-section-english">
                     <div className="profile-name-section-title">English Name</div>
-                    <InlineSelectField label="Title" value={englishTitleForPerson} onChange={updateEnglishTitle} options={personEnglishTitleOptions(person?.title)} dir="ltr" />
+                    {!registrationMode && (
+                      <InlineSelectField label="Title" value={englishTitleForPerson} onChange={updateEnglishTitle} options={personEnglishTitleOptions(person?.title)} dir="ltr" />
+                    )}
                     <InlineComboField label="First Name" value={person?.en_first_name} onChange={v => updateField('en_first_name', v)} options={opts('en_first_name')} dir="ltr" error={validationMessageForTarget(validationIssue, 'person.en_first_name')} targetId="person.en_first_name" />
                     <InlineComboField label="Second Name" value={person?.en_second_name} onChange={v => updateField('en_second_name', v)} options={opts('en_second_name')} dir="ltr" error={validationMessageForTarget(validationIssue, 'person.en_second_name')} targetId="person.en_second_name" />
                     <InlineComboField label="Third Name" value={person?.en_third_name} onChange={v => updateField('en_third_name', v)} options={opts('en_third_name')} dir="ltr" error={validationMessageForTarget(validationIssue, 'person.en_third_name')} targetId="person.en_third_name" />
@@ -7870,7 +8245,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                   onChange={(rows) => updateSub('person_youth_group', rows)}
                   youthGroupOptions={opts('youth_group')}
                   allowHigherAgeGroups={canFullyEditProfile}
-                  allowAdminAgeGroups={canFullyEditProfile}
+                  allowAdminAgeGroups={!registrationMode && canFullyEditProfile}
                   validationIssue={validationIssue}
                 />
               )}
@@ -7958,21 +8333,24 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                     onChange={rows => updateSub('schools', rows)}
                     schoolOptions={opts('school')}
                     schoolBranches={schoolBranches}
-                    graduatedFromSchools={graduatedFromSchools}
+                    schoolStatus={normalizeLooseInput(person?.school_graduated) ? schoolStatus : ''}
                     schoolSystem={schoolSystem}
                     schoolSystemSector={schoolSystemSector}
                     schoolFinalGpa={schoolFinalGpa}
                     schoolSystemOptions={schoolSystemOptions}
-                    onGraduatedChange={value => update({
-                      person: {
-                        ...data.person,
-                        school_graduated: value,
-                        school_system: schoolSystem,
-                        school_system_sector: schoolSystemSector,
-                        school_final_gpa: value ? schoolFinalGpa : '',
-                      },
-                      schools: normalizeSchoolRows(schools, { graduatedFromSchools: value }),
-                    })}
+                    onSchoolStatusChange={(value, nextRows) => {
+                      const nextStatus = normalizeSchoolStatusValue(value, nextRows)
+                      update({
+                        person: {
+                          ...(data.person || {}),
+                          school_graduated: nextStatus,
+                          school_system: schoolSystem,
+                          school_system_sector: schoolSystemSector,
+                          school_final_gpa: isSchoolGraduatedStatus(nextStatus) ? schoolFinalGpa : '',
+                        },
+                        schools: normalizeSchoolRows(nextRows || schools, { schoolStatus: nextStatus }),
+                      })
+                    }}
                     onSchoolSystemChange={value => update({
                       person: {
                         ...data.person,
@@ -8008,7 +8386,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                           </div>
                         </ViewRecordCard>
                       )
-                    }) : <ViewEmptyState text="لا توجد بيانات تعليم عالٍ" />}
+                    }) : <ViewEmptyState text={noHigherEducation ? 'لم أدرس في جامعة أو كلّية' : 'لا توجد بيانات تعليم عالٍ'} />}
                   </div>
                 ) : (
                   <HigherEducationRowsEditor
@@ -8017,6 +8395,14 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                     universityOptions={opts('university')}
                     majorOptions={opts('major')}
                     degreeOptions={opts('degree')}
+                    noHigherEducation={noHigherEducation}
+                    onNoHigherEducationChange={(checked) => update({
+                      person: {
+                        ...data.person,
+                        no_higher_education: checked,
+                      },
+                      higher_education: checked ? [] : higher_education,
+                    })}
                     validationIssue={validationIssue}
                   />
                 )}
@@ -8048,7 +8434,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                         <ViewField label="الشركة / المؤسسة" value={company} />
                       </ViewRecordCard>
                     )
-                  }) : <ViewEmptyState text="لا توجد بيانات عمل" />}
+                  }) : <ViewEmptyState text={notEmployed ? 'لا أعمل' : 'لا توجد بيانات عمل'} />}
                 </div>
               ) : (
                 <JobRowsEditor
@@ -8056,6 +8442,19 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                   onChange={rows => updateSub('jobs', rows)}
                   jobTitleOptions={opts('job_title')}
                   companyOptions={opts('company')}
+                  notEmployed={notEmployed}
+                  onNotEmployedChange={(checked) => {
+                    const normalizedJobs = checked ? [] : jobViewRows
+                    update({
+                      person: {
+                        ...data.person,
+                        not_employed: checked,
+                      },
+                      jobs: normalizedJobs,
+                      mobile_numbers: normalizeMobileNumberRows(data.mobile_numbers, { validJobIds: normalizedJobs.map((row) => row.job_id) }),
+                      emails: normalizeEmailRows(data.emails, { validJobIds: normalizedJobs.map((row) => row.job_id) }),
+                    })
+                  }}
                   validationIssue={validationIssue}
                 />
               )}
@@ -8134,10 +8533,19 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
               {isViewMode ? (
                 <ViewChipList values={hobbies_skills.map((row) => row?.hobby_skill).filter(Boolean)} emptyText="لا توجد هوايات أو مهارات محفوظة" />
               ) : (
-                <TagField items={hobbies_skills} valueKey="hobby_skill" placeholder="أضف هواية أو مهارة…"
-                  options={opts('hobby_skill')}
-                  onAdd={v => updateSub('hobbies_skills', [...hobbies_skills, { hobby_skill: v }])}
-                  onRemove={i => updateSub('hobbies_skills', hobbies_skills.filter((_, idx) => idx !== i))} />
+                <>
+                  <div
+                    data-validation-id="hobbies_skills"
+                    tabIndex={-1}
+                    style={validationMessageForTarget(validationIssue, 'hobbies_skills') ? PROFILE_VALIDATION_WRAPPER_STYLE : undefined}
+                  >
+                    <TagField items={hobbies_skills} valueKey="hobby_skill" placeholder="أضف هواية أو مهارة…"
+                      options={opts('hobby_skill')}
+                      onAdd={v => updateSub('hobbies_skills', [...hobbies_skills, { hobby_skill: v }])}
+                      onRemove={i => updateSub('hobbies_skills', hobbies_skills.filter((_, idx) => idx !== i))} />
+                  </div>
+                  <ValidationMessage message={validationMessageForTarget(validationIssue, 'hobbies_skills')} />
+                </>
               )}
             </div>
           </div>

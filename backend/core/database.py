@@ -165,7 +165,7 @@ class Database:
         self.profile_pictures_dir = os.path.join(self.photos_root_dir, "profile_pictures")
         self.photos_dir = self.profile_pictures_dir
         self.auth_sheet = "auth_users"
-        self.auth_columns = ["person_id", "username", "password_hash", "role"]
+        self.auth_columns = ["person_id", "username", "password_hash", "role", "account_status", "rejection_reason"]
         self.questionnaires_path = os.path.join(self.data_dir, "questionnaires.json")
         self.notifications_path = os.path.join(self.data_dir, "notifications.json")
 
@@ -235,7 +235,7 @@ class Database:
         name = str(column_name or "").strip().lower()
         if not name:
             return False
-        if name in {"registered", "archived", "school_graduated"}:
+        if name in {"registered", "archived", "no_higher_education", "not_employed"}:
             return True
         if name.startswith(("is_", "has_", "use_", "inherit_")):
             return True
@@ -331,7 +331,16 @@ class Database:
         "personal_mobile_number_primary": {"mobile_number_record_id": str},
         "mobile_number_linked_jobs": {"mobile_number_record_id": str, "linked_job_ids": str},
         "nationality": {"nationality": str},
-        "person_youth_group": {"person_youth_group_record_id": str, "youth_join_year": "Int64", "youth_group_id": str, "age_group": str},
+        "person_youth_group": {
+            "person_youth_group_record_id": str,
+            "youth_join_year": "Int64",
+            "youth_group_id": str,
+            "age_group": str,
+            "yg_approval_status": str,
+            "yg_approved_by": str,
+            "yg_approval_date": str,
+            "yg_approval_notes": str,
+        },
         "person_youth_group_age_history": {"person_youth_group_record_id": str, "age_group": str, "start_date": str, "end_date": str},
         "schools": {"school_record_id": str},
         "school_sections": {"school_record_id": str, "section": str},
@@ -400,8 +409,25 @@ class Database:
         parent = os.path.dirname(path)
         if parent:
             os.makedirs(parent, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        fd, temp_path = tempfile.mkstemp(
+            prefix=f".{os.path.basename(path)}.",
+            suffix=".tmp",
+            dir=parent or None,
+            text=True,
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+                f.write("\n")
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temp_path, path)
+        except Exception:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
+            raise
 
     def _normalize_auth_person_id(self, value):
         if value is None:
@@ -429,11 +455,17 @@ class Database:
             person_id = self._normalize_auth_person_id(row.get("person_id"))
             if not username or not password_hash:
                 continue
+            raw_status = str(row.get("account_status") or "").strip()
+            account_status = raw_status if raw_status else "active"
+            raw_reason = str(row.get("rejection_reason") or "").strip()
+            rejection_reason = raw_reason if raw_reason and raw_reason not in ("nan", "None") else None
             users.append({
                 "person_id": person_id,
                 "username": username,
                 "password_hash": password_hash,
                 "role": role,
+                "account_status": account_status,
+                "rejection_reason": rejection_reason,
             })
         return users
 
@@ -479,11 +511,17 @@ class Database:
             password_hash = str(row.get("password_hash") or "").strip()
             if not username or not password_hash:
                 continue
+            raw_status = str(row.get("account_status") or "").strip()
+            account_status = raw_status if raw_status and raw_status not in ("nan", "None") else "active"
+            raw_reason = str(row.get("rejection_reason") or "").strip()
+            rejection_reason = raw_reason if raw_reason and raw_reason not in ("nan", "None") else ""
             new_users[username] = {
-                "person_id":     self._person_id_str(self._normalize_auth_person_id(row.get("person_id"))),
-                "username":      username,
-                "password_hash": password_hash,
-                "role":          (str(row.get("role") or "member").strip() or "member"),
+                "person_id":      self._person_id_str(self._normalize_auth_person_id(row.get("person_id"))),
+                "username":       username,
+                "password_hash":  password_hash,
+                "role":           (str(row.get("role") or "member").strip() or "member"),
+                "account_status": account_status,
+                "rejection_reason": rejection_reason,
             }
 
         # Read the full CSV (active + inactive rows)

@@ -14,7 +14,7 @@ QUESTIONNAIRES_PATH = S.db.questionnaires_path
 q_lock = threading.Lock()
 
 NOTIFICATIONS_PATH = S.db.notifications_path
-notif_lock = threading.Lock()
+notif_lock = S.notif_lock  # shared across all modules — prevents concurrent write corruption
 
 
 def _load_questionnaires() -> dict:

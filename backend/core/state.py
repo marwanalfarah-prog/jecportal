@@ -52,6 +52,15 @@ SCHOOL_SHEET = "schools"
 SCHOOL_RECORD_ID_COL = "school_record_id"
 SCHOOL_NAME_COL = "school_name"
 SCHOOL_COLUMNS = ["person_id", SCHOOL_RECORD_ID_COL, SCHOOL_NAME_COL, "start_date", "end_date", "is_current"]
+SCHOOL_STATUS_COL = "school_graduated"
+SCHOOL_STATUS_STUDYING = "على مقاعد الدراسة"
+SCHOOL_STATUS_GRADUATED = "متخرج من المدارس"
+SCHOOL_STATUS_NOT_ENROLLED = "غير ملتزم بدراسة مدرسيّة"
+SCHOOL_STATUS_VALUES = {
+    SCHOOL_STATUS_STUDYING,
+    SCHOOL_STATUS_GRADUATED,
+    SCHOOL_STATUS_NOT_ENROLLED,
+}
 SCHOOL_SECTION_SHEET = "school_sections"
 SCHOOL_SECTION_COLUMNS = [SCHOOL_RECORD_ID_COL, "section"]
 SCHOOL_GRADE_SHEET = "school_grades"
@@ -98,7 +107,21 @@ PERSON_YOUTH_GROUP_SHEET = "person_youth_group"
 PERSON_YOUTH_GROUP_RECORD_ID_COL = "person_youth_group_record_id"
 PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET = "person_youth_group_age_history"
 PERSON_YOUTH_GROUP_AGE_HISTORY_COLUMNS = [PERSON_YOUTH_GROUP_RECORD_ID_COL, "age_group", "start_date", "end_date"]
-PERSON_YOUTH_GROUP_COLUMNS = ["person_id", PERSON_YOUTH_GROUP_RECORD_ID_COL, "youth_join_year", "age_group", "youth_group_id", "archived"]
+PERSON_YOUTH_GROUP_APPROVAL_COLUMNS = [
+    "yg_approval_status",
+    "yg_approved_by",
+    "yg_approval_date",
+    "yg_approval_notes",
+]
+PERSON_YOUTH_GROUP_COLUMNS = [
+    "person_id",
+    PERSON_YOUTH_GROUP_RECORD_ID_COL,
+    "youth_join_year",
+    "age_group",
+    "youth_group_id",
+    "archived",
+    *PERSON_YOUTH_GROUP_APPROVAL_COLUMNS,
+]
 AGE_GROUP_ORDER_DESC = ["العاملة", "الجامعيّة", "الثانوي", "الإعدادي", "البراعم"]
 AGE_GROUP_ORDER_INDEX = {value: index for index, value in enumerate(AGE_GROUP_ORDER_DESC)}
 SOCIAL_MEDIA_SHEET = "social_media"
@@ -115,6 +138,8 @@ JOB_ID_COL = "job_id"
 EMPLOYER_NAME_COL = "employer_name"
 EMPLOYMENT_STATE_COL = "employment_state"
 JOB_BASE_COLUMNS = ["person_id", JOB_ID_COL, "job_title", EMPLOYER_NAME_COL, "start_date", "end_date", EMPLOYMENT_STATE_COL]
+NO_HIGHER_EDUCATION_COL = "no_higher_education"
+NOT_EMPLOYED_COL = "not_employed"
 RESPONSIBILITY_SHEET = "responsibilities"
 RESPONSIBILITY_COLUMNS = ["person_id", "jec_year", "is_current", "responsibility_name", "start_date", "end_date", "youth_group_id"]
 
@@ -152,11 +177,16 @@ store: dict[str, pd.DataFrame] = {}
 unreg_lock = threading.Lock()
 unreg_store: dict[str, pd.DataFrame] = {}
 
+# Single shared lock for notifications.json — used by all modules that write notifications.
+notif_lock = threading.Lock()
+
 _data_version = 0
 _enriched_cache = None
 _enriched_cache_version = -1
 _members_index_cache = None
 _members_index_cache_version = -1
+_unreg_index_cache = None
+_unreg_index_cache_version = -1
 
 YOUTH_GROUP_ID_COL = "youth_group_id"
 YOUTH_GROUP_NAME_COL = "youth_group_name"
@@ -183,6 +213,21 @@ SCD_ACTIVE_TO_COL = "scd_active_to"
 SCD_CURRENTLY_ACTIVE_FLAG_COL = "scd_currently_active_flag"
 SCD_CHANGED_BY_USER_COL = "scd_changed_by_user"
 SCD_METADATA_COLUMNS = [SCD_ACTIVE_FROM_COL, SCD_ACTIVE_TO_COL, SCD_CURRENTLY_ACTIVE_FLAG_COL, SCD_CHANGED_BY_USER_COL]
+
+# Registration approval columns
+ADMIN_APPROVAL_STATUS_COL = "admin_approval_status"
+ADMIN_APPROVAL_BY_COL = "admin_approval_by"
+ADMIN_APPROVAL_DATE_COL = "admin_approval_date"
+ADMIN_APPROVAL_NOTES_COL = "admin_approval_notes"
+
+YG_APPROVAL_STATUS_COL = "yg_approval_status"
+YG_APPROVED_BY_COL = "yg_approved_by"
+YG_APPROVAL_DATE_COL = "yg_approval_date"
+YG_APPROVAL_NOTES_COL = "yg_approval_notes"
+
+APPROVAL_STATUS_PENDING = "pending"
+APPROVAL_STATUS_APPROVED = "approved"
+APPROVAL_STATUS_REJECTED = "rejected"
 
 _youth_group_name_by_id: dict[str, str] = {}
 _youth_group_patron_by_id: dict[str, str | None] = {}
@@ -423,12 +468,14 @@ def _scd_replace_rows_by_key(
 
 
 def invalidate_enriched_cache():
-    global _data_version, _enriched_cache, _enriched_cache_version, _members_index_cache, _members_index_cache_version
+    global _data_version, _enriched_cache, _enriched_cache_version, _members_index_cache, _members_index_cache_version, _unreg_index_cache, _unreg_index_cache_version
     _data_version += 1
     _enriched_cache = None
     _enriched_cache_version = -1
     _members_index_cache = None
     _members_index_cache_version = -1
+    _unreg_index_cache = None
+    _unreg_index_cache_version = -1
 
 
 def cache_state():
@@ -449,6 +496,16 @@ def set_members_index_cache(payload, version):
     global _members_index_cache, _members_index_cache_version
     _members_index_cache = payload
     _members_index_cache_version = version
+
+
+def unreg_index_cache_state():
+    return _unreg_index_cache, _unreg_index_cache_version, _data_version
+
+
+def set_unreg_index_cache(payload, version):
+    global _unreg_index_cache, _unreg_index_cache_version
+    _unreg_index_cache = payload
+    _unreg_index_cache_version = version
 
 
 def _console_print(message):
@@ -652,6 +709,52 @@ def _normalize_person_school_final_gpa(value) -> float | None:
         return float(text)
     except (TypeError, ValueError):
         return None
+
+
+def normalize_school_status(value, *, has_current_school: bool = False) -> str:
+    text = _normalize_text(value)
+    if text in SCHOOL_STATUS_VALUES:
+        return text
+
+    lowered = str(text or "").strip().lower()
+    if lowered in ("1", "true", "yes", "y", "t"):
+        return SCHOOL_STATUS_GRADUATED
+    if lowered in ("0", "false", "no", "n", "f"):
+        return SCHOOL_STATUS_STUDYING if has_current_school else SCHOOL_STATUS_NOT_ENROLLED
+
+    if text:
+        simplified = re.sub(r"\s+", " ", text).strip()
+        if simplified in ("متخرّج من المدارس", "متخرج من المدارس"):
+            return SCHOOL_STATUS_GRADUATED
+        if simplified in ("على مقاعد الدراسة", "طالب", "حاليًّا", "حاليا", "حالي"):
+            return SCHOOL_STATUS_STUDYING
+        if simplified in ("غير ملتزم بدراسة مدرسية", "غير ملتزم بدراسة مدرسيّة", "لا يدرس"):
+            return SCHOOL_STATUS_NOT_ENROLLED
+
+    return SCHOOL_STATUS_STUDYING if has_current_school else SCHOOL_STATUS_NOT_ENROLLED
+
+
+def _active_person_ids_for_sheet(df: pd.DataFrame | None) -> set[str]:
+    active_df = _scd_filter_active(df)
+    if active_df.empty or "person_id" not in active_df.columns:
+        return set()
+    return {
+        str(pid).strip()
+        for pid in active_df["person_id"].dropna().astype(str).tolist()
+        if str(pid).strip()
+    }
+
+
+def _active_current_school_person_ids(df: pd.DataFrame | None) -> set[str]:
+    active_df = _scd_filter_active(df)
+    if active_df.empty or "person_id" not in active_df.columns or "is_current" not in active_df.columns:
+        return set()
+    current_mask = active_df["is_current"].apply(_to_bool)
+    return {
+        str(pid).strip()
+        for pid in active_df[current_mask]["person_id"].dropna().astype(str).tolist()
+        if str(pid).strip()
+    }
 
 
 def _school_grade_values_from_value(value) -> list[str]:
@@ -1605,14 +1708,18 @@ def normalize_person_youth_group_rows(rows, history_lookup: dict[str, list[dict]
 
         archived = row.get("archived")
         current_age_group = current_age_group_from_history_rows(history_by_record_id.get(record_id)) or _normalize_age_group(row.get("age_group"))
-        normalized.append({
+        normalized_row = {
             "person_id": _normalize_person_id(row.get("person_id")),
             PERSON_YOUTH_GROUP_RECORD_ID_COL: record_id,
             "youth_join_year": _normalize_youth_join_year(row.get("youth_join_year")),
             "age_group": current_age_group,
             YOUTH_GROUP_ID_COL: youth_group_id,
             "archived": bool(archived) if archived is not None and str(archived) not in ("nan", "None", "") else False,
-        })
+        }
+        for approval_col in PERSON_YOUTH_GROUP_APPROVAL_COLUMNS:
+            if approval_col in row:
+                normalized_row[approval_col] = row.get(approval_col)
+        normalized.append(normalized_row)
 
     return normalized
 
@@ -1674,7 +1781,7 @@ def build_person_youth_group_payload_rows(df: pd.DataFrame | None, history_df: p
             current_age_group = current_age_group_from_history_rows(history_rows) or stored_age_group or ""
             join_year = _normalize_youth_join_year(row.get("youth_join_year"))
             archived = row.get("archived")
-            rows.append({
+            payload_row = {
                 PERSON_YOUTH_GROUP_RECORD_ID_COL: record_id,
                 "youth_group_id": yg_id,
                 "age_group": current_age_group,
@@ -1682,7 +1789,11 @@ def build_person_youth_group_payload_rows(df: pd.DataFrame | None, history_df: p
                 "age_group_history": sort_age_group_history_rows(history_rows),
                 "youth_join_year": join_year,
                 "archived": bool(archived) if archived is not None and str(archived) not in ("nan", "None", "") else False,
-            })
+            }
+            for approval_col in PERSON_YOUTH_GROUP_APPROVAL_COLUMNS:
+                if approval_col in row:
+                    payload_row[approval_col] = row.get(approval_col)
+            rows.append(payload_row)
         result[pid] = rows
     return result
 
@@ -1710,7 +1821,10 @@ def _ensure_person_youth_group_schema() -> bool:
     pyg = _scd_ensure_columns(store.get(PERSON_YOUTH_GROUP_SHEET, pd.DataFrame()).copy())
     history_df = _scd_ensure_columns(store.get(PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame()).copy())
 
-    pyg_required_columns = ["person_id", PERSON_YOUTH_GROUP_RECORD_ID_COL, "youth_join_year", YOUTH_GROUP_ID_COL, "archived"]
+    pyg_required_columns = [
+        col for col in PERSON_YOUTH_GROUP_COLUMNS
+        if col != "age_group"
+    ]
     if pyg.empty:
         pyg = pd.DataFrame(columns=pyg_required_columns + SCD_METADATA_COLUMNS)
         changed = True
@@ -4112,6 +4226,11 @@ def _ensure_persons_schema():
         persons["registered"] = True
         changed = True
 
+    for col in (SCHOOL_STATUS_COL, NO_HIGHER_EDUCATION_COL, NOT_EMPLOYED_COL):
+        if col not in persons.columns:
+            persons[col] = None
+            changed = True
+
     for col in PERSON_NAME_COLS + PERSON_ENGLISH_NAME_COLS + MOTHER_NAME_COLS + MOTHER_ENGLISH_NAME_COLS:
         if col not in persons.columns:
             persons[col] = None
@@ -4126,6 +4245,38 @@ def _ensure_persons_schema():
     if before_registered is not None and not before_registered.equals(persons["registered"]):
         changed = True
 
+    current_school_person_ids = _active_current_school_person_ids(store.get(SCHOOL_SHEET, pd.DataFrame()))
+    before_school_status = persons[SCHOOL_STATUS_COL].copy()
+    persons[SCHOOL_STATUS_COL] = persons.apply(
+        lambda row: normalize_school_status(
+            row.get(SCHOOL_STATUS_COL),
+            has_current_school=str(row.get("person_id") or "").strip() in current_school_person_ids,
+        ),
+        axis=1,
+    )
+    if not before_school_status.equals(persons[SCHOOL_STATUS_COL]):
+        changed = True
+
+    higher_education_person_ids = _active_person_ids_for_sheet(store.get(HIGHER_EDUCATION_SHEET, pd.DataFrame()))
+    jobs_person_ids = _active_person_ids_for_sheet(store.get(JOB_SHEET, pd.DataFrame()))
+    for col, person_ids in (
+        (NO_HIGHER_EDUCATION_COL, higher_education_person_ids),
+        (NOT_EMPLOYED_COL, jobs_person_ids),
+    ):
+        before_col = persons[col].copy()
+        persons[col] = persons.apply(
+            lambda row: False if str(row.get("person_id") or "").strip() in person_ids else _to_bool(row.get(col)),
+            axis=1,
+        )
+        missing_mask = before_col.isna() | before_col.astype(str).str.strip().isin(("", "nan", "None", "null"))
+        if missing_mask.any():
+            persons.loc[missing_mask, col] = persons[missing_mask].apply(
+                lambda row: str(row.get("person_id") or "").strip() not in person_ids,
+                axis=1,
+            )
+        if not before_col.equals(persons[col]):
+            changed = True
+
     if "school_final_gpa" in persons.columns:
         normalized_school_final_gpa = persons["school_final_gpa"].apply(_normalize_person_school_final_gpa)
         if not normalized_school_final_gpa.equals(persons["school_final_gpa"]):
@@ -4136,10 +4287,30 @@ def _ensure_persons_schema():
     return changed
 
 
+def _is_admin_approved(row) -> bool:
+    status = str(row.get(ADMIN_APPROVAL_STATUS_COL) or "").strip().lower()
+    return status in ("", "approved", "nan", "none")
+
+
+def _pending_registration_ids() -> set[str]:
+    """Return person_ids of persons with a non-approved admin_approval_status."""
+    persons = _scd_filter_active(store.get("persons", pd.DataFrame()))
+    if persons.empty or ADMIN_APPROVAL_STATUS_COL not in persons.columns:
+        return set()
+    mask = persons[ADMIN_APPROVAL_STATUS_COL].astype(str).str.strip().str.lower().isin(
+        [APPROVAL_STATUS_PENDING, APPROVAL_STATUS_REJECTED]
+    )
+    return set(persons[mask]["person_id"].astype(str).tolist())
+
+
 def _registered_persons_df() -> pd.DataFrame:
     _ensure_persons_schema()
     persons = _scd_filter_active(store["persons"])
-    projected = _project_primary_addresses(persons[persons["registered"] == True])
+    reg = persons[persons["registered"] == True].copy()
+    if ADMIN_APPROVAL_STATUS_COL in reg.columns:
+        status_col = reg[ADMIN_APPROVAL_STATUS_COL].astype(str).str.strip().str.lower()
+        reg = reg[~status_col.isin([APPROVAL_STATUS_PENDING, APPROVAL_STATUS_REJECTED])]
+    projected = _project_primary_addresses(reg)
     return merge_person_school_system_sectors(merge_person_titles(projected))
 
 
@@ -4561,7 +4732,11 @@ def _sheet_for_registered(sheet: str) -> pd.DataFrame:
     if df.empty or "person_id" not in df.columns:
         return df
     reg_ids = set(_registered_persons_df()["person_id"].astype(str))
-    return df[df["person_id"].astype(str).isin(reg_ids)]
+    result = df[df["person_id"].astype(str).isin(reg_ids)]
+    if sheet == PERSON_YOUTH_GROUP_SHEET and YG_APPROVAL_STATUS_COL in result.columns:
+        status_col = result[YG_APPROVAL_STATUS_COL].astype(str).str.strip().str.lower()
+        result = result[~status_col.isin([APPROVAL_STATUS_PENDING, APPROVAL_STATUS_REJECTED])]
+    return result
 
 
 def nationality_iso_lookup() -> dict[str, dict[str, str | None]]:
