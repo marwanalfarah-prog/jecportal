@@ -470,10 +470,10 @@ function normalizeHigherEducationRows(rows, { dropEmpty = false } = {}) {
         ? !sanitizeDateInput(row?.end_date)
         : toBoolDefaultFalse(row?.is_current)
       const state = normalizeHigherEducationStateValue(row?.state ?? row?.education_state, { isCurrent: rawCurrent })
-      const isCurrent = state === 'switched'
-        ? false
-        : state === 'current'
-          ? true
+      const isCurrent = state === 'current'
+        ? true
+        : (state === 'switched' || state === 'graduated' || state === 'exited')
+          ? false
           : rawCurrent
 
       return {
@@ -2993,25 +2993,21 @@ function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches =
 
 function HigherEducationRowsEditor({ rows, onChange, universityOptions = [], majorOptions = [], degreeOptions = [], validationIssue = null }) {
   const normalizedRows = normalizeHigherEducationRows(rows)
-  const [open, setOpen] = useState(false)
-  const [custom, setCustom] = useState(false)
-  const [query, setQuery] = useState('')
-  const [draft, setDraft] = useState('')
-  const [message, setMessage] = useState('')
-  const ref = useRef(null)
-
-  useEffect(() => {
-    const handleOutsideClick = (event) => {
-      if (ref.current && !ref.current.contains(event.target)) {
-        setOpen(false)
-        setQuery('')
-      }
-    }
-    document.addEventListener('mousedown', handleOutsideClick)
-    return () => document.removeEventListener('mousedown', handleOutsideClick)
-  }, [])
 
   const commit = (nextRows) => onChange(normalizeHigherEducationRows(nextRows))
+
+  const addRecord = () => {
+    commit([...normalizedRows, {
+      university_college: '',
+      major: '',
+      degree: '',
+      start_date: '',
+      end_date: '',
+      is_current: true,
+      state: 'current',
+      final_gpa: '',
+    }])
+  }
 
   const commitRowChanges = (index, changes) => {
     const nextRows = normalizedRows.map((entry, rowIndex) => {
@@ -3049,44 +3045,9 @@ function HigherEducationRowsEditor({ rows, onChange, universityOptions = [], maj
   }
 
   const removeRow = (index) => {
-    setMessage('')
     commit(normalizedRows.filter((_, rowIndex) => rowIndex !== index))
   }
 
-  const addRecord = (value) => {
-    const universityCollege = normalizeLooseInput(value)
-    if (!universityCollege) {
-      setMessage('يرجى إدخال الجامعة / الكليّة أولاً')
-      return
-    }
-    setMessage('')
-    commit([...normalizedRows, {
-      university_college: universityCollege,
-      major: '',
-      degree: '',
-      start_date: '',
-      end_date: '',
-      is_current: true,
-      state: 'current',
-      final_gpa: '',
-    }])
-    setOpen(false)
-    setCustom(false)
-    setQuery('')
-    setDraft('')
-  }
-
-  const availableOptions = Array.from(new Map(
-    universityOptions
-      .map((option) => {
-        const value = normalizeLooseInput(option?.value || option)
-        const label = option?.label || value
-        return value ? [value.toLowerCase(), { value, label }] : null
-      })
-      .filter(Boolean)
-  ).values())
-
-  const filteredOptions = availableOptions.filter((option) => option.label.toLowerCase().includes(query.toLowerCase()))
   const degreeChoiceOptions = degreeOptions.length
     ? degreeOptions
     : [{ value: 'بكالوريوس' }, { value: 'ماجستير' }, { value: 'دكتوراه' }, { value: 'دبلوم' }]
@@ -3187,85 +3148,28 @@ function HigherEducationRowsEditor({ rows, onChange, universityOptions = [], maj
         )
       })}
 
-      {!custom ? (
-        <div ref={ref} style={{ position: 'relative' }}>
-          <button type="button" className="combo-trigger" onClick={() => { setOpen((current) => !current); setQuery(''); setMessage('') }}>
-            <span style={{ flex: 1, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              أضف سجل تعليم عالٍ…
-            </span>
-            <span style={{ color: 'var(--gray-400)', fontSize: '0.7rem', flexShrink: 0 }}>▾</span>
-          </button>
-          {open && (
-            <div className="combo-dropdown">
-              <input
-                autoFocus
-                className="combo-search"
-                placeholder="بحث…"
-                value={query}
-                onChange={event => setQuery(event.target.value)}
-                onKeyDown={event => event.stopPropagation()}
-              />
-              <div className="combo-list">
-                {filteredOptions.length === 0 && (
-                  <div style={{ padding: '8px 12px', color: 'var(--gray-400)', fontSize: '0.82rem' }}>لا توجد نتائج</div>
-                )}
-                {filteredOptions.map((option) => (
-                  <button type="button" key={option.value} className="combo-item" onClick={() => addRecord(option.value)}>
-                    {option.label}
-                  </button>
-                ))}
-                <button type="button" className="combo-item combo-other" onClick={() => { setOpen(false); setQuery(''); setCustom(true); setMessage('') }}>
-                  ＋ أخرى / اكتب يدوياً…
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div style={{ display: 'flex', gap: 6 }}>
-          <input
-            autoFocus
-            className="combo-input"
-            style={{ flex: 1 }}
-            placeholder="اكتب اسم الجامعة / الكليّة…"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') addRecord(draft)
-              if (event.key === 'Escape') { setCustom(false); setDraft(''); setMessage('') }
-            }}
-          />
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => addRecord(draft)}>إضافة</button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setCustom(false); setDraft(''); setMessage('') }}>✕</button>
-        </div>
-      )}
-
-      {message && <div style={{ fontSize: '0.78rem', color: 'var(--red)' }}>{message}</div>}
+      <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={addRecord}>
+        + أضف سجل تعليم عالٍ
+      </button>
     </div>
   )
 }
 
 function JobRowsEditor({ rows, onChange, jobTitleOptions = [], companyOptions = [], validationIssue = null }) {
   const normalizedRows = normalizeJobRows(rows)
-  const [open, setOpen] = useState(false)
-  const [custom, setCustom] = useState(false)
-  const [query, setQuery] = useState('')
-  const [draft, setDraft] = useState('')
-  const [message, setMessage] = useState('')
-  const ref = useRef(null)
-
-  useEffect(() => {
-    const handleOutsideClick = (event) => {
-      if (ref.current && !ref.current.contains(event.target)) {
-        setOpen(false)
-        setQuery('')
-      }
-    }
-    document.addEventListener('mousedown', handleOutsideClick)
-    return () => document.removeEventListener('mousedown', handleOutsideClick)
-  }, [])
 
   const commit = (nextRows) => onChange(normalizeJobRows(nextRows))
+
+  const addRecord = () => {
+    commit([...normalizedRows, {
+      job_title: '',
+      company: '',
+      start_date: '',
+      end_date: '',
+      is_current: true,
+      state: 'current',
+    }])
+  }
 
   const commitRowChanges = (index, changes) => {
     const nextRows = normalizedRows.map((entry, rowIndex) => {
@@ -3301,42 +3205,8 @@ function JobRowsEditor({ rows, onChange, jobTitleOptions = [], companyOptions = 
   }
 
   const removeRow = (index) => {
-    setMessage('')
     commit(normalizedRows.filter((_, rowIndex) => rowIndex !== index))
   }
-
-  const addRecord = (value) => {
-    const jobTitle = normalizeLooseInput(value)
-    if (!jobTitle) {
-      setMessage('يرجى إدخال المسمّى الوظيفي أولاً')
-      return
-    }
-    setMessage('')
-    commit([...normalizedRows, {
-      job_title: jobTitle,
-      company: '',
-      start_date: '',
-      end_date: '',
-      is_current: true,
-      state: 'current',
-    }])
-    setOpen(false)
-    setCustom(false)
-    setQuery('')
-    setDraft('')
-  }
-
-  const availableOptions = Array.from(new Map(
-    jobTitleOptions
-      .map((option) => {
-        const value = normalizeLooseInput(option?.value || option)
-        const label = option?.label || value
-        return value ? [value.toLowerCase(), { value, label }] : null
-      })
-      .filter(Boolean)
-  ).values())
-
-  const filteredOptions = availableOptions.filter((option) => option.label.toLowerCase().includes(query.toLowerCase()))
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -3418,60 +3288,9 @@ function JobRowsEditor({ rows, onChange, jobTitleOptions = [], companyOptions = 
         )
       })}
 
-      {!custom ? (
-        <div ref={ref} style={{ position: 'relative' }}>
-          <button type="button" className="combo-trigger" onClick={() => { setOpen((current) => !current); setQuery(''); setMessage('') }}>
-            <span style={{ flex: 1, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              أضف سجل عمل…
-            </span>
-            <span style={{ color: 'var(--gray-400)', fontSize: '0.7rem', flexShrink: 0 }}>▾</span>
-          </button>
-          {open && (
-            <div className="combo-dropdown">
-              <input
-                autoFocus
-                className="combo-search"
-                placeholder="بحث…"
-                value={query}
-                onChange={event => setQuery(event.target.value)}
-                onKeyDown={event => event.stopPropagation()}
-              />
-              <div className="combo-list">
-                {filteredOptions.length === 0 && (
-                  <div style={{ padding: '8px 12px', color: 'var(--gray-400)', fontSize: '0.82rem' }}>لا توجد نتائج</div>
-                )}
-                {filteredOptions.map((option) => (
-                  <button type="button" key={option.value} className="combo-item" onClick={() => addRecord(option.value)}>
-                    {option.label}
-                  </button>
-                ))}
-                <button type="button" className="combo-item combo-other" onClick={() => { setOpen(false); setQuery(''); setCustom(true); setMessage('') }}>
-                  ＋ أخرى / اكتب يدوياً…
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div style={{ display: 'flex', gap: 6 }}>
-          <input
-            autoFocus
-            className="combo-input"
-            style={{ flex: 1 }}
-            placeholder="اكتب المسمّى الوظيفي…"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') addRecord(draft)
-              if (event.key === 'Escape') { setCustom(false); setDraft(''); setMessage('') }
-            }}
-          />
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => addRecord(draft)}>إضافة</button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setCustom(false); setDraft(''); setMessage('') }}>✕</button>
-        </div>
-      )}
-
-      {message && <div style={{ fontSize: '0.78rem', color: 'var(--red)' }}>{message}</div>}
+      <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={addRecord}>
+        + أضف سجل عمل
+      </button>
     </div>
   )
 }
@@ -4177,11 +3996,12 @@ function formatSchoolPeriod(row) {
 function formatHigherEducationPeriod(row) {
   const start = String(row?.start_date || '').trim()
   const end = String(row?.end_date || '').trim()
+  const isCurrent = normalizeHigherEducationStateValue(row?.state, { isCurrent: Boolean(row?.is_current) }) === 'current'
   if (start && end) return `${start} - ${end}`
-  if (start && row?.is_current) return `${start} - حاليًّا`
+  if (start && isCurrent) return `${start} - حاليًّا`
   if (start) return start
   if (end) return end
-  if (row?.is_current) return 'حاليًّا'
+  if (isCurrent) return 'حاليًّا'
   return ''
 }
 
@@ -4382,7 +4202,43 @@ function SocialMediaCompactCard({ row, highlightPrimary = false }) {
   )
 }
 
+function validatePromoteData(data) {
+  const issues = []
+  const person = data?.person || {}
+  const nameFields = [
+    { key: 'ar_first_name', label: 'الاسم الأول بالعربية' },
+    { key: 'ar_second_name', label: 'الاسم الثاني بالعربية' },
+    { key: 'ar_third_name', label: 'الاسم الثالث بالعربية' },
+    { key: 'ar_last_name', label: 'اسم العائلة بالعربية' },
+  ]
+  nameFields.forEach(({ key, label }) => {
+    if (!String(person[key] || '').trim()) issues.push(label)
+  })
+  if (!String(person.gender || '').trim()) issues.push('الجنس')
+  const dobMissing = []
+  if (!person.birth_year) dobMissing.push('السنة')
+  if (!person.birth_month) dobMissing.push('الشهر')
+  if (!person.birth_day) dobMissing.push('اليوم')
+  if (dobMissing.length) issues.push(`تاريخ الميلاد الكامل (${dobMissing.join('، ')})`)
+  if (!(data?.mobile_numbers?.length)) issues.push('رقم هاتف واحد على الأقل')
+  const hasValidAddress = (data?.addresses || []).some(
+    addr => String(addr?.country || '').trim() && String(addr?.governorate || '').trim()
+  )
+  if (!hasValidAddress) issues.push('عنوان يحتوي على الدولة والمحافظة')
+  const memberships = data?.person_youth_group || []
+  if (!memberships.length) {
+    issues.push('عضوية شبيبة واحدة على الأقل')
+  } else {
+    const hasAgeGroup = memberships.some(m =>
+      (m?.age_group_history || []).some(h => String(h?.age_group || '').trim())
+    )
+    if (!hasAgeGroup) issues.push('فئة عمرية واحدة على الأقل في إحدى عضويات الشبيبة')
+  }
+  return issues
+}
+
 const MEMBERSHIP_AGE_GROUPS_DESC = ['العاملة', 'الجامعيّة', 'الثانوي', 'الإعدادي', 'البراعم']
+const ADMIN_ONLY_AGE_GROUPS = new Set(['مرشد روحيّ'])
 const MEMBERSHIP_STATUS_OPTIONS = [
   { value: 'عضو حالي', label: 'عضو حالي' },
   { value: 'عضو قديم', label: 'عضو قديم' },
@@ -4517,7 +4373,7 @@ function formatYouthMembershipHistoryPeriod(row) {
   if (start && end) return `${start} - ${end}`
   if (start) return `${start} - حاليًّا`
   if (end) return end
-  return 'غير محدد'
+  return ''
 }
 
 function YouthMembershipHistoryView({ rows }) {
@@ -4526,24 +4382,27 @@ function YouthMembershipHistoryView({ rows }) {
 
   return (
     <div style={{ display: 'grid', gap: 8 }}>
-      {items.map((item, index) => (
-        <div
-          key={`${item.age_group || 'age'}-${item.start_date || 'start'}-${item.end_date || 'end'}-${index}`}
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'minmax(120px, 0.9fr) minmax(140px, 1.1fr)',
-            gap: 8,
-            alignItems: 'center',
-            padding: '10px 12px',
-            borderRadius: 12,
-            border: '1px solid var(--gray-200)',
-            background: 'white',
-          }}
-        >
-          <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{item.age_group}</div>
-          <div style={{ fontSize: '0.82rem', color: 'var(--gray-500)' }}>{formatYouthMembershipHistoryPeriod(item)}</div>
-        </div>
-      ))}
+      {items.map((item, index) => {
+        const period = formatYouthMembershipHistoryPeriod(item)
+        return (
+          <div
+            key={`${item.age_group || 'age'}-${item.start_date || 'start'}-${item.end_date || 'end'}-${index}`}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: period ? 'minmax(120px, 0.9fr) minmax(140px, 1.1fr)' : '1fr',
+              gap: 8,
+              alignItems: 'center',
+              padding: '10px 12px',
+              borderRadius: 12,
+              border: '1px solid var(--gray-200)',
+              background: 'white',
+            }}
+          >
+            <div style={{ fontWeight: 700, color: 'var(--navy)' }}>{item.age_group}</div>
+            {period && <div style={{ fontSize: '0.82rem', color: 'var(--gray-500)' }}>{period}</div>}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -4595,30 +4454,35 @@ function YouthMembershipCompactCard({ row, title, badge, logoUrl, logoAlt }) {
       <div style={{ display: 'grid', gap: 8 }}>
         <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--gray-400)' }}>الفئات العمرية</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
-          {historyRows.map((item, index) => (
-            <div
-              key={`${item.age_group || 'age'}-${item.start_date || 'start'}-${item.end_date || 'end'}-${index}`}
-              style={{
-                display: 'grid',
-                gap: 6,
-                padding: '12px 14px',
-                borderRadius: 14,
-                background: 'white',
-                border: '1px solid rgba(15, 39, 68, 0.08)',
-                boxShadow: '0 6px 16px rgba(15, 39, 68, 0.04)',
-                minWidth: 0,
-              }}
-            >
-              <div style={{ fontWeight: 700, color: 'var(--navy)', lineHeight: 1.35, minWidth: 0, overflowWrap: 'anywhere' }}>
-                {item.age_group}
+          {historyRows.map((item, index) => {
+            const period = formatYouthMembershipHistoryPeriod(item)
+            return (
+              <div
+                key={`${item.age_group || 'age'}-${item.start_date || 'start'}-${item.end_date || 'end'}-${index}`}
+                style={{
+                  display: 'grid',
+                  gap: 6,
+                  padding: '12px 14px',
+                  borderRadius: 14,
+                  background: 'white',
+                  border: '1px solid rgba(15, 39, 68, 0.08)',
+                  boxShadow: '0 6px 16px rgba(15, 39, 68, 0.04)',
+                  minWidth: 0,
+                }}
+              >
+                <div style={{ fontWeight: 700, color: 'var(--navy)', lineHeight: 1.35, minWidth: 0, overflowWrap: 'anywhere' }}>
+                  {item.age_group}
+                </div>
+                {period && (
+                  <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-start' }}>
+                    <span style={{ fontSize: '0.76rem', color: 'var(--gray-500)', fontWeight: 700, background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 999, padding: '5px 10px' }}>
+                      {period}
+                    </span>
+                  </div>
+                )}
               </div>
-              <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-start' }}>
-                <span style={{ fontSize: '0.76rem', color: 'var(--gray-500)', fontWeight: 700, background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 999, padding: '5px 10px' }}>
-                  {formatYouthMembershipHistoryPeriod(item)}
-                </span>
-              </div>
-            </div>
-          ))}
+            )
+          })}
           {!historyRows.length ? (
             <div
               style={{
@@ -4641,9 +4505,12 @@ function YouthMembershipCompactCard({ row, title, badge, logoUrl, logoAlt }) {
   )
 }
 
-function YouthMembershipEditor({ rows, onChange, youthGroupOptions, allowHigherAgeGroups = false, validationIssue = null }) {
+function YouthMembershipEditor({ rows, onChange, youthGroupOptions, allowHigherAgeGroups = false, allowAdminAgeGroups = false, validationIssue = null }) {
   const normalizedRows = normalizeYouthMembershipRows(rows)
-  const ageGroupOptions = MEMBERSHIP_AGE_GROUPS_DESC.map((value) => ({ value, label: value }))
+  const ageGroupOptions = [
+    { value: 'مرشد روحيّ', label: 'مرشد روحيّ' },
+    ...MEMBERSHIP_AGE_GROUPS_DESC.map((value) => ({ value, label: value })),
+  ]
 
   const commit = (nextRows) => onChange(serializeYouthMembershipRows(nextRows))
   const updateMembershipRow = (index, key, value) => {
@@ -4757,11 +4624,15 @@ function YouthMembershipEditor({ rows, onChange, youthGroupOptions, allowHigherA
             {row.age_group_history.length ? row.age_group_history.map((historyRow, historyIndex) => {
               const disableEndDate = row.status_label === 'عضو حالي' && historyIndex === 0
               const availableAgeGroupOptions = ageGroupOptions.filter((option) => (
-                canSelectYouthAgeGroup({
-                  currentAgeGroup: row.current_age_group,
-                  candidateAgeGroup: option.value,
-                  allowHigherAgeGroups,
-                }) || option.value === historyRow.age_group
+                option.value === historyRow.age_group
+                || (
+                  (!ADMIN_ONLY_AGE_GROUPS.has(option.value) || allowAdminAgeGroups)
+                  && canSelectYouthAgeGroup({
+                    currentAgeGroup: row.current_age_group,
+                    candidateAgeGroup: option.value,
+                    allowHigherAgeGroups,
+                  })
+                )
               ))
 
               const historyTargetId = `person_youth_group.${index}.age_group_history.${historyIndex}`
@@ -6384,6 +6255,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   const [validationIssue, setValidationIssue] = useState(null)
   const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [promoting, setPromoting] = useState(false)
+  const [promoteBlockedIssues, setPromoteBlockedIssues] = useState(null)
   const [activeTab, setActiveTab] = useState('info')
   const [filters, setFilters]     = useState({})
   const [filtersResolved, setFiltersResolved] = useState(false)
@@ -6467,7 +6339,8 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   }, [])
 
   useEffect(() => {
-    if (readOnly || !isEditing || editMetaLoaded.current || !canEnterEditMode) return
+    if (editMetaLoaded.current) return
+    editMetaLoaded.current = true
     let cancelled = false
     api.getConfig()
       .then((configResponse) => {
@@ -6475,7 +6348,6 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
           setActiveJecYear(normalizeActiveJecYearValue(configResponse?.config?.active_jec_year))
           setPersonTitles(normalizePersonTitles(configResponse?.config?.person_titles || []))
           setSchoolBranches(normalizeSchoolBranches(configResponse?.config?.school_branches || {}))
-          editMetaLoaded.current = true
         }
       })
       .catch(() => {
@@ -6485,14 +6357,12 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
         }
       })
     return () => { cancelled = true }
-  }, [canEnterEditMode, isEditing, readOnly])
+  }, [])
 
   useEffect(() => {
     if (!canEnterEditMode && isEditing) setIsEditing(false)
   }, [canEnterEditMode, isEditing])
 
-  // Reset edit-meta flag whenever the target profile changes so metadata
-  // (personTitles, schoolBranches) reloads correctly for the new person.
   useEffect(() => {
     editMetaLoaded.current = false
   }, [personId, isUnregistered])
@@ -6894,6 +6764,11 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   }
 
   const handlePromote = () => {
+    const issues = validatePromoteData(data)
+    if (issues.length) {
+      setPromoteBlockedIssues(issues)
+      return
+    }
     setConfirm({ action: 'promote' })
   }
 
@@ -7459,6 +7334,25 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
         onCancel={() => setConfirm(null)}
       />
 
+      <ConfirmDialog
+        open={!!promoteBlockedIssues}
+        title="بيانات ناقصة للتسجيل الرسمي"
+        message={
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ marginBottom: 4 }}>يرجى استكمال البيانات التالية قبل التسجيل:</div>
+            <ul style={{ margin: 0, paddingRight: 18, display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {(promoteBlockedIssues || []).map((issue, i) => (
+                <li key={i} style={{ color: 'var(--danger, #c0392b)', fontWeight: 600 }}>{issue}</li>
+              ))}
+            </ul>
+          </div>
+        }
+        confirmLabel="حسناً"
+        confirmClass="btn-primary"
+        onConfirm={() => setPromoteBlockedIssues(null)}
+        onCancel={() => setPromoteBlockedIssues(null)}
+      />
+
       {/* Back + saving indicator + action buttons */}
       <div className="profile-toolbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <button className="btn btn-ghost btn-sm" onClick={handleBack}>
@@ -7478,6 +7372,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
             <button
               className={`btn btn-sm profile-edit-toggle ${isEditing ? 'btn-ghost is-active' : 'btn-primary'}`}
               onClick={handleEditToggle}
+              disabled={isEditing && hasUnsavedChanges}
               style={{ display: 'flex', alignItems: 'center', gap: 6 }}
             >
               <Pencil size={14} /> {isEditing ? 'إنهاء التحرير' : 'تعديل الملف'}
@@ -7493,9 +7388,6 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
               <Check size={14} /> {saving ? 'جارٍ الحفظ…' : 'حفظ التعديلات'}
             </button>
           )}
-          {isEditing && <span className="profile-edit-mode-pill"><Pencil size={12} /> وضع التحرير</span>}
-          {isEditing && hasUnsavedChanges && !saving && <span className="profile-saving-indicator" style={{ fontSize: '0.82rem', color: 'var(--red)' }}>توجد تغييرات غير محفوظة</span>}
-          {isEditing && !hasUnsavedChanges && !saving && <span className="profile-saving-indicator" style={{ fontSize: '0.82rem', color: 'var(--gray-400)' }}>كل التغييرات محفوظة</span>}
           {canFullyEditProfile && isUnregistered && (
             <button
               className="btn btn-gold btn-sm"
@@ -7978,6 +7870,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                   onChange={(rows) => updateSub('person_youth_group', rows)}
                   youthGroupOptions={opts('youth_group')}
                   allowHigherAgeGroups={canFullyEditProfile}
+                  allowAdminAgeGroups={canFullyEditProfile}
                   validationIssue={validationIssue}
                 />
               )}

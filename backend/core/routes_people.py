@@ -20,6 +20,7 @@ from core.routes_auth import (
 
 
 _MISSING = object()
+_ADMIN_ONLY_AGE_GROUPS = {"مرشد روحيّ"}
 
 _ARABIC_CHAR_CLASS = "\u0621-\u064A\u066E-\u066F\u0671-\u06D3\u06FA-\u06FF\u064B-\u065F"
 _ARABIC_TEXT_RE = re.compile(rf"^[{_ARABIC_CHAR_CLASS}]+(?:[ -][{_ARABIC_CHAR_CLASS}]+)*$")
@@ -925,7 +926,13 @@ def profile_edit_scope(person_type: str, pid):
         and user.get("person_type") == person_type
         and str(user.get("person_id")) == str(pid)
     ):
-        return "full"
+        return "self"
+    if user.get("role") == "member":
+        youth_groups = _get_person_youth_groups(user.get("person_type"), user.get("person_id"))
+        council_access = _get_council_access(user.get("person_type"), user.get("person_id"), youth_groups)
+        accessible_group_ids = {str(gid).strip() for gid in council_access.keys() if str(gid).strip()}
+        if accessible_group_ids & _profile_group_ids(person_type, pid):
+            return "council"
     return None
 
 
@@ -988,6 +995,195 @@ def require_profile_view_access(person_type: str, pid):
     if not profile_view_scope(person_type, pid):
         return jsonify({"error": "forbidden"}), 403
     return None
+
+
+def _get_user_council_group_ids(user) -> set[str]:
+    if not user or user.get("role") != "member":
+        return set()
+    youth_groups = _get_person_youth_groups(user.get("person_type"), user.get("person_id"))
+    council_access = _get_council_access(user.get("person_type"), user.get("person_id"), youth_groups)
+    return {str(gid).strip() for gid in council_access.keys() if str(gid).strip()}
+
+
+def _apply_address_location_restriction(incoming_addresses, store, pid, compare_as_string: bool) -> list:
+    """prv2: strip lat/lng from incoming address rows, restore from stored rows by position."""
+    if not incoming_addresses:
+        return list(incoming_addresses or [])
+    addr_df = S._scd_filter_active(store.get(S.ADDRESS_SHEET, pd.DataFrame()))
+    if not addr_df.empty and "person_id" in addr_df.columns:
+        if compare_as_string:
+            mask = addr_df["person_id"].astype(str) == str(pid)
+        else:
+            mask = addr_df["person_id"] == pid
+        stored_rows = addr_df[mask].replace({pd.NA: None}).to_dict(orient="records")
+    else:
+        stored_rows = []
+    result = []
+    for i, row in enumerate(incoming_addresses):
+        row = dict(row)
+        for field in ("lat", "lng", "location_url"):
+            row.pop(field, None)
+        if i < len(stored_rows):
+            for field in ("lat", "lng"):
+                val = stored_rows[i].get(field)
+                if val is not None:
+                    row[field] = val
+        result.append(row)
+    return result
+
+
+def _validate_membership_scope(body, store, pid, scope, council_group_ids, compare_as_string: bool):
+    """
+    Validates and adjusts person_youth_group in body for 'council' or 'self' scope.
+    Returns (modified_body, errors).
+    - council: other-group rows preserved from store; editable group rows validated
+    - self: all groups validated with same rules except archived direction
+    """
+    errors = []
+
+    pyg_df = S._scd_filter_active(store.get(S.PERSON_YOUTH_GROUP_SHEET, pd.DataFrame()))
+    hist_df = S._scd_filter_active(store.get(S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET, pd.DataFrame()))
+
+    if not pyg_df.empty and "person_id" in pyg_df.columns:
+        pmask = (
+            pyg_df["person_id"].astype(str) == str(pid)
+            if compare_as_string
+            else pyg_df["person_id"] == pid
+        )
+        existing_rows = pyg_df[pmask].replace({pd.NA: None}).to_dict(orient="records")
+    else:
+        existing_rows = []
+
+    existing_record_ids = {
+        str(r.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL, "") or "")
+        for r in existing_rows
+        if r.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL)
+    }
+    history_by_record: dict[str, list[dict]] = {}
+    if not hist_df.empty and S.PERSON_YOUTH_GROUP_RECORD_ID_COL in hist_df.columns:
+        for hr in hist_df[
+            hist_df[S.PERSON_YOUTH_GROUP_RECORD_ID_COL].astype(str).isin(existing_record_ids)
+        ].replace({pd.NA: None}).to_dict(orient="records"):
+            rid = str(hr.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL, "") or "")
+            history_by_record.setdefault(rid, []).append({
+                "age_group": hr.get("age_group"),
+                "start_date": hr.get("start_date"),
+                "end_date": hr.get("end_date"),
+            })
+
+    existing_by_group: dict[str, dict] = {}
+    for row in existing_rows:
+        gid = str(row.get(S.YOUTH_GROUP_ID_COL, "") or "").strip()
+        if gid:
+            existing_by_group[gid] = row
+
+    incoming_pyg = list(body.get("person_youth_group") or [])
+    incoming_by_group: dict[str, dict] = {}
+    for row in incoming_pyg:
+        gid = str(row.get(S.YOUTH_GROUP_ID_COL, "") or "").strip()
+        if gid:
+            incoming_by_group[gid] = row
+
+    editable_groups = council_group_ids if scope == "council" else set(existing_by_group.keys())
+
+    # Cannot add a new membership
+    new_groups = set(incoming_by_group.keys()) - set(existing_by_group.keys())
+    if new_groups:
+        return body, ["لا يمكن إضافة عضوية جديدة في شبيبة."]
+
+    # Cannot remove an existing editable membership
+    for gid in editable_groups:
+        if gid in existing_by_group and gid not in incoming_by_group:
+            return body, ["لا يمكن حذف عضوية الشخص في الشبيبة."]
+
+    final_rows: list[dict] = []
+
+    # Preserve non-editable groups exactly as stored (council scope only)
+    for gid, ex_row in existing_by_group.items():
+        if gid in editable_groups:
+            continue
+        rid = str(ex_row.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL, "") or "")
+        row_copy = dict(ex_row)
+        row_copy["age_group_history"] = list(history_by_record.get(rid, []))
+        final_rows.append(row_copy)
+
+    # Validate and add editable groups
+    for gid, inc_row in incoming_by_group.items():
+        if gid not in editable_groups or gid not in existing_by_group:
+            continue
+        ex_row = existing_by_group[gid]
+        rid = str(ex_row.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL, "") or "")
+        existing_hist = history_by_record.get(rid, [])
+        existing_ag_set = {h.get("age_group") for h in existing_hist if h.get("age_group")}
+
+        current_ag = S.current_age_group_from_history_rows(existing_hist) or ex_row.get("age_group")
+        current_ag_idx = S.AGE_GROUP_ORDER_INDEX.get(current_ag, -1) if current_ag else -1
+
+        # Archived direction: prv3 (self) can only go active→inactive
+        existing_archived = bool(ex_row.get("archived", False))
+        incoming_archived = bool(inc_row.get("archived", False))
+        if scope == "self" and existing_archived and not incoming_archived:
+            return body, ["لا يمكنك إعادة تفعيل العضوية في الشبيبة."]
+
+        # Validate new age group history entries
+        incoming_hist = list(inc_row.get("age_group_history") or [])
+        incoming_ag_set = {h.get("age_group") for h in incoming_hist if isinstance(h, dict) and h.get("age_group")}
+        for h in incoming_hist:
+            if not isinstance(h, dict):
+                continue
+            ag = h.get("age_group")
+            if not ag or ag in existing_ag_set:
+                continue
+            if ag in _ADMIN_ONLY_AGE_GROUPS:
+                return body, [f"لا يمكنك تعيين '{ag}' — يختص بالمدير فقط."]
+            ag_idx = S.AGE_GROUP_ORDER_INDEX.get(ag, -1)
+            if ag_idx == -1:
+                return body, [f"فئة العمر '{ag}' غير معروفة."]
+            if current_ag_idx != -1 and ag_idx <= current_ag_idx:
+                return body, [f"لا يمكن إضافة فئة ({ag}) أكبر من أو تساوي الفئة الحالية ({current_ag})."]
+
+        # Preserve any existing history entries that were omitted
+        for existing_h in existing_hist:
+            ag = existing_h.get("age_group")
+            if ag and ag not in incoming_ag_set:
+                incoming_hist.append(dict(existing_h))
+
+        validated_row = dict(inc_row)
+        validated_row[S.PERSON_YOUTH_GROUP_RECORD_ID_COL] = rid
+        validated_row["age_group_history"] = incoming_hist
+        validated_row["archived"] = incoming_archived
+        final_rows.append(validated_row)
+
+    modified_body = dict(body)
+    modified_body["person_youth_group"] = final_rows
+    return modified_body, []
+
+
+def _filter_responsibilities_for_council(body, store, pid, council_group_ids, compare_as_string: bool) -> dict:
+    """prv2: preserve non-council responsibility rows from store; only allow incoming rows for council groups."""
+    resp_df = S._scd_filter_active(store.get("responsibilities", pd.DataFrame()))
+    if not resp_df.empty and "person_id" in resp_df.columns:
+        pmask = (
+            resp_df["person_id"].astype(str) == str(pid)
+            if compare_as_string
+            else resp_df["person_id"] == pid
+        )
+        existing_resp = resp_df[pmask].replace({pd.NA: None}).to_dict(orient="records")
+    else:
+        existing_resp = []
+
+    preserved = [
+        r for r in existing_resp
+        if str(r.get(S.YOUTH_GROUP_ID_COL, "") or "").strip() not in council_group_ids
+    ]
+    incoming_resp = list(body.get("responsibilities") or [])
+    council_resp = [
+        r for r in incoming_resp
+        if str(r.get(S.YOUTH_GROUP_ID_COL, "") or "").strip() in council_group_ids
+    ]
+    modified = dict(body)
+    modified["responsibilities"] = preserved + council_resp
+    return modified
 
 
 def build_location_only_address_rows(store: dict, pid, incoming_rows, *, compare_as_string: bool):
@@ -1399,9 +1595,8 @@ def register_registered_routes(app):
 
     @app.post("/api/person/<int:pid>/photo")
     def upload_photo(pid):
-        err = _require_admin()
-        if err:
-            return err
+        if not profile_edit_scope("registered", pid):
+            return jsonify({"error": "forbidden"}), 403
         if "photo" not in request.files:
             return jsonify({"error": "no file"}), 400
         file = request.files["photo"]
@@ -1491,6 +1686,27 @@ def register_registered_routes(app):
             return jsonify({"ok": True})
 
         with S.lock:
+            if scope in ("council", "self"):
+                user = _current_user()
+                council_group_ids = _get_user_council_group_ids(user) if scope == "council" else set()
+                body = dict(body)
+                if "person" in body and "title" in (body.get("person") or {}):
+                    body["person"] = {k: v for k, v in body["person"].items() if k != "title"}
+                if scope == "council" and "addresses" in body:
+                    body["addresses"] = _apply_address_location_restriction(
+                        body.get("addresses"), S.store, pid, compare_as_string=False
+                    )
+                if "person_youth_group" in body:
+                    body, membership_errors = _validate_membership_scope(
+                        body, S.store, pid, scope, council_group_ids, compare_as_string=False
+                    )
+                    if membership_errors:
+                        return _validation_error_response(membership_errors)
+                if scope == "council" and "responsibilities" in body:
+                    body = _filter_responsibilities_for_council(
+                        body, S.store, pid, council_group_ids, compare_as_string=False
+                    )
+
             raw_person = body.get("person", {})
             p, person_payload = prepare_profile_person_payload(
                 raw_person,
@@ -1751,6 +1967,52 @@ def register_registered_routes(app):
         return jsonify({"ok": True})
 
 
+def _validate_promote_record(record):
+    errors = []
+    person = record.get("person") or {}
+
+    for field in ("ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name"):
+        if not S._normalize_text(str(person.get(field) or "")):
+            errors.append(_NAME_FIELD_LABELS.get(field, field))
+
+    if not S._normalize_text(str(person.get("gender") or "")):
+        errors.append("الجنس")
+
+    dob_missing = []
+    if not person.get("birth_year"):
+        dob_missing.append("السنة")
+    if not person.get("birth_month"):
+        dob_missing.append("الشهر")
+    if not person.get("birth_day"):
+        dob_missing.append("اليوم")
+    if dob_missing:
+        errors.append(f"تاريخ الميلاد الكامل ({', '.join(dob_missing)})")
+
+    if not (record.get("mobile_numbers") or []):
+        errors.append("رقم هاتف واحد على الأقل")
+
+    addresses = record.get("addresses") or []
+    has_valid_address = any(
+        S._normalize_text(str(addr.get("country") or "")) and S._normalize_text(str(addr.get("governorate") or ""))
+        for addr in addresses
+    )
+    if not has_valid_address:
+        errors.append("عنوان يحتوي على الدولة والمحافظة")
+
+    memberships = record.get("person_youth_group") or []
+    if not memberships:
+        errors.append("عضوية شبيبة واحدة على الأقل")
+    else:
+        has_age_group = any(
+            any(S._normalize_text(str(h.get("age_group") or "")) for h in (m.get("age_group_history") or []))
+            for m in memberships
+        )
+        if not has_age_group:
+            errors.append("فئة عمرية واحدة على الأقل في إحدى عضويات الشبيبة")
+
+    return errors
+
+
 def register_unregistered_routes(app):
     @app.get("/api/unregistered")
     def get_unregistered():
@@ -1997,6 +2259,28 @@ def register_unregistered_routes(app):
             idx = persons_df[persons_df["person_id"].astype(str) == str(uid)].index
             if idx.empty:
                 return jsonify({"error": "not found"}), 404
+
+            if scope in ("council", "self"):
+                user = _current_user()
+                council_group_ids = _get_user_council_group_ids(user) if scope == "council" else set()
+                body = dict(body)
+                if "person" in body and "title" in (body.get("person") or {}):
+                    body["person"] = {k: v for k, v in body["person"].items() if k != "title"}
+                if scope == "council" and "addresses" in body:
+                    body["addresses"] = _apply_address_location_restriction(
+                        body.get("addresses"), S.unreg_store, uid, compare_as_string=True
+                    )
+                if "person_youth_group" in body:
+                    body, membership_errors = _validate_membership_scope(
+                        body, S.unreg_store, uid, scope, council_group_ids, compare_as_string=True
+                    )
+                    if membership_errors:
+                        return _validation_error_response(membership_errors)
+                if scope == "council" and "responsibilities" in body:
+                    body = _filter_responsibilities_for_council(
+                        body, S.unreg_store, uid, council_group_ids, compare_as_string=True
+                    )
+
             raw_person = body.get("person", {})
             p, person_payload = prepare_profile_person_payload(
                 raw_person,
@@ -2180,9 +2464,8 @@ def register_unregistered_routes(app):
 
     @app.post("/api/unregistered/<uid>/photo")
     def upload_unreg_photo(uid):
-        err = _require_admin()
-        if err:
-            return err
+        if not profile_edit_scope("unregistered", uid):
+            return jsonify({"error": "forbidden"}), 403
         if "photo" not in request.files:
             return jsonify({"error": "no file"}), 400
         file = request.files["photo"]
@@ -2218,6 +2501,10 @@ def register_unregistered_routes(app):
             )
             if not record:
                 return jsonify({"error": "not found"}), 404
+
+        issues = _validate_promote_record(record)
+        if issues:
+            return jsonify({"error": "لا يمكن إتمام التسجيل. يرجى استكمال البيانات الناقصة.", "issues": issues}), 422
 
         with S.lock:
             new_pid = S._next_person_id()

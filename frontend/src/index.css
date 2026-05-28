@@ -2213,6 +2213,18 @@ tbody td {
   box-shadow: 0 8px 16px rgba(21, 128, 61, 0.14);
 }
 
+.profile-page-editing .profile-name-columns {
+  gap: 0 12px;
+}
+
+.profile-page-editing .profile-name-section .info-key {
+  min-width: 88px;
+}
+
+.profile-page-editing .profile-name-section .info-row {
+  padding: 10px 10px;
+}
+
 @media (max-width: 640px) {
   .profile-two-column-layout,
   .profile-view-grid,
