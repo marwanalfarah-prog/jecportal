@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, BookOpen, BookOpenText, Hash } from 'lucide-react'
+import { Search, BookOpen, BookOpenText, Hash, Music2 } from 'lucide-react'
 import { api } from '../api.js'
 import { EmptyState, ErrorState, LoadingState } from '../pageStates.jsx'
 import './BibleReader.css'
@@ -958,6 +958,19 @@ export default function BibleReader({ toast, externalTarget }) {
               <div className="bible-guide-sheet">
                 <div className="bible-guide-banner">الترتيب الكتابي لأسماء أسفار الكتاب المقدس</div>
                 <div className="bible-guide-subtitle">الأقسام، الأسفار، والاختصارات المرجعية السريعة</div>
+                <div className="bible-guide-audio-player">
+                  <div className="bible-guide-audio-header">
+                    <Music2 size={16} className="bible-guide-audio-icon" />
+                    <span className="bible-guide-audio-title">أنشودة أسفار الكتاب المقدس</span>
+                  </div>
+                  <p className="bible-guide-audio-desc">استمع إلى هذه الأنشودة لتساعد الأطفال على حفظ أسماء أسفار الكتاب المقدس</p>
+                  <audio
+                    className="bible-guide-audio-element"
+                    controls
+                    src="/api/bible-reader/books-song"
+                    preload="metadata"
+                  />
+                </div>
                 {quickGuide.map((testament) => renderGuidePanel(testament))}
               </div>
             </div>

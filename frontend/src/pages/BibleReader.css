@@ -394,6 +394,48 @@ details[open] > .bible-tree-summary::before {
   margin: 12px 0 18px;
 }
 
+.bible-guide-audio-player {
+  border: 1px solid rgba(179, 58, 70, 0.22);
+  border-radius: 16px;
+  background: linear-gradient(135deg, #fff8f6 0%, #fff 100%);
+  padding: 14px 18px 16px;
+  margin-bottom: 20px;
+  display: grid;
+  gap: 8px;
+}
+
+.bible-guide-audio-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bible-guide-audio-icon {
+  color: var(--bible-guide-red);
+  flex-shrink: 0;
+}
+
+.bible-guide-audio-title {
+  font-family: var(--font-head);
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--bible-guide-red);
+}
+
+.bible-guide-audio-desc {
+  font-size: 0.82rem;
+  color: var(--gray-500);
+  margin: 0;
+  line-height: 1.6;
+}
+
+.bible-guide-audio-element {
+  width: 100%;
+  height: 40px;
+  border-radius: 10px;
+  outline: none;
+}
+
 .bible-guide-panel + .bible-guide-panel {
   margin-top: 20px;
 }
