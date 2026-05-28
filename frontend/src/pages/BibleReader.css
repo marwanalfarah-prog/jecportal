@@ -436,6 +436,106 @@ details[open] > .bible-tree-summary::before {
   outline: none;
 }
 
+.bible-guide-audio-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bible-guide-audio-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(179, 58, 70, 0.28);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--bible-guide-red);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.bible-guide-audio-btn:hover {
+  background: rgba(179, 58, 70, 0.06);
+  border-color: var(--bible-guide-red);
+}
+
+.bible-guide-audio-btn.lyrics-toggle.open {
+  background: var(--bible-guide-red);
+  border-color: var(--bible-guide-red);
+  color: #fff;
+}
+
+.bible-guide-lyrics-panel {
+  border: 1px solid rgba(179, 58, 70, 0.18);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fffdf8 0%, #fff 100%);
+  overflow: hidden;
+}
+
+.bible-guide-lyrics-state {
+  text-align: center;
+  padding: 24px;
+  color: var(--gray-400);
+  font-size: 0.84rem;
+}
+
+.bible-guide-lyrics-scroll {
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 18px 10px 22px;
+  display: flex;
+  flex-direction: column;
+}
+
+.bible-guide-lyrics-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.bible-guide-lyric-line {
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--gray-400);
+  line-height: 1.55;
+  cursor: pointer;
+  text-align: center;
+  direction: rtl;
+  transition: font-size 0.35s ease, color 0.35s ease, font-weight 0.35s ease, padding 0.35s ease;
+}
+
+.bible-guide-lyric-line:hover {
+  color: var(--gray-600);
+}
+
+.bible-guide-lyric-line.past {
+  color: var(--gray-300);
+}
+
+.bible-guide-lyric-line.active {
+  font-size: 1.42rem;
+  font-weight: 800;
+  color: var(--bible-guide-red);
+  padding: 11px 18px;
+}
+
+.bible-guide-lyric-line.music {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gray-300);
+  padding: 6px 18px;
+}
+
+.bible-guide-lyric-line.music.active {
+  font-size: 1rem;
+  color: var(--bible-guide-red);
+}
+
 .bible-guide-panel + .bible-guide-panel {
   margin-top: 20px;
 }

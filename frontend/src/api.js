@@ -302,4 +302,5 @@ export const api = {
   // ── Bible Reader ───────────────────────────────────────────────────────────
   listBibleReaderBooks: () => req('/bible-reader/books'),
   getBibleReaderBook: (bookId) => req(`/bible-reader/books/${encodeURIComponent(bookId)}`),
+  getBibleSongLyrics: () => req('/bible-reader/books-song-lyrics'),
 }

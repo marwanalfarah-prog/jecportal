@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from flask import jsonify, send_from_directory
+from flask import jsonify, request, send_from_directory
 
 from core import state as S
 from core.routes_auth import exports as auth_exports
@@ -271,4 +271,18 @@ def register_bible_reader_routes(app):
         if err:
             return err
         audio_dir = os.path.join(S.db.data_dir, "audios")
-        return send_from_directory(audio_dir, "AUD000000.mp3")
+        as_attachment = request.args.get("download") == "1"
+        return send_from_directory(
+            audio_dir, "AUD000000.mp3",
+            as_attachment=as_attachment,
+            download_name="أسفار الكتاب المقدس.mp3",
+        )
+
+    @app.get("/api/bible-reader/books-song-lyrics")
+    def serve_bible_books_song_lyrics():
+        err = auth_exports["_require_auth"]()
+        if err:
+            return err
+        lyrics_path = os.path.join(S.db.data_dir, "audios", "AUD000000.json")
+        data = S.db.load_json_file(lyrics_path, [])
+        return jsonify({"ok": True, "lyrics": data})

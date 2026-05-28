@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, BookOpen, BookOpenText, Hash, Music2 } from 'lucide-react'
+import { Search, BookOpen, BookOpenText, Hash, Music2, Download, FileText, ListMusic } from 'lucide-react'
 import { api } from '../api.js'
 import { EmptyState, ErrorState, LoadingState } from '../pageStates.jsx'
 import './BibleReader.css'
@@ -377,7 +377,14 @@ export default function BibleReader({ toast, externalTarget }) {
   const [multiChapterView, setMultiChapterView] = useState(null)
   const [reloadKey, setReloadKey] = useState(0)
 
+  const [lyricsOpen, setLyricsOpen] = useState(false)
+  const [lyrics, setLyrics] = useState(null)
+  const [lyricsLoading, setLyricsLoading] = useState(false)
+  const [audioCurrentTime, setAudioCurrentTime] = useState(0)
+
   const booksCacheRef = useRef({})
+  const audioRef = useRef(null)
+  const lyricsScrollRef = useRef(null)
 
   const booksMetaById = useMemo(() => {
     const index = {}
@@ -426,6 +433,15 @@ export default function BibleReader({ toast, externalTarget }) {
     return map
   }, [booksMeta])
 
+  const activeLyricIndex = useMemo(() => {
+    if (!Array.isArray(lyrics)) return -1
+    for (let i = 0; i < lyrics.length; i++) {
+      const e = lyrics[i]
+      if (audioCurrentTime >= e.start && audioCurrentTime < e.end) return i
+    }
+    return -1
+  }, [lyrics, audioCurrentTime])
+
   const activeBook = booksCacheRef.current[activeBookId] || null
   const chapters = Array.isArray(activeBook?.chapters) ? activeBook.chapters : []
   const activeChapter = chapters[activeChapterIndex] || null
@@ -439,6 +455,67 @@ export default function BibleReader({ toast, externalTarget }) {
       booksCacheRef.current[bookId] = book
     }
     return book
+  }
+
+  useEffect(() => {
+    if (!lyricsOpen || lyrics !== null) return
+    let cancelled = false
+    setLyricsLoading(true)
+    api.getBibleSongLyrics()
+      .then((res) => {
+        if (!cancelled) setLyrics(Array.isArray(res?.lyrics) ? res.lyrics : [])
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLyrics([])
+          toast?.('تعذر تحميل كلمات الترتيلة', 'error')
+        }
+      })
+      .finally(() => { if (!cancelled) setLyricsLoading(false) })
+    return () => { cancelled = true }
+  }, [lyricsOpen])
+
+  useEffect(() => {
+    if (!lyricsOpen || !lyricsScrollRef.current) return
+    const container = lyricsScrollRef.current
+    const el = container.querySelector('.bible-guide-lyric-line.active')
+    if (!el) return
+    const target = el.offsetTop - container.offsetTop - container.offsetHeight / 2 + el.offsetHeight / 2
+    container.scrollTo({ top: Math.max(0, target), behavior: 'smooth' })
+  }, [activeLyricIndex, lyricsOpen])
+
+  const handleDownloadSong = () => {
+    const a = document.createElement('a')
+    a.href = '/api/bible-reader/books-song?download=1'
+    a.download = 'أسفار الكتاب المقدس.mp3'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }
+
+  const handleDownloadLyrics = async () => {
+    let data = lyrics
+    if (!data) {
+      try {
+        const res = await api.getBibleSongLyrics()
+        data = Array.isArray(res?.lyrics) ? res.lyrics : []
+        setLyrics(data)
+      } catch {
+        toast?.('تعذر تحميل كلمات الترتيلة', 'error')
+        return
+      }
+    }
+    const lines = data.filter((e) => e.type === 'lyric').map((e) => e.text)
+    const text = `ترتيلة أسفار الكتاب المقدس\n${'='.repeat(36)}\n\n${lines.join('\n')}`
+    const blob = new Blob([`﻿${text}`], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'كلمات ترتيلة أسفار الكتاب المقدس.txt'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   }
 
   useEffect(() => {
@@ -961,15 +1038,70 @@ export default function BibleReader({ toast, externalTarget }) {
                 <div className="bible-guide-audio-player">
                   <div className="bible-guide-audio-header">
                     <Music2 size={16} className="bible-guide-audio-icon" />
-                    <span className="bible-guide-audio-title">أنشودة أسفار الكتاب المقدس</span>
+                    <span className="bible-guide-audio-title">ترتيلة أسفار الكتاب المقدس</span>
                   </div>
-                  <p className="bible-guide-audio-desc">استمع إلى هذه الأنشودة لتساعد الأطفال على حفظ أسماء أسفار الكتاب المقدس</p>
                   <audio
+                    ref={audioRef}
                     className="bible-guide-audio-element"
                     controls
                     src="/api/bible-reader/books-song"
                     preload="metadata"
+                    onTimeUpdate={(e) => setAudioCurrentTime(e.target.currentTime)}
                   />
+                  <div className="bible-guide-audio-actions">
+                    <button type="button" className="bible-guide-audio-btn" onClick={handleDownloadSong}>
+                      <Download size={13} />
+                      تحميل الترتيلة
+                    </button>
+                    <button type="button" className="bible-guide-audio-btn" onClick={handleDownloadLyrics}>
+                      <FileText size={13} />
+                      تحميل الكلمات
+                    </button>
+                    <button
+                      type="button"
+                      className={`bible-guide-audio-btn lyrics-toggle${lyricsOpen ? ' open' : ''}`}
+                      onClick={() => setLyricsOpen((v) => !v)}
+                    >
+                      <ListMusic size={13} />
+                      {lyricsOpen ? 'إخفاء الكلمات' : 'عرض الكلمات'}
+                    </button>
+                  </div>
+                  {lyricsOpen ? (
+                    <div className="bible-guide-lyrics-panel">
+                      {lyricsLoading ? (
+                        <div className="bible-guide-lyrics-state">جارٍ تحميل الكلمات...</div>
+                      ) : !lyrics || !lyrics.length ? (
+                        <div className="bible-guide-lyrics-state">لا توجد كلمات متاحة</div>
+                      ) : (
+                        <div ref={lyricsScrollRef} className="bible-guide-lyrics-scroll">
+                          {lyrics.map((entry, index) => {
+                            const isActive = index === activeLyricIndex
+                            const isPast = activeLyricIndex !== -1 && index < activeLyricIndex
+                            if (entry.type === 'music') {
+                              return (
+                                <div
+                                  key={index}
+                                  className={`bible-guide-lyric-line music${isActive ? ' active' : ''}${isPast ? ' past' : ''}`}
+                                  onClick={() => { if (audioRef.current) audioRef.current.currentTime = entry.start }}
+                                >
+                                  <Music2 size={11} />
+                                </div>
+                              )
+                            }
+                            return (
+                              <div
+                                key={index}
+                                className={`bible-guide-lyric-line${isActive ? ' active' : ''}${isPast ? ' past' : ''}`}
+                                onClick={() => { if (audioRef.current) audioRef.current.currentTime = entry.start }}
+                              >
+                                {entry.text}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
                 {quickGuide.map((testament) => renderGuidePanel(testament))}
               </div>
