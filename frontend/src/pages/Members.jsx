@@ -723,7 +723,7 @@ function getCachedSearchFields(p) {
 
   const computed = {
     nameParts: getNameParts(p),
-    otherFields: [p.gender, p.governorate, String(p.birth_year ?? '')].map(normalizeArabic),
+    otherFields: [p.gender, p.country, p.governorate, p.city, p.school_system, p.school_graduated, String(p.birth_year ?? '')].map(normalizeArabic),
   }
   PERSON_SEARCH_CACHE.set(p, computed)
   return computed
@@ -743,29 +743,125 @@ function nameMatches(parts, queryWordGroups) {
 }
 
 // ── Column definitions ────────────────────────────────────────────────────────
+const BIRTH_MONTHS_AR = {
+  '1': 'كانون الثاني', '2': 'شباط', '3': 'آذار', '4': 'نيسان',
+  '5': 'أيار', '6': 'حزيران', '7': 'تموز', '8': 'آب',
+  '9': 'أيلول', '10': 'تشرين الأول', '11': 'تشرين الثاني', '12': 'كانون الأول',
+}
+
 const COL_DEFS = [
-  { key: 'ar_first_name',      label: 'الاسم الأول',         filterKey: 'ar_first_name',      dataKey: 'ar_first_name' },
-  { key: 'ar_second_name',     label: 'الاسم الثاني',         filterKey: 'ar_second_name',     dataKey: 'ar_second_name' },
-  { key: 'ar_third_name',      label: 'الاسم الثالث',         filterKey: 'ar_third_name',      dataKey: 'ar_third_name' },
-  { key: 'ar_last_name',       label: 'اسم العائلة',           filterKey: 'ar_last_name',       dataKey: 'ar_last_name' },
-  { key: 'gender',          label: 'الجنس',                 filterKey: 'gender',          dataKey: 'gender' },
-  { key: 'governorate',     label: 'المحافظة',               filterKey: 'governorate',     dataKey: 'governorate' },
-  { key: 'birth_year',      label: 'سنة الميلاد',           filterKey: 'birth_year',      dataKey: 'birth_year' },
-  { key: 'nationality',     label: 'الجنسية',                filterKey: 'nationality',     dataKey: p => p._nationalities },
-  { key: 'youth_group',     label: 'فرقة الشبيبة',          filterKey: 'youth_group',     dataKey: p => p._youth_groups },
-  { key: 'age_group',       label: 'الفئة العمرية',          filterKey: 'age_group',       dataKey: p => p._age_groups },
-  { key: 'youth_join_year', label: 'سنة الانتساب',           filterKey: 'youth_join_year', dataKey: p => p._youth_join_years },
+  // ── Arabic name parts ─────────────────────────────────────────────────────
+  { key: 'ar_first_name',  label: 'الاسم الأول',    filterKey: 'ar_first_name',  dataKey: 'ar_first_name' },
+  { key: 'ar_second_name', label: 'الاسم الثاني',   filterKey: 'ar_second_name', dataKey: 'ar_second_name' },
+  { key: 'ar_third_name',  label: 'الاسم الثالث',   filterKey: 'ar_third_name',  dataKey: 'ar_third_name' },
+  { key: 'ar_last_name',   label: 'اسم العائلة',    filterKey: 'ar_last_name',   dataKey: 'ar_last_name' },
+  // ── English name parts ────────────────────────────────────────────────────
+  { key: 'en_first_name',  label: 'First Name',     filterKey: 'en_first_name',  dataKey: 'en_first_name' },
+  { key: 'en_second_name', label: 'Second Name',    filterKey: 'en_second_name', dataKey: 'en_second_name' },
+  { key: 'en_third_name',  label: 'Third Name',     filterKey: 'en_third_name',  dataKey: 'en_third_name' },
+  { key: 'en_last_name',   label: 'Last Name',      filterKey: 'en_last_name',   dataKey: 'en_last_name' },
+  // ── Mother Arabic name ────────────────────────────────────────────────────
+  { key: 'mother_ar_first_name',  label: 'اسم الأم الأول',   filterKey: 'mother_ar_first_name',  dataKey: 'mother_ar_first_name' },
+  { key: 'mother_ar_second_name', label: 'اسم الأم الثاني',  filterKey: 'mother_ar_second_name', dataKey: 'mother_ar_second_name' },
+  { key: 'mother_ar_last_name',   label: 'لقب الأم',         filterKey: 'mother_ar_last_name',   dataKey: 'mother_ar_last_name' },
+  // ── Mother English name ───────────────────────────────────────────────────
+  { key: 'mother_en_first_name',  label: "Mother's First",   filterKey: 'mother_en_first_name',  dataKey: 'mother_en_first_name' },
+  { key: 'mother_en_second_name', label: "Mother's Second",  filterKey: 'mother_en_second_name', dataKey: 'mother_en_second_name' },
+  { key: 'mother_en_last_name',   label: "Mother's Last",    filterKey: 'mother_en_last_name',   dataKey: 'mother_en_last_name' },
+  // ── Personal ──────────────────────────────────────────────────────────────
+  { key: 'title',       label: 'اللقب',             filterKey: 'title',       dataKey: 'title' },
+  { key: 'gender',      label: 'الجنس',              filterKey: 'gender',      dataKey: 'gender' },
+  { key: 'nationality', label: 'الجنسية',             filterKey: 'nationality', dataKey: p => p._nationalities },
+  { key: 'has_photo',   label: 'الصورة الشخصية',    filterKey: 'has_photo',   dataKey: p => p._photo ? ['نعم'] : ['لا'] },
+  // ── Birth ─────────────────────────────────────────────────────────────────
+  { key: 'birth_year',  label: 'سنة الميلاد',       filterKey: 'birth_year',  dataKey: 'birth_year' },
+  { key: 'birth_month', label: 'شهر الميلاد',       filterKey: 'birth_month', dataKey: p => {
+    const m = p.birth_month != null ? String(p.birth_month) : ''
+    const name = BIRTH_MONTHS_AR[m]
+    return name ? [name] : []
+  }},
+  { key: 'birth_day',   label: 'يوم الميلاد',       filterKey: 'birth_day',   dataKey: 'birth_day' },
+  // ── Location ──────────────────────────────────────────────────────────────
+  { key: 'country',     label: 'البلد',              filterKey: 'country',     dataKey: 'country' },
+  { key: 'governorate', label: 'المحافظة',            filterKey: 'governorate', dataKey: 'governorate' },
+  { key: 'city',        label: 'المدينة',             filterKey: 'city',        dataKey: 'city' },
+  { key: 'street_address',          label: 'العنوان التفصيلي',    filterKey: 'street_address',          dataKey: p => p._street_addresses },
+  { key: 'has_multiple_addresses',  label: 'تعدد العناوين',        filterKey: 'has_multiple_addresses',  dataKey: p => p._has_multiple_addresses },
+  { key: 'address_type',            label: 'نوع العنوان',          filterKey: 'address_type',            dataKey: p => p._address_types },
+  { key: 'has_location',            label: 'إحداثيات الموقع',      filterKey: 'has_location',            dataKey: p => p._has_location },
+  // ── Youth Group ───────────────────────────────────────────────────────────
+  { key: 'youth_group',      label: 'فرقة الشبيبة',        filterKey: 'youth_group',      dataKey: p => p._youth_groups },
+  { key: 'youth_is_current', label: 'حالة العضوية',         filterKey: 'youth_is_current', dataKey: p => p._youth_is_current },
+  { key: 'age_group',        label: 'الفئة العمرية حاليًا', filterKey: 'age_group',        dataKey: p => p._age_groups },
+  { key: 'age_group_prev',   label: 'الفئة العمرية سابقًا', filterKey: 'age_group_prev',   dataKey: p => p._prev_age_groups },
+  { key: 'youth_join_year',  label: 'سنة الانتساب',         filterKey: 'youth_join_year',  dataKey: p => p._youth_join_years },
+  // ── Responsibilities ──────────────────────────────────────────────────────
   { key: 'responsibility_youth_group', label: 'مسؤولية في',     filterKey: 'responsibility_youth_group', dataKey: p => p._responsibility_youth_groups },
-  { key: 'responsibility_jec_year',    label: 'سنة JEC',      filterKey: 'responsibility_jec_year',    dataKey: p => p._responsibility_jec_years },
-  { key: 'responsibility_is_current',  label: 'الحالة',       filterKey: 'responsibility_is_current',  dataKey: p => p._responsibility_current_states },
-  { key: 'responsibility',             label: 'المسؤولية',    filterKey: 'responsibility',             dataKey: p => p._responsibilities },
-  { key: 'school',          label: 'المدرسة',                filterKey: 'school',          dataKey: p => p._schools },
-  { key: 'university',      label: 'الجامعة / الكلية',      filterKey: 'university',      dataKey: p => p._universities },
-  { key: 'major',           label: 'التخصص',                 filterKey: 'major',           dataKey: p => p._majors },
-  { key: 'degree',          label: 'الدرجة العلمية',         filterKey: 'degree',          dataKey: p => p._degrees },
-  { key: 'job_title',       label: 'المسمى الوظيفي',         filterKey: 'job_title',       dataKey: p => p._job_titles },
-  { key: 'company',         label: 'الشركة',                 filterKey: 'company',         dataKey: p => p._companies },
-  { key: 'hobby_skill',     label: 'الهوايات والمهارات',    filterKey: 'hobby_skill',     dataKey: p => p._hobbies },
+  { key: 'responsibility_jec_year',    label: 'سنة JEC',        filterKey: 'responsibility_jec_year',    dataKey: p => p._responsibility_jec_years },
+  { key: 'responsibility_is_current',  label: 'حالة المسؤولية', filterKey: 'responsibility_is_current',  dataKey: p => p._responsibility_current_states },
+  { key: 'responsibility',             label: 'المسؤولية',      filterKey: 'responsibility',             dataKey: p => p._responsibilities },
+  // ── School Education ──────────────────────────────────────────────────────
+  { key: 'school_graduated',     label: 'الحالة الدراسية',   filterKey: 'school_graduated',     dataKey: 'school_graduated' },
+  { key: 'school_system',        label: 'النظام الدراسي',    filterKey: 'school_system',        dataKey: 'school_system' },
+  { key: 'school_system_sector', label: 'الحقل / الفرع',     filterKey: 'school_system_sector', dataKey: 'school_system_sector' },
+  { key: 'school',               label: 'المدرسة',           filterKey: 'school',               dataKey: p => p._schools },
+  { key: 'school_status',        label: 'حالة المدرسة',           filterKey: 'school_status',        dataKey: p => p._school_statuses },
+  { key: 'school_section',       label: 'المدرسة - القسم',        filterKey: 'school_section',       dataKey: p => p._school_sections },
+  { key: 'school_grade',         label: 'الصف الدراسي الحالي',    filterKey: 'school_grade',         dataKey: p => p._school_current_grades },
+  { key: 'school_grade_prev',    label: 'الصف الدراسي السابق',    filterKey: 'school_grade_prev',    dataKey: p => p._school_previous_grades },
+  { key: 'school_gpa',           label: 'معدل المدرسة',            filterKey: 'school_gpa',           dataKey: 'school_final_gpa' },
+  // ── Higher Education ──────────────────────────────────────────────────────
+  { key: 'university',       label: 'الجامعة / الكلية',  filterKey: 'university',       dataKey: p => p._universities },
+  { key: 'major',            label: 'التخصص',             filterKey: 'major',            dataKey: p => p._majors },
+  { key: 'degree',           label: 'الدرجة العلمية',     filterKey: 'degree',           dataKey: p => p._degrees },
+  { key: 'higher_ed_state',  label: 'حالة الجامعة',       filterKey: 'higher_ed_state',  dataKey: p => p._higher_ed_states },
+  { key: 'uni_gpa',          label: 'معدل الجامعة',        filterKey: 'uni_gpa',          dataKey: p => p._uni_gpas },
+  // ── Work ──────────────────────────────────────────────────────────────────
+  { key: 'job_title',  label: 'المسمى الوظيفي',   filterKey: 'job_title',  dataKey: p => p._job_titles },
+  { key: 'company',    label: 'الشركة',             filterKey: 'company',    dataKey: p => p._companies },
+  { key: 'job_state',  label: 'حالة العمل',         filterKey: 'job_state',  dataKey: p => p._job_states },
+  // ── Mobile ────────────────────────────────────────────────────────────────
+  { key: 'mobile_type',             label: 'نوع الجوال',            filterKey: 'mobile_type',             dataKey: p => p._mobile_types },
+  { key: 'mobile_personal_primary', label: 'أولوية الجوال الشخصي',  filterKey: 'mobile_personal_primary', dataKey: p => p._mobile_personal_primary },
+  { key: 'mobile_family_relation',  label: 'علاقة جوال العائلة',   filterKey: 'mobile_family_relation',  dataKey: p => p._mobile_family_relations },
+  { key: 'has_whatsapp',            label: 'واتساب',                filterKey: 'has_whatsapp',            dataKey: p => p._has_whatsapp },
+  { key: 'has_phone_calls',         label: 'مكالمات هاتفية',        filterKey: 'has_phone_calls',         dataKey: p => p._has_phone_calls },
+  // ── Email ─────────────────────────────────────────────────────────────────
+  { key: 'email_type',             label: 'نوع البريد',             filterKey: 'email_type',             dataKey: p => p._email_types },
+  { key: 'email_personal_primary', label: 'أولوية البريد الشخصي',   filterKey: 'email_personal_primary', dataKey: p => p._email_personal_primary },
+  { key: 'email_family_relation',  label: 'علاقة بريد العائلة',    filterKey: 'email_family_relation',  dataKey: p => p._email_family_relations },
+  // ── Social Media ──────────────────────────────────────────────────────────
+  { key: 'social_platform', label: 'وسيلة التواصل',      filterKey: 'social_platform', dataKey: p => p._social_platforms },
+  { key: 'social_primary',  label: 'أولوية التواصل',      filterKey: 'social_primary',  dataKey: p => p._social_primary },
+  // ── Hobbies ───────────────────────────────────────────────────────────────
+  { key: 'hobby_skill', label: 'الهوايات والمهارات',  filterKey: 'hobby_skill', dataKey: p => p._hobbies },
+  // ── Health ────────────────────────────────────────────────────────────────
+  { key: 'health_type',   label: 'نوع الحالة الصحية',    filterKey: 'health_type',   dataKey: p => p._health_types },
+  { key: 'health_detail', label: 'تفاصيل الحالة الصحية', filterKey: 'health_detail', dataKey: p => p._health_details },
+  // ── Special Notes ─────────────────────────────────────────────────────────
+  { key: 'special_note_title',  label: 'عنوان الملاحظة', filterKey: 'special_note_title',  dataKey: p => p._special_note_titles },
+  { key: 'special_note_detail', label: 'نص الملاحظة',    filterKey: 'special_note_detail', dataKey: p => p._special_note_details },
+]
+
+const FILTER_GROUPS = [
+  { label: 'الاسم',              keys: ['ar_first_name', 'ar_second_name', 'ar_third_name', 'ar_last_name'] },
+  { label: 'الاسم بالإنجليزية', keys: ['en_first_name', 'en_second_name', 'en_third_name', 'en_last_name'] },
+  { label: 'اسم الأم',           keys: ['mother_ar_first_name', 'mother_ar_second_name', 'mother_ar_last_name'] },
+  { label: 'اسم الأم بالإنجليزية', keys: ['mother_en_first_name', 'mother_en_second_name', 'mother_en_last_name'] },
+  { label: 'الشخصية',            keys: ['title', 'gender', 'nationality', 'has_photo'] },
+  { label: 'الميلاد',            keys: ['birth_year', 'birth_month', 'birth_day'] },
+  { label: 'الموقع والسكن',       keys: ['country', 'governorate', 'city', 'street_address', 'has_multiple_addresses', 'address_type', 'has_location'] },
+  { label: 'فرقة الشبيبة',        keys: ['youth_group', 'youth_is_current', 'age_group', 'age_group_prev', 'youth_join_year'] },
+  { label: 'المسؤوليات',          keys: ['responsibility_youth_group', 'responsibility_jec_year', 'responsibility_is_current', 'responsibility'] },
+  { label: 'التعليم المدرسي',     keys: ['school_graduated', 'school_system', 'school_system_sector', 'school', 'school_status', 'school_section', 'school_grade', 'school_grade_prev', 'school_gpa'] },
+  { label: 'التعليم العالي',       keys: ['university', 'major', 'degree', 'higher_ed_state', 'uni_gpa'] },
+  { label: 'العمل',              keys: ['job_title', 'company', 'job_state'] },
+  { label: 'الجوال',              keys: ['mobile_type', 'mobile_personal_primary', 'mobile_family_relation', 'has_whatsapp', 'has_phone_calls'] },
+  { label: 'البريد الإلكتروني',  keys: ['email_type', 'email_personal_primary', 'email_family_relation'] },
+  { label: 'وسائل التواصل الاجتماعي', keys: ['social_platform', 'social_primary'] },
+  { label: 'الهوايات والمهارات',  keys: ['hobby_skill'] },
+  { label: 'الصحة',              keys: ['health_type', 'health_detail'] },
+  { label: 'ملاحظات خاصة',       keys: ['special_note_title', 'special_note_detail'] },
 ]
 
 function getValues(p, col) {
@@ -997,6 +1093,60 @@ function FilterBox({ label, allValues, selected, sort, onChange }) {
   )
 }
 
+// ── Grouped filter panel ──────────────────────────────────────────────────────
+const COL_MAP = Object.fromEntries(COL_DEFS.map(c => [c.key, c]))
+
+function FilterPanel({ groups, opts, filterState, onUpdate }) {
+  return (
+    <div style={{
+      background: 'white', border: '1px solid var(--gray-200)',
+      borderRadius: 'var(--radius-lg)', padding: '18px 20px',
+      marginBottom: 16, direction: 'rtl',
+    }}>
+      {groups.map((group, gi) => {
+        if (group.visibleWhen && !group.visibleWhen(filterState)) return null
+        const visibleCols = group.keys
+          .map(key => COL_MAP[key])
+          .filter(col => col && (opts[col.key] ?? []).length > 0)
+        if (!visibleCols.length) return null
+        return (
+          <div key={group.label}>
+            {gi > 0 && (
+              <div style={{ height: 1, background: 'var(--gray-100)', margin: '14px 0 12px' }} />
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <span style={{
+                fontSize: '0.68rem', fontWeight: 800, color: 'var(--navy)',
+                opacity: 0.55, whiteSpace: 'nowrap', flexShrink: 0,
+                letterSpacing: '0.5px', textTransform: 'uppercase',
+              }}>
+                {group.label}
+              </span>
+              <div style={{ flex: 1, height: '1px', background: 'var(--gray-150, #eef0f3)' }} />
+            </div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(158px, 1fr))',
+              gap: '10px 10px',
+            }}>
+              {visibleCols.map(col => (
+                <FilterBox
+                  key={col.key}
+                  label={col.label}
+                  allValues={opts[col.key] ?? []}
+                  selected={filterState[col.key]?.selected ?? null}
+                  sort={filterState[col.key]?.sort ?? null}
+                  onChange={(sel, sort) => onUpdate(col.key, sel, sort)}
+                />
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Avatar ────────────────────────────────────────────────────────────────────
 function Avatar({ name, photoUrl }) {
   const [imgError, setImgError] = useState(false)
@@ -1191,10 +1341,19 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
   const archivedPersons = useMemo(() => allPersons.filter(p => p.archived),  [allPersons])
   const activeUnreg     = useMemo(() => unregistered.filter(r => !r.archived), [unregistered])
   const archivedUnreg   = useMemo(() => unregistered.filter(r => r.archived),  [unregistered])
-  const archivedAll     = useMemo(() => [
-    ...archivedPersons.map(p => ({ ...p, _isReg: true })),
-    ...archivedUnreg.map(r => ({ ...r, _isReg: false })),
-  ], [archivedPersons, archivedUnreg])
+  const archivedAll     = useMemo(() => {
+    const overlay = (r) => ({
+      ...r,
+      // Expose archived youth data via the active-membership keys so filters work
+      _youth_groups:     r._archived_youth_groups?.length     ? r._archived_youth_groups     : (r._youth_groups     || []),
+      _age_groups:       r._archived_age_groups?.length       ? r._archived_age_groups       : (r._age_groups       || []),
+      _youth_join_years: r._archived_youth_join_years?.length ? r._archived_youth_join_years : (r._youth_join_years || []),
+    })
+    return [
+      ...archivedPersons.map(p => ({ ...overlay(p), _isReg: true })),
+      ...archivedUnreg.map(r => ({ ...overlay(r), _isReg: false })),
+    ]
+  }, [archivedPersons, archivedUnreg])
 
   const toGroupLabel = (groupId) => {
     const gid = String(groupId || '').trim()
@@ -1583,13 +1742,12 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
 
           {/* Filter panel */}
           {showFilters && (
-            <div style={{ background: 'white', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-lg)', padding: '16px 18px', marginBottom: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))', gap: '12px 10px' }}>
-              {COL_DEFS.map(col => {
-                const opts = cascadedOpts[col.key] ?? []
-                if (opts.length === 0) return null
-                return <FilterBox key={col.key} label={col.label} allValues={opts} selected={filterState[col.key]?.selected ?? null} sort={filterState[col.key]?.sort ?? null} onChange={(sel, sort) => updateFilter(col.key, sel, sort)} />
-              })}
-            </div>
+            <FilterPanel
+              groups={FILTER_GROUPS}
+              opts={cascadedOpts}
+              filterState={filterState}
+              onUpdate={updateFilter}
+            />
           )}
 
           {/* Count */}
@@ -1676,13 +1834,12 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
 
           {/* Filter panel */}
           {showUFilters && (
-            <div style={{ background: 'white', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-lg)', padding: '16px 18px', marginBottom: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))', gap: '12px 10px' }}>
-              {UNREG_COL_DEFS.map(col => {
-                const opts = uCascadedOpts[col.key] ?? []
-                if (opts.length === 0) return null
-                return <FilterBox key={col.key} label={col.label} allValues={opts} selected={uFilterState[col.key]?.selected ?? null} sort={uFilterState[col.key]?.sort ?? null} onChange={(sel, sort) => updateUFilter(col.key, sel, sort)} />
-              })}
-            </div>
+            <FilterPanel
+              groups={FILTER_GROUPS}
+              opts={uCascadedOpts}
+              filterState={uFilterState}
+              onUpdate={updateUFilter}
+            />
           )}
 
           {/* Count */}
@@ -1771,13 +1928,12 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
 
           {/* Filter panel */}
           {showArchiveFilters && (
-            <div style={{ background: 'white', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-lg)', padding: '16px 18px', marginBottom: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(155px, 1fr))', gap: '12px 10px' }}>
-              {COL_DEFS.map(col => {
-                const opts = cascadedArchiveOpts[col.key] ?? []
-                if (opts.length === 0) return null
-                return <FilterBox key={col.key} label={col.label} allValues={opts} selected={archiveFilterState[col.key]?.selected ?? null} sort={archiveFilterState[col.key]?.sort ?? null} onChange={(sel, sort) => updateArchiveFilter(col.key, sel, sort)} />
-              })}
-            </div>
+            <FilterPanel
+              groups={FILTER_GROUPS}
+              opts={cascadedArchiveOpts}
+              filterState={archiveFilterState}
+              onUpdate={updateArchiveFilter}
+            />
           )}
 
           {/* Count */}

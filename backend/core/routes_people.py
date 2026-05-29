@@ -2154,6 +2154,18 @@ def register_unregistered_routes(app):
             he = S._scd_filter_active(S.unreg_store.get("higher_education", pd.DataFrame()))
             jobs = S._scd_filter_active(S.unreg_store.get("jobs", pd.DataFrame()))
             hob = S._scd_filter_active(S.unreg_store.get("hobbies_skills", pd.DataFrame()))
+            health_cond = S._scd_filter_active(S.unreg_store.get(S.PERSON_HEALTH_CONDITION_SHEET, pd.DataFrame()))
+            mob_df = S._scd_filter_active(S.unreg_store.get("mobile_numbers", pd.DataFrame()))
+            mob_prim_df = S._scd_filter_active(S.unreg_store.get("personal_mobile_number_primary", pd.DataFrame()))
+            mob_fam_df = S._scd_filter_active(S.unreg_store.get("mobile_number_family_relations", pd.DataFrame()))
+            email_df = S._scd_filter_active(S.unreg_store.get("emails", pd.DataFrame()))
+            email_prim_df = S._scd_filter_active(S.unreg_store.get("personal_email_primary", pd.DataFrame()))
+            email_fam_df = S._scd_filter_active(S.unreg_store.get("email_family_relations", pd.DataFrame()))
+            social_df = S._scd_filter_active(S.unreg_store.get("social_media", pd.DataFrame()))
+            addr_all_df = S._scd_filter_active(S.unreg_store.get(S.ADDRESS_SHEET, pd.DataFrame()))
+            sch_sect_df = S._scd_filter_active(S.unreg_store.get("school_sections", pd.DataFrame()))
+            sch_grade_df = S._scd_filter_active(S.unreg_store.get("school_grades", pd.DataFrame()))
+            special_notes_df = S._scd_filter_active(S.unreg_store.get(S.PERSON_SPECIAL_NOTE_SHEET, pd.DataFrame()))
 
             def pid_to_list_u(df, col):
                 result = {}
@@ -2176,6 +2188,149 @@ def register_unregistered_routes(app):
             job_map = pid_to_list_u(jobs, "job_title")
             comp_map = pid_to_list_u(jobs, S.EMPLOYER_NAME_COL)
             hob_map = pid_to_list_u(hob, "hobby_skill")
+
+            def pid_to_mapped_list_u(df, col, label_map):
+                raw = pid_to_list_u(df, col)
+                return {pid: sorted({label_map.get(v, v) for v in vals if v}) for pid, vals in raw.items()}
+
+            htype_map = pid_to_mapped_list_u(health_cond, S.CONDITION_TYPE_COL, S.HEALTH_TYPE_LABELS)
+            hestate_map = pid_to_mapped_list_u(he, S.EDUCATION_STATE_COL, S.EDUCATION_STATE_LABELS)
+            jstate_map = pid_to_mapped_list_u(jobs, S.EMPLOYMENT_STATE_COL, S.JOB_STATE_LABELS)
+
+            uni_gpa_map        = pid_to_list_u(he, "final_gpa")
+            health_details_map = pid_to_list_u(health_cond, "details")
+            note_title_map     = pid_to_list_u(special_notes_df, "note_title")
+            note_details_map   = pid_to_list_u(special_notes_df, "note")
+
+            _MOBILE_TYPE_AR_U  = {'personal': 'شخصي', 'work': 'عمل', 'home': 'منزل', 'family': 'عائلي'}
+            _EMAIL_TYPE_AR_U   = {'personal': 'شخصي', 'work': 'عمل', 'family': 'عائلي'}
+            _SOCIAL_PLAT_AR_U  = {'facebook': 'Facebook', 'instagram': 'Instagram', 'linkedin': 'LinkedIn'}
+            _PRIMARY_AR_U      = {True: 'رئيسي', False: 'إضافي'}
+
+            def _build_addr_enr_u(df):
+                out = {}
+                if df.empty or 'person_id' not in df.columns:
+                    return out
+                for pid_raw, grp in df.groupby('person_id'):
+                    pk = str(pid_raw)
+                    rows = grp.replace({np.nan: None}).to_dict(orient='records')
+                    out[pk] = {
+                        'multi': len(rows) > 1,
+                        'loc': any(r.get('lat') is not None and r.get('lng') is not None for r in rows),
+                        'types': sorted({('رئيسي' if S._to_bool(r.get('is_primary')) else 'إضافي') for r in rows}),
+                        'streets': sorted({str(r.get(S.STREET_ADDRESS_COL) or '').strip() for r in rows if str(r.get(S.STREET_ADDRESS_COL) or '').strip()}),
+                    }
+                return out
+
+            def _build_mob_enr_u(mob, prim, fam):
+                if mob.empty or 'person_id' not in mob.columns:
+                    return {}
+                m = mob.copy()
+                RID = 'mobile_number_record_id'
+                if not prim.empty and RID in prim.columns and 'is_primary' in prim.columns:
+                    m = m.merge(prim[[RID, 'is_primary']].drop_duplicates(RID), on=RID, how='left')
+                if not fam.empty and RID in fam.columns and 'family_relation' in fam.columns:
+                    m = m.merge(fam[[RID, 'family_relation']].drop_duplicates(RID), on=RID, how='left')
+                m = m.replace({np.nan: None})
+                out = {}
+                for pid_raw, grp in m.groupby('person_id'):
+                    pk = str(pid_raw)
+                    rows = grp.to_dict(orient='records')
+                    types = sorted({_MOBILE_TYPE_AR_U.get(str(r.get('mobile_number_type') or '').strip(), str(r.get('mobile_number_type') or '').strip()) for r in rows if str(r.get('mobile_number_type') or '').strip()})
+                    fam_r = sorted({str(r.get('family_relation') or '').strip() for r in rows if str(r.get('mobile_number_type') or '').strip() == 'family' and str(r.get('family_relation') or '').strip()})
+                    pprim = sorted({_PRIMARY_AR_U[bool(S._to_bool(r.get('is_primary')))] for r in rows if str(r.get('mobile_number_type') or '').strip() == 'personal'})
+                    has_wa = any(S._to_bool(r.get('whatsapp_flag')) for r in rows)
+                    has_pc = any(S._to_bool(r.get('phone_calls_flag')) for r in rows)
+                    out[pk] = {'types': types, 'fam': fam_r, 'pprim': pprim, 'wa': has_wa, 'pc': has_pc}
+                return out
+
+            def _build_email_enr_u(em, prim, fam):
+                if em.empty or 'person_id' not in em.columns:
+                    return {}
+                e = em.copy()
+                RID = 'email_record_id'
+                if not prim.empty and RID in prim.columns and 'is_primary' in prim.columns:
+                    e = e.merge(prim[[RID, 'is_primary']].drop_duplicates(RID), on=RID, how='left')
+                if not fam.empty and RID in fam.columns and 'family_relation' in fam.columns:
+                    e = e.merge(fam[[RID, 'family_relation']].drop_duplicates(RID), on=RID, how='left')
+                e = e.replace({np.nan: None})
+                out = {}
+                for pid_raw, grp in e.groupby('person_id'):
+                    pk = str(pid_raw)
+                    rows = grp.to_dict(orient='records')
+                    types = sorted({_EMAIL_TYPE_AR_U.get(str(r.get('email_type') or '').strip(), str(r.get('email_type') or '').strip()) for r in rows if str(r.get('email_type') or '').strip()})
+                    fam_r = sorted({str(r.get('family_relation') or '').strip() for r in rows if str(r.get('email_type') or '').strip() == 'family' and str(r.get('family_relation') or '').strip()})
+                    pprim = sorted({_PRIMARY_AR_U[bool(S._to_bool(r.get('is_primary')))] for r in rows if str(r.get('email_type') or '').strip() == 'personal'})
+                    out[pk] = {'types': types, 'fam': fam_r, 'pprim': pprim}
+                return out
+
+            def _build_social_enr_u(df):
+                if df.empty or 'person_id' not in df.columns:
+                    return {}
+                out = {}
+                for pid_raw, grp in df.dropna(subset=['platform']).groupby('person_id'):
+                    pk = str(pid_raw)
+                    rows = grp.replace({np.nan: None}).to_dict(orient='records')
+                    plats = sorted({_SOCIAL_PLAT_AR_U.get(str(r.get('platform') or '').strip(), str(r.get('platform') or '').strip()) for r in rows if str(r.get('platform') or '').strip()})
+                    prim  = sorted({_PRIMARY_AR_U[bool(S._to_bool(r.get('is_primary')))] for r in rows})
+                    out[pk] = {'plats': plats, 'prim': prim}
+                return out
+
+            def _build_school_enr_u(s_df, sect_df, grade_df):
+                if s_df.empty or 'person_id' not in s_df.columns:
+                    return {}
+                rid_sects = {}
+                if not sect_df.empty and S.SCHOOL_RECORD_ID_COL in sect_df.columns and 'section' in sect_df.columns:
+                    for _, r in sect_df.dropna(subset=['section']).iterrows():
+                        rid = str(r.get(S.SCHOOL_RECORD_ID_COL) or '').strip()
+                        sec = str(r.get('section') or '').strip()
+                        if rid and sec:
+                            rid_sects.setdefault(rid, set()).add(sec)
+                rid_grades = {}
+                if not grade_df.empty and S.SCHOOL_RECORD_ID_COL in grade_df.columns and 'grade' in grade_df.columns:
+                    for _, r in grade_df.dropna(subset=['grade']).iterrows():
+                        rid = str(r.get(S.SCHOOL_RECORD_ID_COL) or '').strip()
+                        g = str(r.get('grade') or '').strip()
+                        if rid and g:
+                            rid_grades.setdefault(rid, set()).add(g)
+                out = {}
+                for pid_raw, grp in s_df.groupby('person_id'):
+                    pk = str(pid_raw)
+                    rows = grp.replace({np.nan: None}).to_dict(orient='records')
+                    statuses = sorted({'حاليًّا' if S._to_bool(r.get('is_current')) else 'سابقًا' for r in rows})
+                    sects, grades = set(), set()
+                    for r in rows:
+                        rid = str(r.get(S.SCHOOL_RECORD_ID_COL) or '').strip()
+                        sname = str(r.get(S.SCHOOL_NAME_COL) or '').strip()
+                        for sec in rid_sects.get(rid, set()):
+                            sects.add(f'{sname} - {sec}' if sname else sec)
+                        if S._to_bool(r.get('is_current')):
+                            grades.update(rid_grades.get(rid, set()))
+                    prev_grades = set()
+                    for r in rows:
+                        if not S._to_bool(r.get('is_current')):
+                            rid = str(r.get(S.SCHOOL_RECORD_ID_COL) or '').strip()
+                            prev_grades.update(rid_grades.get(rid, set()))
+                    out[pk] = {'statuses': statuses, 'sects': sorted(sects), 'grades': sorted(grades), 'prev_grades': sorted(prev_grades)}
+                return out
+
+            addr_enr   = _build_addr_enr_u(addr_all_df)
+            mob_enr    = _build_mob_enr_u(mob_df, mob_prim_df, mob_fam_df)
+            email_enr  = _build_email_enr_u(email_df, email_prim_df, email_fam_df)
+            social_enr = _build_social_enr_u(social_df)
+            school_enr = _build_school_enr_u(sch, sch_sect_df, sch_grade_df)
+
+            # Previous age groups: direct lookup from raw history sheet
+            _pyg_hist_scd = S._scd_filter_active(pyg_history) if not pyg_history.empty else pyg_history
+            _age_hist_lookup: dict = {}
+            if (not _pyg_hist_scd.empty
+                    and S.PERSON_YOUTH_GROUP_RECORD_ID_COL in _pyg_hist_scd.columns
+                    and "age_group" in _pyg_hist_scd.columns):
+                for _, _hr in _pyg_hist_scd[[S.PERSON_YOUTH_GROUP_RECORD_ID_COL, "age_group"]].dropna(subset=["age_group"]).iterrows():
+                    _r = str(_hr.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL) or "").strip()
+                    _g = S._normalize_age_group(str(_hr.get("age_group") or "").strip())
+                    if _r and _g:
+                        _age_hist_lookup.setdefault(_r, set()).add(_g)
 
             photo_ids: set[str] = set()
             try:
@@ -2204,10 +2359,23 @@ def register_unregistered_routes(app):
                 row["_youth_group_ids"] = yg_ids
                 row["_youth_groups"] = [S.youth_group_name(gid) or gid for gid in yg_ids]
                 row["_age_groups"] = [entry["age_group"] for entry in active_youth_rows]
+                _prev_age_set = set()
+                for _entry in active_youth_rows:
+                    _rid = str(_entry.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL) or "").strip()
+                    _cur_ag = S._normalize_age_group(str(_entry.get("age_group") or "").strip()) or ""
+                    for _ag in _age_hist_lookup.get(_rid, set()):
+                        if _ag and _ag != _cur_ag:
+                            _prev_age_set.add(_ag)
+                row["_prev_age_groups"] = sorted(_prev_age_set)
                 row["_youth_join_years"] = [entry["youth_join_year"] for entry in active_youth_rows]
                 row["_archived_youth_group_ids"] = archived_yg_ids
                 row["_archived_youth_groups"] = [S.youth_group_name(gid) or gid for gid in archived_yg_ids]
                 row["_archived_age_groups"] = [entry["age_group"] for entry in archived_youth_rows]
+                row["_archived_youth_join_years"] = [entry["youth_join_year"] for entry in archived_youth_rows]
+                statuses_yic = []
+                if active_youth_rows: statuses_yic.append("عضو حالي")
+                if archived_youth_rows: statuses_yic.append("عضو سابق")
+                row["_youth_is_current"] = statuses_yic
                 ryg_ids = ryg_id_map.get(uid, [])
                 row["_responsibility_youth_group_ids"] = ryg_ids
                 row["_responsibility_youth_groups"] = [S.youth_group_name(gid) or gid for gid in ryg_ids]
@@ -2223,6 +2391,36 @@ def register_unregistered_routes(app):
                 row["_job_titles"] = job_map.get(uid, [])
                 row["_companies"] = comp_map.get(uid, [])
                 row["_hobbies"] = hob_map.get(uid, [])
+                row["_health_types"] = htype_map.get(uid, [])
+                row["_higher_ed_states"] = hestate_map.get(uid, [])
+                row["_job_states"] = jstate_map.get(uid, [])
+                ae = addr_enr.get(uid, {})
+                row["_has_multiple_addresses"] = (["متعدد"] if ae.get("multi") else ["فردي"]) if uid in addr_enr else []
+                row["_has_location"] = (["نعم"] if ae.get("loc") else ["لا"]) if uid in addr_enr else []
+                row["_address_types"] = ae.get("types", [])
+                row["_street_addresses"] = ae.get("streets", [])
+                me = mob_enr.get(uid, {})
+                row["_mobile_types"] = me.get("types", [])
+                row["_mobile_family_relations"] = me.get("fam", [])
+                row["_mobile_personal_primary"] = me.get("pprim", [])
+                row["_has_whatsapp"] = (["نعم"] if me.get("wa") else ["لا"]) if uid in mob_enr else []
+                ee = email_enr.get(uid, {})
+                row["_email_types"] = ee.get("types", [])
+                row["_email_family_relations"] = ee.get("fam", [])
+                row["_email_personal_primary"] = ee.get("pprim", [])
+                se = social_enr.get(uid, {})
+                row["_social_platforms"] = se.get("plats", [])
+                row["_social_primary"] = se.get("prim", [])
+                sce = school_enr.get(uid, {})
+                row["_school_statuses"] = sce.get("statuses", [])
+                row["_school_sections"] = sce.get("sects", [])
+                row["_school_current_grades"] = sce.get("grades", [])
+                row["_school_previous_grades"] = sce.get("prev_grades", [])
+                row["_has_phone_calls"] = (["نعم"] if me.get("pc") else ["لا"]) if uid in mob_enr else []
+                row["_uni_gpas"] = uni_gpa_map.get(uid, [])
+                row["_health_details"] = health_details_map.get(uid, [])
+                row["_special_note_titles"] = note_title_map.get(uid, [])
+                row["_special_note_details"] = note_details_map.get(uid, [])
                 row["_photo"] = f"/api/unregistered/{uid}/photo" if uid in photo_ids else None
                 row["archived"] = bool(youth_rows) and len(active_youth_rows) == 0
                 enriched.append(row)
