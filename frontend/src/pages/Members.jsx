@@ -800,6 +800,13 @@ const COL_DEFS = [
   { key: 'responsibility_jec_year',    label: 'سنة JEC',        filterKey: 'responsibility_jec_year',    dataKey: p => p._responsibility_jec_years },
   { key: 'responsibility_is_current',  label: 'حالة المسؤولية', filterKey: 'responsibility_is_current',  dataKey: p => p._responsibility_current_states },
   { key: 'responsibility',             label: 'المسؤولية',      filterKey: 'responsibility',             dataKey: p => p._responsibilities },
+  // ── Org Tree ──────────────────────────────────────────────────────────────
+  { key: 'org_tree_group',    label: 'فرقة الشجرة التنظيمية', filterKey: 'org_tree_group',    dataKey: p => p._org_tree_groups },
+  { key: 'org_tree_jec_year', label: 'سنة JEC (الشجرة)',      filterKey: 'org_tree_jec_year', dataKey: p => p._org_tree_jec_years },
+  { key: 'org_tree_role',     label: 'الدور في الشجرة',        filterKey: 'org_tree_role',     dataKey: p => p._org_tree_roles },
+  // ── General Secretariat Tree ──────────────────────────────────────────────
+  { key: 'gs_tree_jec_year', label: 'سنة JEC (الأمانة)',  filterKey: 'gs_tree_jec_year', dataKey: p => p._gs_tree_jec_years },
+  { key: 'gs_tree_role',     label: 'الدور في الأمانة',   filterKey: 'gs_tree_role',     dataKey: p => p._gs_tree_roles },
   // ── School Education ──────────────────────────────────────────────────────
   { key: 'school_graduated',     label: 'الحالة الدراسية',   filterKey: 'school_graduated',     dataKey: 'school_graduated' },
   { key: 'school_system',        label: 'النظام الدراسي',    filterKey: 'school_system',        dataKey: 'school_system' },
@@ -853,6 +860,8 @@ const FILTER_GROUPS = [
   { label: 'الموقع والسكن',       keys: ['country', 'governorate', 'city', 'street_address', 'has_multiple_addresses', 'address_type', 'has_location'] },
   { label: 'فرقة الشبيبة',        keys: ['youth_group', 'youth_is_current', 'age_group', 'age_group_prev', 'youth_join_year'] },
   { label: 'المسؤوليات',          keys: ['responsibility_youth_group', 'responsibility_jec_year', 'responsibility_is_current', 'responsibility'] },
+  { label: 'الشجرة التنظيمية',    keys: ['org_tree_group', 'org_tree_jec_year', 'org_tree_role'] },
+  { label: 'الأمانة العامة',      keys: ['gs_tree_jec_year', 'gs_tree_role'] },
   { label: 'التعليم المدرسي',     keys: ['school_graduated', 'school_system', 'school_system_sector', 'school', 'school_status', 'school_section', 'school_grade', 'school_grade_prev', 'school_gpa'] },
   { label: 'التعليم العالي',       keys: ['university', 'major', 'degree', 'higher_ed_state', 'uni_gpa'] },
   { label: 'العمل',              keys: ['job_title', 'company', 'job_state'] },

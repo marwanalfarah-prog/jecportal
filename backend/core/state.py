@@ -9726,6 +9726,19 @@ def build_enriched():
 
     youth_rows_map = build_person_youth_group_payload_rows(pyg, pyg_history)
 
+    _pyg_hist_scd = _scd_filter_active(pyg_history) if not pyg_history.empty else pyg_history
+    _age_hist_lookup: dict = {}
+    if (
+        not _pyg_hist_scd.empty
+        and PERSON_YOUTH_GROUP_RECORD_ID_COL in _pyg_hist_scd.columns
+        and "age_group" in _pyg_hist_scd.columns
+    ):
+        for _, _hr in _pyg_hist_scd[[PERSON_YOUTH_GROUP_RECORD_ID_COL, "age_group"]].dropna(subset=["age_group"]).iterrows():
+            _r = str(_hr.get(PERSON_YOUTH_GROUP_RECORD_ID_COL) or "").strip()
+            _g = _normalize_age_group(str(_hr.get("age_group") or "").strip())
+            if _r and _g:
+                _age_hist_lookup.setdefault(_r, set()).add(_g)
+
     ryg_id_map = pid_to_list(resp, YOUTH_GROUP_ID_COL)
 
     ryear_map = pid_to_list(resp, "jec_year")
@@ -10286,7 +10299,9 @@ def build_members_index():
             if _r and _g:
                 _age_hist_lookup.setdefault(_r, set()).add(_g)
 
-
+    # Org tree / GS tree lookup (late import avoids circular dependency)
+    from core.routes_org_tree import build_person_org_tree_index as _build_org_tree_index
+    _org_tree_map, _gs_tree_map = _build_org_tree_index()
 
     photo_ids = set()
 
@@ -10360,6 +10375,14 @@ def build_members_index():
         if active_youth_rows: statuses_yic.append("عضو حالي")
         if archived_youth_rows: statuses_yic.append("عضو سابق")
         row["_youth_is_current"] = statuses_yic
+
+        _ot = _org_tree_map.get(str(pid), {})
+        row["_org_tree_groups"] = _ot.get("groups", [])
+        row["_org_tree_jec_years"] = _ot.get("jec_years", [])
+        row["_org_tree_roles"] = _ot.get("roles", [])
+        _gs = _gs_tree_map.get(str(pid), {})
+        row["_gs_tree_jec_years"] = _gs.get("jec_years", [])
+        row["_gs_tree_roles"] = _gs.get("roles", [])
 
         row["_responsibility_youth_groups"] = [youth_group_name(gid) or gid for gid in ryg_ids]
 

@@ -1345,6 +1345,18 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
   const fileRef = useRef(null)
 
   const nameAliasLookup = useMemo(() => buildNameAliasLookup(nameVariations), [nameVariations])
+  const extraHulls = nodeExtraHullLabels(node)
+  const autoHullLabelSet = new Set(nodeAutoGroupHullLabels(node))
+  const extraHullOptions = uniqueHullLabels([...collectTreeGroupHullLabels(allNodes), ...extraHulls])
+    .filter(label => !autoHullLabelSet.has(label))
+  const roleGroupKeys = nodeRoleGroupKeys(node)
+
+  const toggleExtraHull = (label) => {
+    const next = new Set(extraHulls)
+    if (next.has(label)) next.delete(label)
+    else next.add(label)
+    onUpdate({ extraHulls: [...next] })
+  }
 
   useEffect(() => { setPhotoErr(false) }, [node.photo])
 
@@ -1384,18 +1396,26 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
     const qWords = normalizeArabic(q).split(/\s+/).filter(Boolean)
     const qWordGroups = expandQueryWords(qWords, nameAliasLookup)
 
-    // Registered persons — filtered to youth group
+    // Registered persons — filtered to youth group (active OR archived membership)
     const pool = selectedGroup
-      ? allPersons.filter(p => (p._youth_group_ids || []).includes(selectedGroup))
+      ? allPersons.filter(p =>
+          (p._youth_group_ids || []).includes(selectedGroup) ||
+          (p._archived_youth_group_ids || []).includes(selectedGroup)
+        )
       : allPersons
     const regResults = pool.filter(p => {
       const parts = [p.ar_first_name, p.ar_second_name, p.ar_third_name, p.ar_last_name].filter(Boolean).map(normalizeArabic)
       return nameMatchesQuery(parts, qWordGroups)
     }).slice(0, 6).map(p => ({ ...p, _source: 'registered' }))
 
-    // Unregistered persons — no youth_group filter: they may not have person_youth_group
-    // rows yet (newly synced), and the list is always small
-    const unregResults = (allUnregistered || []).filter(u => {
+    // Unregistered persons — filtered to those with active OR archived membership in this group
+    const unregPool = selectedGroup
+      ? (allUnregistered || []).filter(u =>
+          (u._youth_group_ids || []).includes(selectedGroup) ||
+          (u._archived_youth_group_ids || []).includes(selectedGroup)
+        )
+      : (allUnregistered || [])
+    const unregResults = unregPool.filter(u => {
       const parts = [u.ar_first_name, u.ar_second_name, u.ar_third_name, u.ar_last_name].filter(Boolean).map(normalizeArabic)
       return nameMatchesQuery(parts, qWordGroups)
     }).slice(0, 4).map(u => ({ ...u, _source: 'unregistered' }))
@@ -1695,7 +1715,7 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
         </div>
 
         {/* ضمن إطار الفئة/اللجنة checkbox — only shown when role belongs to a group */}
-        {nodeGroupKeys(node).length > 0 && (
+        {roleGroupKeys.length > 0 && (
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '10px 12px', marginBottom: 14,
@@ -1723,6 +1743,42 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
               display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s',
             }}>
               {effectiveInGroup(node) && <span style={{ color: 'white', fontSize: '0.7rem', fontWeight: 800 }}>✓</span>}
+            </div>
+          </div>
+        )}
+
+        {(extraHullOptions.length > 0 || extraHulls.length > 0) && (
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize:'0.78rem', fontWeight:700, color:'var(--gray-500)', display:'block', marginBottom:6 }}>إطارات إضافية</label>
+            <div style={{ display:'grid', gap:6 }}>
+              {extraHullOptions.map(label => {
+                const active = extraHulls.includes(label)
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => toggleExtraHull(label)}
+                    style={{
+                      width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', gap:8,
+                      padding:'8px 10px', borderRadius:'var(--radius-md)', cursor:'pointer',
+                      background: active ? '#f0fdf4' : 'var(--gray-50)',
+                      border: `1.5px solid ${active ? '#86efac' : 'var(--gray-200)'}`,
+                      color: active ? '#166534' : 'var(--gray-600)',
+                      fontFamily:'var(--font-body)', fontSize:'0.8rem', fontWeight:700,
+                      direction:'rtl', textAlign:'right',
+                    }}
+                  >
+                    <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{label}</span>
+                    <span style={{
+                      width:18, height:18, borderRadius:5, border:`2px solid ${active ? '#22c55e' : 'var(--gray-300)'}`,
+                      background: active ? '#22c55e' : 'white', display:'flex', alignItems:'center', justifyContent:'center',
+                      color:'white', fontSize:'0.65rem', flexShrink:0,
+                    }}>
+                      {active ? '✓' : ''}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
           </div>
         )}
@@ -2111,15 +2167,13 @@ function effectiveInGroup(node) {
 // Age-group nodes emit ONE composite key (sorted by AGE_GROUPS order) so that
 // nodes covering the same combination share a single bubble.
 // e.g. مجلس فئتيّ الجامعيّة والعاملة → ["agegroup:الجامعيّة|العاملة"]
-function nodeGroupKeys(node) {
+function nodeRoleGroupKeys(node) {
   const role = node.role || ''
   const c = classifyRole(role)
   if (!c) return []
 
   // council_assistant (مسؤول مساعد) should NOT appear inside the مجلس الفئة bubble
   if (c.tier === 'council_assistant') return []
-
-  if (!effectiveInGroup(node)) return []
 
   // Committee head — emit ONE key using the full compound name
   if (c.tier === 'reports_to_gm' && c.committeeHead) {
@@ -2136,6 +2190,11 @@ function nodeGroupKeys(node) {
     if (groups.length) return [`agegroup:${groups.join('|')}`]
   }
   return []
+}
+
+function nodeGroupKeys(node) {
+  if (!effectiveInGroup(node)) return []
+  return nodeRoleGroupKeys(node)
 }
 
 // Palette for group hulls
@@ -2169,23 +2228,55 @@ function groupKeyLabel(key) {
 
 const COUNCIL_HULL_NAME = 'مجلس الشبيبة'
 
+function uniqueHullLabels(labels) {
+  const out = []
+  const seen = new Set()
+  ;(Array.isArray(labels) ? labels : []).forEach((label) => {
+    const text = String(label || '').trim()
+    if (!text || seen.has(text)) return
+    seen.add(text)
+    out.push(text)
+  })
+  return out
+}
+
+function nodeExtraHullLabels(node) {
+  return uniqueHullLabels(node?.extraHulls || [])
+}
+
+function nodeAutoGroupHullLabels(node) {
+  return nodeGroupKeys(node).map(groupKeyLabel)
+}
+
+function collectTreeGroupHullLabels(nodes) {
+  const labels = []
+  ;(nodes || []).forEach((node) => {
+    nodeAutoGroupHullLabels(node).forEach(label => labels.push(label))
+    nodeExtraHullLabels(node).forEach(label => labels.push(label))
+  })
+  return uniqueHullLabels(labels).sort((a, b) => a.localeCompare(b, 'ar'))
+}
+
 // Convert inCouncil/inGroup flags → hulls[] for API save
 function nodeToApi(node) {
-  const { inCouncil, inGroup, ...rest } = node
+  const { inCouncil, inGroup, extraHulls, ...rest } = node
   const hulls = []
   if (effectiveInCouncil(node)) hulls.push(COUNCIL_HULL_NAME)
   if (effectiveInGroup(node)) nodeGroupKeys(node).forEach(k => hulls.push(groupKeyLabel(k)))
-  return { ...rest, hulls }
+  nodeExtraHullLabels(node).forEach(h => hulls.push(h))
+  return { ...rest, hulls: uniqueHullLabels(hulls) }
 }
 
 // Convert hulls[] from API load → inCouncil/inGroup flags
 function nodeFromApi(node) {
-  const hulls = Array.isArray(node.hulls) ? node.hulls : []
+  const hulls = uniqueHullLabels(Array.isArray(node.hulls) ? node.hulls : [])
   const { hulls: _h, ...rest } = node
+  const autoGroupLabels = new Set(nodeRoleGroupKeys(rest).map(groupKeyLabel))
   return {
     ...rest,
     inCouncil: hulls.includes(COUNCIL_HULL_NAME),
-    inGroup: hulls.some(h => h !== COUNCIL_HULL_NAME),
+    inGroup: hulls.some(h => autoGroupLabels.has(h)),
+    extraHulls: hulls.filter(h => h !== COUNCIL_HULL_NAME && !autoGroupLabels.has(h)),
   }
 }
 
@@ -3363,10 +3454,20 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
               {(() => {
                 // Step 1: collect raw keys per node
                 const rawKeySet = new Map() // rawKey → Set<node>
+                const labelToRawKey = new Map()
+                const addRawKey = (key, node) => {
+                  if (!rawKeySet.has(key)) rawKeySet.set(key, new Set())
+                  rawKeySet.get(key).add(node)
+                }
                 nodes.forEach(n => {
                   nodeGroupKeys(n).forEach(k => {
-                    if (!rawKeySet.has(k)) rawKeySet.set(k, new Set())
-                    rawKeySet.get(k).add(n)
+                    labelToRawKey.set(groupKeyLabel(k), k)
+                    addRawKey(k, n)
+                  })
+                })
+                nodes.forEach(n => {
+                  nodeExtraHullLabels(n).forEach(label => {
+                    addRawKey(labelToRawKey.get(label) || `manual:${label}`, n)
                   })
                 })
 
@@ -3416,6 +3517,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
                 const sortedKeys = [...keySet.keys()].sort()
 
                 const labelForKey = (key) => {
+                  if (key.startsWith('manual:')) return key.slice('manual:'.length)
                   if (key.startsWith('committee:')) return key.slice('committee:'.length)
                   if (key.startsWith('agegroup:'))  return agegroupKeyToLabel(key)
                   return key

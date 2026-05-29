@@ -885,6 +885,69 @@ def _delete_tree_data(group_name: str, period_id: str, *, changed_by: str = "adm
     _delete_csv_tree_data(group_id, period_id, changed_by=changed_by)
 
 
+def build_person_org_tree_index() -> tuple[dict, dict]:
+    """Return (org_map, gs_map) for member-page filtering.
+
+    org_map: str(person_id) → {"groups": [...], "jec_years": [...], "roles": [...]}
+        Covers all non-GS youth-group org trees.
+    gs_map:  str(person_id) → {"jec_years": [...], "roles": [...]}
+        Covers the General Secretariat (GS) org tree.
+
+    Uses the same _read_csv_records / constants already defined in this module
+    so no CSV-reading logic is duplicated.
+    """
+    period_info: dict[str, dict] = {}
+    for row in _read_csv_records(ORG_TREE_PERIODS_CSV, ORG_TREE_PERIOD_COLUMNS):
+        pid = _none_if_blank(row.get("period_id"))
+        if not pid:
+            continue
+        period_info[pid] = {
+            "group_id": _none_if_blank(row.get("group_id")),
+            "jec_year": _none_if_blank(row.get("jec_year")),
+        }
+
+    org_map: dict[str, dict] = {}
+    gs_map: dict[str, dict] = {}
+
+    for row in _read_csv_records(ORG_TREE_NODES_CSV, ORG_TREE_NODE_COLUMNS):
+        raw_pid = _none_if_blank(row.get("person_id"))
+        if not raw_pid:
+            continue
+        period_id = _none_if_blank(row.get("period_id"))
+        role = _none_if_blank(row.get("role"))
+        period = period_info.get(period_id or "", {})
+        group_id = period.get("group_id")
+        jec_year = period.get("jec_year")
+
+        pid_key = str(raw_pid).strip()
+        is_gs = group_id in GS_GROUP_ALIASES or (
+            group_id and S.safe_youth_group_key(group_id) in GS_GROUP_ALIAS_SAFE_KEYS
+        )
+
+        if is_gs:
+            entry = gs_map.setdefault(pid_key, {"jec_years": set(), "roles": set()})
+            if jec_year:
+                entry["jec_years"].add(jec_year)
+            if role:
+                entry["roles"].add(role)
+        else:
+            entry = org_map.setdefault(pid_key, {"groups": set(), "jec_years": set(), "roles": set()})
+            if group_id:
+                entry["groups"].add(S.youth_group_name(group_id) or group_id)
+            if jec_year:
+                entry["jec_years"].add(jec_year)
+            if role:
+                entry["roles"].add(role)
+
+    def _to_sorted_lists(data: dict) -> dict:
+        return {k: sorted(v) for k, v in data.items()}
+
+    return (
+        {pid: _to_sorted_lists(data) for pid, data in org_map.items()},
+        {pid: _to_sorted_lists(data) for pid, data in gs_map.items()},
+    )
+
+
 def register_org_tree_routes(app):
     @app.get("/api/org-tree/history")
     def get_org_tree_history():
@@ -994,7 +1057,7 @@ def register_org_tree_routes(app):
                 "edges": normalized["edges"],
             }
             _save_tree_data(group_name, new_id, tree_data, changed_by=changed_by)
-
+            S.invalidate_enriched_cache()
             return jsonify({"ok": True, "period": _period_for_response(new_period), "periods": _periods_for_response(periods)})
 
         if period_id:
@@ -1014,6 +1077,7 @@ def register_org_tree_routes(app):
                 "edges": normalized["edges"],
             }
             _save_tree_data(group_name, pid_str, tree_data, changed_by=changed_by)
+            S.invalidate_enriched_cache()
             period_payload = _find_period(periods, pid_str)
             return jsonify({"ok": True, "period": _period_for_response(period_payload), "periods": _periods_for_response(periods)})
 
@@ -1032,6 +1096,7 @@ def register_org_tree_routes(app):
             "edges": normalized["edges"],
         }
         _save_tree_data(group_name, new_id, tree_data, changed_by=changed_by)
+        S.invalidate_enriched_cache()
         return jsonify({"ok": True, "period": _period_for_response(new_period), "periods": _periods_for_response(periods)})
 
     @app.route("/api/org-tree/<path:group_name>/period/<period_id>", methods=["PATCH"])
@@ -1063,7 +1128,7 @@ def register_org_tree_routes(app):
                 target[k] = body[k]
 
         _save_index(group_name, periods, changed_by=changed_by)
-
+        S.invalidate_enriched_cache()
         return jsonify({"ok": True, "period": _period_for_response(target), "periods": _periods_for_response(periods)})
 
     @app.route("/api/org-tree/<path:group_name>/period/<period_id>", methods=["DELETE"])
@@ -1077,7 +1142,7 @@ def register_org_tree_routes(app):
         periods = [p for p in periods if p["id"] != period_id]
         _save_index(group_name, periods, changed_by=changed_by)
         _delete_tree_data(group_name, period_id, changed_by=changed_by)
-
+        S.invalidate_enriched_cache()
         return jsonify({"ok": True, "periods": _periods_for_response(periods)})
 
 

@@ -5229,6 +5229,7 @@ function _nodeGroupKeys(node) {
 }
 
 function _groupKeyLabel(key) {
+  if (key.startsWith('hull:')) return key.slice('hull:'.length)
   if (key.startsWith('council:'))  return key.slice('council:'.length)
   if (key.startsWith('committee:')) return key.slice('committee:'.length)
   if (key.startsWith('agegroup:')) {
@@ -5242,6 +5243,19 @@ function _groupKeyLabel(key) {
   }
 
   return key
+}
+
+function orgNodeHullKeys(node) {
+  const labels = Array.isArray(node?.hulls) ? node.hulls : []
+  const out = []
+  const seen = new Set()
+  labels.forEach((label) => {
+    const text = String(label || '').trim()
+    if (!text || seen.has(text)) return
+    seen.add(text)
+    out.push(`hull:${text}`)
+  })
+  return out
 }
 
   // ── Org history aggregation ───────────────────────────────────────────────────
@@ -5323,57 +5337,16 @@ function buildOrgHistory(personIdOrMatcher, allPeriodTrees) {
         const n = nodes.find(x => x.id === otherId); if (n) addConn(n, 'peer')
       })
 
-      // Build bubble co-members: apply the same union-find merge OrgTree uses for age-group hulls,
-      // so nodes in overlapping age-group keys end up in the same merged bubble.
-
-      // Step A: collect raw keys for all nodes in this period
-      const allRawKeys = new Map() // nodeId → rawKeys[]
-      nodes.forEach(n => { allRawKeys.set(n.id, _nodeGroupKeys(n)) })
-
-      // Step B: union-find merge for agegroup keys across the whole period
-      const agKeySet = new Set()
-      allRawKeys.forEach(keys => keys.forEach(k => { if (k.startsWith('agegroup:')) agKeySet.add(k) }))
-      const agKeys = [...agKeySet]
-      const ufParent = {}
-      agKeys.forEach(k => { ufParent[k] = k })
-      const ufFind = (k) => { while (ufParent[k] !== k) { ufParent[k] = ufParent[ufParent[k]]; k = ufParent[k] } return k }
-      const ufUnion = (a, b) => { ufParent[ufFind(a)] = ufFind(b) }
-      for (let i = 0; i < agKeys.length; i++) {
-        const gi = agKeys[i].slice('agegroup:'.length).split('|')
-        for (let j = i + 1; j < agKeys.length; j++) {
-          const gj = agKeys[j].slice('agegroup:'.length).split('|')
-          if (_ageGroupsOverlap(gi, gj)) ufUnion(agKeys[i], agKeys[j])
-        }
-      }
-      // Build mergedKey: for each raw agegroup key → find all agegroup keys in same component → sort by AGE_GROUPS order
-      const agMergedKey = {}
-      agKeys.forEach(k => {
-        const root = ufFind(k)
-        if (!agMergedKey[root]) {
-          // collect all age group names in this component
-          const allGroups = new Set()
-          agKeys.forEach(k2 => { if (ufFind(k2) === root) k2.slice('agegroup:'.length).split('|').forEach(g => allGroups.add(g)) })
-          const sorted2 = _sortAgeGroupsForLabel([...allGroups])
-          agMergedKey[root] = `agegroup:${sorted2.join('|')}`
-        }
-        agMergedKey[k] = agMergedKey[root]
-      })
-
-      // Step C: resolve each node's effective merged bubble keys
-      const resolvedKeys = (nodeId) => {
-        const raw = allRawKeys.get(nodeId) || []
-        return raw.map(k => k.startsWith('agegroup:') ? agMergedKey[k] || k : k)
-          .filter((k, i, arr) => arr.indexOf(k) === i) // dedupe
-      }
-
-      // Step D: find co-members per bubble key (Map<mergedKey, { nodes[] }>)
-      const myMergedKeys = resolvedKeys(thisNode.id)
+      // Build bubble co-members from the persisted CSV hull rows only.
+      const hullKeysByNodeId = new Map()
+      nodes.forEach(n => { hullKeysByNodeId.set(n.id, orgNodeHullKeys(n)) })
+      const myMergedKeys = hullKeysByNodeId.get(thisNode.id) || []
       const bubblesByKey = new Map() // mergedKey → Set<node> (excluding thisNode)
       myMergedKeys.forEach(k => { if (!bubblesByKey.has(k)) bubblesByKey.set(k, new Set()) })
 
       nodes.forEach(n => {
         if (n.id === thisNode.id) return
-        const theirKeys = resolvedKeys(n.id)
+        const theirKeys = hullKeysByNodeId.get(n.id) || []
         myMergedKeys.forEach(k => {
           if (theirKeys.includes(k)) bubblesByKey.get(k).add(n)
         })

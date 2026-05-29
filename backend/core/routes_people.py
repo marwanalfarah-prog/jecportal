@@ -2332,6 +2332,9 @@ def register_unregistered_routes(app):
                     if _r and _g:
                         _age_hist_lookup.setdefault(_r, set()).add(_g)
 
+            from core.routes_org_tree import build_person_org_tree_index as _build_org_tree_index
+            _org_tree_map, _gs_tree_map = _build_org_tree_index()
+
             photo_ids: set[str] = set()
             try:
                 for name in os.listdir(S.PROFILE_PHOTOS_DIR):
@@ -2376,6 +2379,13 @@ def register_unregistered_routes(app):
                 if active_youth_rows: statuses_yic.append("عضو حالي")
                 if archived_youth_rows: statuses_yic.append("عضو سابق")
                 row["_youth_is_current"] = statuses_yic
+                _ot = _org_tree_map.get(uid, {})
+                row["_org_tree_groups"] = _ot.get("groups", [])
+                row["_org_tree_jec_years"] = _ot.get("jec_years", [])
+                row["_org_tree_roles"] = _ot.get("roles", [])
+                _gs = _gs_tree_map.get(uid, {})
+                row["_gs_tree_jec_years"] = _gs.get("jec_years", [])
+                row["_gs_tree_roles"] = _gs.get("roles", [])
                 ryg_ids = ryg_id_map.get(uid, [])
                 row["_responsibility_youth_group_ids"] = ryg_ids
                 row["_responsibility_youth_groups"] = [S.youth_group_name(gid) or gid for gid in ryg_ids]
