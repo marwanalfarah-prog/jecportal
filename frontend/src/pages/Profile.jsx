@@ -3784,12 +3784,13 @@ function AddressRowsEditor({ rows, onChange, governorateOptions, locationOnly = 
         const actualIndex = resolveIndex(index)
         const targetId = `addresses.${actualIndex}`
         const errorMessage = validationMessageForTarget(validationIssue, targetId)
+        const highlightPrimary = normalizedRows.length > 1 && row.is_primary
         const addressSummary = [row?.address, row?.city, row?.governorate, row?.country]
           .map(value => String(value || '').trim())
           .filter(Boolean)
           .join('، ')
         return (
-        <div key={index} className="am-address-card" style={errorMessage ? PROFILE_VALIDATION_RING_STYLE : undefined} data-validation-id={targetId} tabIndex={-1}>
+        <div key={index} className="am-address-card" style={{ ...(highlightPrimary ? { border: '1px solid rgba(201,150,60,0.34)', background: 'linear-gradient(135deg,rgba(201,150,60,0.16),rgba(255,255,255,0.98))', boxShadow: '0 16px 30px rgba(201,150,60,0.16)' } : {}), ...(errorMessage ? PROFILE_VALIDATION_RING_STYLE : {}) }} data-validation-id={targetId} tabIndex={-1}>
           <div className="am-address-card-header">
             <div>
               <div className="am-address-card-title">{locationOnly ? 'موقع المنزل' : `عنوان ${index + 1}`}</div>
@@ -3804,9 +3805,6 @@ function AddressRowsEditor({ rows, onChange, governorateOptions, locationOnly = 
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPrimary(index)}>
                   تعيين كرئيسي
                 </button>
-              )}
-              {row.is_primary && (
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#15803d' }}>العنوان الرئيسي</span>
               )}
               {normalizedRows.length > 1 && (
                 <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--red)' }} onClick={() => removeRow(index)}>
@@ -8293,7 +8291,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                       <ViewRecordCard
                         key={`address-${index}`}
                         title={`العنوان ${index + 1}`}
-                        badge={row?.is_primary ? 'الرئيسي' : ''}
+                        highlighted={addresses.length > 1 && Boolean(row?.is_primary)}
                         onOpenMap={buildGoogleMapsOpenUrl(row) ? () => window.open(buildGoogleMapsOpenUrl(row), '_blank', 'noopener,noreferrer') : null}
                       >
                         <ViewSegmentedField label="العنوان" parts={addressParts} />
