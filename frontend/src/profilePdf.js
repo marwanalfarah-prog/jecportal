@@ -163,8 +163,8 @@ function renderOrgHistory(entries, emptyText) {
           <div class="pdf-org-entry-stack">
             ${yearEntries.map((entry) => {
               const relationGroups = [
-                { label: 'يرفع تقاريره إلى', items: (entry?.smartConnections || []).filter((item) => item?.relType === 'parent') },
-                { label: 'يرفع إليه تقاريره', items: (entry?.smartConnections || []).filter((item) => item?.relType === 'child') },
+                { label: 'يتبع إداريًا إلى', items: (entry?.smartConnections || []).filter((item) => item?.relType === 'parent') },
+                { label: 'يُشرف إداريًا على', items: (entry?.smartConnections || []).filter((item) => item?.relType === 'child') },
                 { label: 'ارتباطات أفقية', items: (entry?.smartConnections || []).filter((item) => item?.relType === 'peer') },
                 ...((entry?.bubblesGrouped || []).map((group) => ({ label: `زملاء ${group?.label || 'المجموعة'}`, items: group?.members || [] }))),
               ].filter((group) => Array.isArray(group.items) && group.items.length)

@@ -26,7 +26,7 @@ _ADMIN_ONLY_AGE_GROUPS = {"مرشد روحيّ"}
 _ARABIC_CHAR_CLASS = "\u0621-\u064A\u066E-\u066F\u0671-\u06D3\u06FA-\u06FF\u064B-\u065F"
 _ARABIC_TEXT_RE = re.compile(rf"^[{_ARABIC_CHAR_CLASS}]+(?:[ -][{_ARABIC_CHAR_CLASS}]+)*$")
 _ARABIC_SPACE_TEXT_RE = re.compile(rf"^[{_ARABIC_CHAR_CLASS}]+(?: [{_ARABIC_CHAR_CLASS}]+)*$")
-_ENGLISH_TEXT_RE = re.compile(r"^[A-Za-z]+(?:[ -][A-Za-z]+)*$")
+_ENGLISH_TEXT_RE = re.compile(r"^[A-Za-z']+(?:[ -][A-Za-z']+)*$")
 _EMAIL_RE = re.compile(
     r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
     r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"

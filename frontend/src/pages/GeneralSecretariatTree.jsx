@@ -1442,7 +1442,7 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
       <div style={{ padding:18, overflowY:'auto', flex:1, minHeight:0 }}>
         {reportsToNodes.length > 0 && (
           <div style={{ background:'#eef4ff', border:'1px solid #c3d9ff', borderRadius:'var(--radius-md)', padding:'9px 12px', marginBottom:14, fontSize:'0.82rem', color:'#1a3a5c', display:'flex', flexDirection:'column', gap:4 }}>
-            <span style={{ fontWeight:700, color:'var(--navy)', fontSize:'0.78rem', marginBottom:2 }}>يرفع تقاريره إلى:</span>
+            <span style={{ fontWeight:700, color:'var(--navy)', fontSize:'0.78rem', marginBottom:2 }}>يتبع إداريًا إلى:</span>
             {reportsToNodes.map(rn => (
               <div key={rn.id} style={{ display:'flex', alignItems:'center', gap:7 }}>
                 <div style={{ width:26, height:26, borderRadius:'50%', background:'var(--navy)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:'0.65rem', fontWeight:700, color:'white', flexShrink:0 }}>

@@ -289,7 +289,6 @@
 805,JB00348,Senior Pharmacist,Caritas,,,current,2025-02-06 13:23:06,,True,admin
 1255,JB00349,,JAP,,,current,2025-03-01 14:25:20,,True,admin
 245,JB00350,Electric Power Engineer,IVY,,,current,2025-01-31 11:16:48,,True,admin
-1281,JB00351,Senior Operations Executive,IBC,,,current,2025-03-05 08:22:07,,True,admin
 1253,JB00352,Bank Employee,بنك الإتحاد,,,current,2025-03-01 12:50:05,,True,admin
 1272,JB00354,Senior Account Executive,GlobeMed Jordan,,,current,2025-03-04 12:51:54,,True,admin
 680,JB00355,Retail & Store Manager,ملح وزيت,,,current,2025-02-03 02:09:11,,True,admin
@@ -359,7 +358,6 @@
 965,JB00353,Logistics Senior Officer,الشركة المركزيّة للتجارة والمركبات,,,current,2025-02-18 13:29:59,,True,admin
 313,JB00107,Content Moderator,CsMena,,,current,2025-01-31 11:21:26,,True,admin
 253,JB00087,Chief Intellectual Property Officer,طلال ابو غزالة للملكيّة الفكريّة,,,current,2025-01-31 11:17:01,,True,admin
-1347,JB00236,Pharmacist,,,,current,2025-03-10 15:59:32,,True,admin
 918,JB00179,Executive Operations Manager,Estarta,,,current,2025-02-16 15:32:27,,True,admin
 918,JB00368,Tech Incident Management,,,,previous,2025-02-16 15:32:27,,True,admin
 138,JB00050,Marketing Manager,شركة أنكل أوساكا للحلويات,,,current,2025-01-31 11:14:58,,True,admin
@@ -371,5 +369,10 @@
 948,JB00361,Data Science Intern,مدفوعاتكم,2024-06-30,2025-02-28,previous,2025-02-17 13:17:50,,True,admin
 3184,JB00372,Energy Engineer,قعوار للطاقة,,,current,2026-05-28 20:23:50,,True,admin
 3193,JB00373,Operations Manager,البنك العربي,,,current,2026-05-29 13:40:34,,True,admin
+1126,JB00374,Customer Service Supervisor,Advanced Company,,,current,2026-05-29 15:07:13,,True,admin
+1281,JB00351,Senior Operations Executive,International Beverages Consultancy,,,current,2026-05-29 15:27:05,,True,admin
+1347,JB00236,Pharmacist,Adatco,,,current,2026-05-29 15:27:35,,True,admin
+1347,JB00236,Pharmacist,,,,current,2025-03-10 15:59:32,2026-05-29 15:27:35,False,admin
+1281,JB00351,Senior Operations Executive,IBC,,,current,2025-03-05 08:22:07,2026-05-29 15:27:05,False,admin
 3184,JB00372,,قعوار للطاقة,,,current,2026-05-28 13:46:22,2026-05-28 20:23:50,False,admin
 3093,JB00371,,قعوار للطاقة,,,current,2026-05-28 13:46:08,2026-05-28 13:46:23,False,admin

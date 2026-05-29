@@ -3,7 +3,7 @@ import {
   ArrowRight, ArrowLeft, Pencil, Trash2, Plus, Check, Camera, UserX, Download,
   GraduationCap, Briefcase, Heart, Users, Shield,
   Phone, PhoneCall, Globe, School, GitBranch, Archive, ArchiveRestore, MapPin, Mail,
-  Facebook, Instagram, Linkedin, ExternalLink, AlertCircle
+  Facebook, Instagram, Linkedin, ExternalLink, AlertCircle, ChevronDown
 } from 'lucide-react'
 import { parsePhoneNumberFromString } from 'libphonenumber-js'
 import { api, getApiErrorMessage } from '../api.js'
@@ -5566,6 +5566,14 @@ function SmartConnRow({ node, connStart, connEnd, needsAnnotation, onViewProfile
 
 // ── Shared org history renderer ───────────────────────────────────────────────
 function OrgHistoryView({ entries, onViewProfile }) {
+  const [openYears,    setOpenYears]    = useState(new Set())
+  const [openEntries,  setOpenEntries]  = useState(new Set())
+  const [openSections, setOpenSections] = useState(new Set())
+
+  const toggle = (setter, key) => setter(prev => {
+    const next = new Set(prev); next.has(key) ? next.delete(key) : next.add(key); return next
+  })
+
   if (!entries.length) return (
     <div style={{ textAlign: 'center', padding: '48px 0', color: 'var(--gray-400)' }}>
       <GitBranch size={40} style={{ marginBottom: 14, opacity: 0.35 }} />
@@ -5581,6 +5589,10 @@ function OrgHistoryView({ entries, onViewProfile }) {
     if (!byGroup[entry.groupName][y]) byGroup[entry.groupName][y] = []
     byGroup[entry.groupName][y].push(entry)
   }
+
+  const chevron = (open) => (
+    <ChevronDown size={13} style={{ flexShrink: 0, transition: 'transform 0.18s', transform: open ? 'rotate(0deg)' : 'rotate(-90deg)' }} />
+  )
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -5598,107 +5610,134 @@ function OrgHistoryView({ entries, onViewProfile }) {
 
           {Object.entries(byYear)
             .sort(([a], [b]) => b.localeCompare(a))
-            .map(([jecYear, yearEntries]) => (
-              <div key={jecYear} style={{ marginBottom: 20 }}>
-                <div style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  background: 'var(--navy)', color: 'white',
-                  fontSize: '0.78rem', fontWeight: 700, padding: '4px 14px',
-                  borderRadius: 20, marginBottom: 12, fontFamily: 'var(--font-head)',
-                }}>
-                  سنة JEC {jecYear}
-                </div>
+            .map(([jecYear, yearEntries]) => {
+              const yearKey  = `${groupName}|||${jecYear}`
+              const yearOpen = openYears.has(yearKey)
+              return (
+                <div key={jecYear} style={{ marginBottom: 14 }}>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {yearEntries.map((entry, ei) => {
-                    const parents        = entry.smartConnections.filter(c => c.relType === 'parent')
-                    const children       = entry.smartConnections.filter(c => c.relType === 'child')
-                    const peers          = entry.smartConnections.filter(c => c.relType === 'peer')
-                    const bubblesGrouped = entry.bubblesGrouped || []
+                  {/* ── Year header (collapsible) ── */}
+                  <button
+                    type="button"
+                    onClick={() => toggle(setOpenYears, yearKey)}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      background: 'var(--navy)', color: 'white',
+                      fontSize: '0.78rem', fontWeight: 700, padding: '4px 14px',
+                      borderRadius: 20, marginBottom: yearOpen ? 12 : 4,
+                      fontFamily: 'var(--font-head)', border: 'none', cursor: 'pointer',
+                    }}>
+                    سنة JEC {jecYear}
+                    <span style={{ opacity: 0.7 }}>{chevron(yearOpen)}</span>
+                  </button>
 
-                    return (
-                      <div key={ei} className="card" style={{ borderRight: '3px solid var(--gold)' }}>
-                        <div className="card-header" style={{ flexWrap: 'wrap', gap: 8 }}>
-                          <span style={{
-                            background: 'var(--navy)', color: 'white',
-                            fontSize: '0.82rem', fontWeight: 700,
-                            padding: '4px 12px', borderRadius: 20, fontFamily: 'var(--font-body)',
-                          }}>
-                            {entry.role || 'بدون دور محدد'}
-                          </span>
+                  {yearOpen && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {yearEntries.map((entry, ei) => {
+                        const entryKey  = `${groupName}|||${jecYear}|||${ei}`
+                        const entryOpen = openEntries.has(entryKey)
+                        const parents        = entry.smartConnections.filter(c => c.relType === 'parent')
+                        const children       = entry.smartConnections.filter(c => c.relType === 'child')
+                        const peers          = entry.smartConnections.filter(c => c.relType === 'peer')
+                        const bubblesGrouped = entry.bubblesGrouped || []
 
-                          <span style={{
-                            fontSize: '0.72rem', fontWeight: 600,
-                            color: entry.isActive ? '#2e7d32' : 'var(--gray-500)',
-                            background: entry.isActive ? '#e8f5e9' : 'var(--gray-100)',
-                            padding: '3px 10px', borderRadius: 20,
-                            display: 'flex', alignItems: 'center', gap: 4,
-                          }}>
-                            {formatPeriodDate(entry.entryStart)}
-                            {' — '}
-                            {entry.isActive ? 'الآن' : formatPeriodDate(entry.entryEnd)}
-                            {entry.isActive && (
-                              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#4caf50', display: 'inline-block' }} />
+                        return (
+                          <div key={ei} className="card" style={{ borderRight: '3px solid var(--gold)' }}>
+
+                            {/* ── Entry header (collapsible) ── */}
+                            <div
+                              className="card-header"
+                              onClick={() => toggle(setOpenEntries, entryKey)}
+                              style={{ flexWrap: 'wrap', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+                              <span style={{
+                                background: 'var(--navy)', color: 'white',
+                                fontSize: '0.82rem', fontWeight: 700,
+                                padding: '4px 12px', borderRadius: 20, fontFamily: 'var(--font-body)',
+                              }}>
+                                {entry.role || 'بدون دور محدد'}
+                              </span>
+
+                              <span style={{
+                                fontSize: '0.72rem', fontWeight: 600,
+                                color: entry.isActive ? '#2e7d32' : 'var(--gray-500)',
+                                background: entry.isActive ? '#e8f5e9' : 'var(--gray-100)',
+                                padding: '3px 10px', borderRadius: 20,
+                                display: 'flex', alignItems: 'center', gap: 4,
+                              }}>
+                                {formatPeriodDate(entry.entryStart)}
+                                {' — '}
+                                {entry.isActive ? 'الآن' : formatPeriodDate(entry.entryEnd)}
+                                {entry.isActive && (
+                                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#4caf50', display: 'inline-block' }} />
+                                )}
+                              </span>
+
+                              {bubblesGrouped.map(bg => (
+                                <span key={bg.mergedKey} style={{
+                                  fontSize: '0.7rem', fontWeight: 600,
+                                  color: '#5b21b6', background: 'rgba(139,92,246,0.1)',
+                                  border: '1px solid rgba(139,92,246,0.3)',
+                                  padding: '3px 10px', borderRadius: 20,
+                                }}>
+                                  {bg.label}
+                                </span>
+                              ))}
+
+                              <span style={{ marginRight: 'auto', opacity: 0.45 }}>{chevron(entryOpen)}</span>
+                            </div>
+
+                            {/* ── Entry body (sections, each collapsible) ── */}
+                            {entryOpen && (
+                              <div className="card-body" style={{ paddingTop: 10 }}>
+                                {[
+                                  parents.length   > 0 && { sk: 'parents',   label: 'يتبع إداريًا إلى',               items: parents,   relType: 'parent' },
+                                  children.length  > 0 && { sk: 'children',  label: `يُشرف إداريًا على (${children.length})`, items: children,  relType: 'child' },
+                                  peers.length     > 0 && { sk: 'peers',     label: 'ارتباطات أفقية',                  items: peers,     relType: 'peer' },
+                                  ...bubblesGrouped.map(bg => ({ sk: `bubble:${bg.mergedKey}`, label: `زملاء ${bg.label} (${bg.members.length})`, items: bg.members, relType: 'bubble' })),
+                                ].filter(Boolean).map(({ sk, label, items, relType }) => {
+                                  const secKey  = `${entryKey}|||${sk}`
+                                  const secOpen = openSections.has(secKey)
+                                  return (
+                                    <div key={sk} style={{ marginBottom: 10, borderRadius: 8, border: '1px solid var(--gray-100)', overflow: 'hidden' }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => toggle(setOpenSections, secKey)}
+                                        style={{
+                                          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                          padding: '6px 10px', background: secOpen ? 'var(--gray-50)' : 'white',
+                                          border: 'none', cursor: 'pointer', fontFamily: 'var(--font-body)',
+                                          borderBottom: secOpen ? '1px solid var(--gray-100)' : 'none',
+                                        }}>
+                                        <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-400)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                                          {label}
+                                        </span>
+                                        <span style={{ color: 'var(--gray-300)' }}>{chevron(secOpen)}</span>
+                                      </button>
+                                      {secOpen && (
+                                        <div style={{ padding: '8px 10px 4px' }}>
+                                          {items.map((c, i) => (
+                                            <SmartConnRow key={i} {...c} relType={relType} onViewProfile={onViewProfile} />
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                                {!parents.length && !children.length && !peers.length && !bubblesGrouped.length && (
+                                  <div style={{ color: 'var(--gray-400)', fontSize: '0.85rem' }}>
+                                    لا توجد علاقات هرمية محددة في هذه الفترة
+                                  </div>
+                                )}
+                              </div>
                             )}
-                          </span>
-
-                          {bubblesGrouped.map(bg => (
-                            <span key={bg.mergedKey} style={{
-                              fontSize: '0.7rem', fontWeight: 600,
-                              color: '#5b21b6', background: 'rgba(139,92,246,0.1)',
-                              border: '1px solid rgba(139,92,246,0.3)',
-                              padding: '3px 10px', borderRadius: 20,
-                            }}>
-                              {bg.label}
-                            </span>
-                          ))}
-                        </div>
-
-                        <div className="card-body" style={{ paddingTop: 10 }}>
-                          {parents.length > 0 && (
-                            <div style={{ marginBottom: 12 }}>
-                              <SectionLabel>يرفع تقاريره إلى</SectionLabel>
-                              {parents.map((c, i) => (
-                                <SmartConnRow key={i} {...c} onViewProfile={onViewProfile} />
-                              ))}
-                            </div>
-                          )}
-                          {children.length > 0 && (
-                            <div style={{ marginBottom: 12 }}>
-                              <SectionLabel>يرفع إليه تقاريره ({children.length})</SectionLabel>
-                              {children.map((c, i) => (
-                                <SmartConnRow key={i} {...c} onViewProfile={onViewProfile} />
-                              ))}
-                            </div>
-                          )}
-                          {peers.length > 0 && (
-                            <div style={{ marginBottom: 12 }}>
-                              <SectionLabel>ارتباطات أفقية</SectionLabel>
-                              {peers.map((c, i) => (
-                                <SmartConnRow key={i} {...c} onViewProfile={onViewProfile} />
-                              ))}
-                            </div>
-                          )}
-                          {bubblesGrouped.map(bg => (
-                            <div key={bg.mergedKey} style={{ marginBottom: 12 }}>
-                              <SectionLabel>زملاء {bg.label} ({bg.members.length})</SectionLabel>
-                              {bg.members.map((c, i) => (
-                                <SmartConnRow key={i} {...c} relType="bubble" onViewProfile={onViewProfile} />
-                              ))}
-                            </div>
-                          ))}
-                          {!parents.length && !children.length && !peers.length && !bubblesGrouped.length && (
-                            <div style={{ color: 'var(--gray-400)', fontSize: '0.85rem' }}>
-                              لا توجد علاقات هرمية محددة في هذه الفترة
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              )
+            })}
         </div>
       ))}
     </div>
@@ -6999,13 +7038,15 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     if (registrationMode) { handleRegistrationNext(); return true }
     if (!dataRef.current || saving || !hasUnsavedChanges) return true
 
-    const issue = validateProfileRequired(dataRef.current)
-    if (issue) {
-      setValidationIssue(issue)
-      setValidationErrors([issue.message])
-      if (issue.tab) setActiveTab(issue.tab)
-      toast('يرجى تصحيح الحقول المظللة ثم إعادة الحفظ', 'error')
-      return false
+    if (!isViewerAdmin) {
+      const issue = validateProfileRequired(dataRef.current)
+      if (issue) {
+        setValidationIssue(issue)
+        setValidationErrors([issue.message])
+        if (issue.tab) setActiveTab(issue.tab)
+        toast('يرجى تصحيح الحقول المظللة ثم إعادة الحفظ', 'error')
+        return false
+      }
     }
 
     setSaving(true)
