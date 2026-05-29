@@ -2949,6 +2949,38 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
       svgClone.setAttribute('viewBox', `0 0 ${treeW} ${treeH}`)
       const bgRect = svgClone.querySelector('rect[fill="url(#dots)"]')
       if (bgRect) bgRect.setAttribute('fill', 'white')
+      const svgColorVars = {
+        '--navy': '#0f2744',
+        '--navy-mid': '#1a3a5c',
+        '--navy-light': '#2d5986',
+        '--gold': '#c9963c',
+        '--gold-light': '#e8b55a',
+        '--gray-400': '#9ba5bc',
+        '--gray-500': '#6b778f',
+        '--gray-600': '#4a5568',
+        '--gray-700': '#2d3748',
+      }
+      Object.entries(svgColorVars).forEach(([key, value]) => svgClone.style.setProperty(key, value))
+      const resolveSvgColor = (value) => {
+        const match = String(value || '').match(/^var\((--[^)]+)\)$/)
+        return match ? (svgColorVars[match[1]] || value) : value
+      }
+      svgClone.querySelectorAll('[stroke], [fill]').forEach((el) => {
+        if (el.hasAttribute('stroke')) el.setAttribute('stroke', resolveSvgColor(el.getAttribute('stroke')))
+        if (el.hasAttribute('fill')) el.setAttribute('fill', resolveSvgColor(el.getAttribute('fill')))
+      })
+      svgClone.querySelectorAll('path[marker-end]').forEach((path) => {
+        const marker = path.getAttribute('marker-end') || ''
+        const isPeer = marker.includes('arrow-p')
+        const isAuto = marker.includes('auto')
+        path.setAttribute('stroke', isAuto ? (isPeer ? '#e8b55a' : '#4a7fb5') : (isPeer ? '#c9963c' : '#0f2744'))
+        path.setAttribute('stroke-opacity', isAuto ? '0.95' : (isPeer ? '0.85' : '0.75'))
+        path.setAttribute('stroke-width', isAuto ? '4' : '3.5')
+      })
+      svgClone.querySelectorAll('marker path').forEach((path) => {
+        path.setAttribute('fill', resolveSvgColor(path.getAttribute('fill')))
+        path.setAttribute('opacity', '0.95')
+      })
       // Embed fonts so they render in the canvas
       const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style')
       styleEl.textContent = `@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&family=Cairo:wght@600;700;900&display=swap');`
@@ -3023,22 +3055,16 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
       const dateStr = new Date().toLocaleDateString('ar-EG', { year:'numeric', month:'long', day:'numeric' })
       ctx.fillText(dateStr, fullW / 2, HEADER_H + treeCanvas.height + FOOTER_H / 2)
 
-      // ── 5. Create PDF sized to match the canvas aspect ratio ───────────────
-      // Use the tree's natural shape — fit into either A4-width or A4-height
-      // but keep aspect ratio; page dimensions in mm match the canvas ratio
-      const A4_LONG = 297   // mm
-      const A4_SHORT = 210  // mm
-
-      // Decide orientation: landscape if tree is wider than tall
-      const isLandscape = fullW > fullH
-      const [pageW_mm, pageH_mm] = isLandscape ? [A4_LONG, A4_SHORT] : [A4_SHORT, A4_LONG]
-
-      // Scale the image to fill the page (no margins — tree already has PAD)
-      const scaleToFit = Math.min(pageW_mm / (fullW / SCALE), pageH_mm / (fullH / SCALE))
-      const imgW_mm = (fullW / SCALE) * scaleToFit
-      const imgH_mm = (fullH / SCALE) * scaleToFit
-      const offX_mm = (pageW_mm - imgW_mm) / 2
-      const offY_mm = (pageH_mm - imgH_mm) / 2
+      // ── 5. Create a PDF page that exactly matches the exported strip ───────
+      // This avoids A4 letterboxing, so the PDF starts at the navy header and
+      // ends at the grey footer instead of adding top/bottom white space.
+      const EXPORT_MAX_MM = 297
+      const imageW = fullW / SCALE
+      const imageH = fullH / SCALE
+      const imageRatio = imageW / imageH
+      const isLandscape = imageRatio >= 1
+      const pageW_mm = isLandscape ? EXPORT_MAX_MM : EXPORT_MAX_MM * imageRatio
+      const pageH_mm = isLandscape ? EXPORT_MAX_MM / imageRatio : EXPORT_MAX_MM
 
       const loadJsPDF = () => new Promise((resolve, reject) => {
         if (window.jspdf?.jsPDF) { resolve(window.jspdf.jsPDF); return }
@@ -3055,7 +3081,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
         format: [pageW_mm, pageH_mm],
       })
 
-      doc.addImage(full.toDataURL('image/png'), 'PNG', offX_mm, offY_mm, imgW_mm, imgH_mm)
+      doc.addImage(full.toDataURL('image/png'), 'PNG', 0, 0, pageW_mm, pageH_mm)
       doc.save(`org-tree-${(groupLabelById[selectedGroup] || selectedGroup || 'tree').replace(/\s+/g, '-')}.pdf`)
 
     } catch (err) {

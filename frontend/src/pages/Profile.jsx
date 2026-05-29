@@ -5760,6 +5760,9 @@ const GS_COMMITTEES_PROFILE = [
   'لجنة التدريب والتطوير','لجنة تطوير شبيبات الشمال','لجنة تطوير شبيبات الوسط',
   'لجنة تطوير شبيبات الجنوب','لجنة النشاطات',
 ]
+const GS_AGE_GROUP_COMMITTEES_PROFILE = [
+  'لجنة البراعم','لجنة الإعدادي','لجنة الثانوي','لجنة الجامعيّة','لجنة العاملة',
+]
 const GS_PROJECTS_PROFILE = ['شبيبة ستور','الفرقة الموسيقيّة JEC Band','عائلات الشبيبة','الاستشارات','المسرح']
 const GS_ACTING_PREFIX = 'قائم بأعمال '
 
@@ -5780,9 +5783,23 @@ function _classifyGSRole(role) {
     const rest = role.slice('مسؤول '.length)
     if (_isGSCompositeCommittee(rest)) return { tier: 'committee_head', committeeKey: rest }
   }
+  if (_isGSCompositeCommittee(role)) {
+    return { tier: 'committee_member', committeeKey: role }
+  }
   if (role.startsWith('عضو ')) {
     const rest = role.slice('عضو '.length)
     if (_isGSCompositeCommittee(rest)) return { tier: 'committee_member', committeeKey: rest }
+  }
+  if (role.startsWith('مسؤول ')) {
+    const rest = role.slice('مسؤول '.length)
+    if (_isGSCompositeAgeCommittee(rest)) return { tier: 'age_committee_head', committeeKey: rest }
+  }
+  if (_isGSCompositeAgeCommittee(role)) {
+    return { tier: 'age_committee_member', committeeKey: role }
+  }
+  if (role.startsWith('عضو ')) {
+    const rest = role.slice('عضو '.length)
+    if (_isGSCompositeAgeCommittee(rest)) return { tier: 'age_committee_member', committeeKey: rest }
   }
   for (const proj of GS_PROJECTS_PROFILE) {
     if (role === `مسؤول ${proj}`) return { tier: 'project_head', project: proj }
@@ -5800,12 +5817,21 @@ function _isGSCompositeCommittee(str) {
   return parts.length > 1 && parts.every(p => GS_COMMITTEES_PROFILE.includes(p))
 }
 
+function _isGSCompositeAgeCommittee(str) {
+  if (!str) return false
+  if (GS_AGE_GROUP_COMMITTEES_PROFILE.includes(str)) return true
+  const parts = str.split(/ و /).map(s => s.trim())
+  return parts.length > 1 && parts.every(p => GS_AGE_GROUP_COMMITTEES_PROFILE.includes(p))
+}
+
 function _isDefaultGSGroupMember(role) {
   if (!role) return false
   const c = _classifyGSRole(role)
   if (!c) return false
-  return ['committee_head','committee_member','project_head','project_director',
-    'project_employee','project_member','store_manager','store_employee'].includes(c.tier)
+  return ['committee_head','committee_member','age_committee_head','age_committee_member',
+    'middle_east_coordinator','deputy_me_coordinator',
+    'project_head','project_director','project_employee','project_member',
+    'store_manager','store_employee'].includes(c.tier)
 }
 
 function _effectiveGSInGroup(node) {
@@ -5822,7 +5848,8 @@ function _gsRawNodeKeys(node) {
   // الأمانة العامة hull — respects node.inAmanah override
   if (c) {
     const defaultInAmanah = ['secretary_general','spiritual_guide','spiritual_guide_assistant',
-      'reports_to_sg','committee_head','middle_east_coordinator'].includes(c.tier)
+      'reports_to_sg','committee_head','age_committee_head','middle_east_coordinator'].includes(c.tier)
+      || (c.tier === 'project_head' && c.project === 'الفرقة الموسيقيّة JEC Band')
     const effectiveInAmanah = (node.inAmanah !== undefined && node.inAmanah !== null)
       ? node.inAmanah
       : defaultInAmanah
@@ -5832,6 +5859,11 @@ function _gsRawNodeKeys(node) {
   if (!c) return keys
   if (!_effectiveGSInGroup(node)) return keys
 
+  // منسقيّة الشرق الأوسط hull
+  if (c.tier === 'middle_east_coordinator' || c.tier === 'deputy_me_coordinator') {
+    return [...keys, 'me_coord:منسقيّة الشرق الأوسط']
+  }
+
   // Committee head — keyed by their own nodeId
   if (c.tier === 'committee_head') return [...keys, `committee_head:${node.id}`]
 
@@ -5839,6 +5871,15 @@ function _gsRawNodeKeys(node) {
   if (c.tier === 'committee_member') {
     if (node.reportsToHeadId) return [...keys, `committee_head:${node.reportsToHeadId}`]
     return [...keys, `committee:${c.committeeKey}`]
+  }
+
+  // Age group committee head — keyed by their own nodeId
+  if (c.tier === 'age_committee_head') return [...keys, `age_committee_head:${node.id}`]
+
+  // Age group committee member — pinned to specific head, or falls to committeeKey for resolution
+  if (c.tier === 'age_committee_member') {
+    if (node.reportsToHeadId) return [...keys, `age_committee_head:${node.reportsToHeadId}`]
+    return [...keys, `age_committee:${c.committeeKey}`]
   }
 
   // Project / store
@@ -5860,15 +5901,26 @@ function _resolveGSHullKeys(nodes) {
   const rawByNode = new Map()
   nodes.forEach(n => { rawByNode.set(n.id, _gsRawNodeKeys(n)) })
 
-  // Build a lookup: committeeKey → [committee_head nodeIds] (only those with effectiveGSInGroup)
-  const committeeHeadsByKey = new Map() // committeeKey → nodeId[]
+  // Build lookup: individual committeeKey component → [committee_head nodeIds]
+  const committeeHeadsByKey = new Map()
   nodes.forEach(n => {
     const c = _classifyGSRole(n.role)
     if (c?.tier === 'committee_head' && _effectiveGSInGroup(n)) {
-      const headComs = c.committeeKey.split(/ و /).map(s => s.trim())
-      headComs.forEach(com => {
+      c.committeeKey.split(/ و /).map(s => s.trim()).forEach(com => {
         if (!committeeHeadsByKey.has(com)) committeeHeadsByKey.set(com, [])
         committeeHeadsByKey.get(com).push(n.id)
+      })
+    }
+  })
+
+  // Build lookup: individual age committeeKey component → [age_committee_head nodeIds]
+  const ageCommitteeHeadsByKey = new Map()
+  nodes.forEach(n => {
+    const c = _classifyGSRole(n.role)
+    if (c?.tier === 'age_committee_head' && _effectiveGSInGroup(n)) {
+      c.committeeKey.split(/ و /).map(s => s.trim()).forEach(com => {
+        if (!ageCommitteeHeadsByKey.has(com)) ageCommitteeHeadsByKey.set(com, [])
+        ageCommitteeHeadsByKey.get(com).push(n.id)
       })
     }
   })
@@ -5880,12 +5932,12 @@ function _resolveGSHullKeys(nodes) {
     const final = []
     raw.forEach(k => {
       if (k.startsWith('committee_head:') && _classifyGSRole(n.role)?.tier === 'committee_head') {
-        // Head's own hull key — keep as-is
-        final.push(k)
-        return
+        final.push(k); return
+      }
+      if (k.startsWith('age_committee_head:') && _classifyGSRole(n.role)?.tier === 'age_committee_head') {
+        final.push(k); return
       }
       if (k.startsWith('committee:')) {
-        // Unpinned member — resolve to matching head(s) hull, or keep standalone
         const committeeKey = k.slice('committee:'.length)
         const memberComs = committeeKey.split(/ و /).map(s => s.trim())
         const matchingHeadIds = new Set()
@@ -5895,14 +5947,27 @@ function _resolveGSHullKeys(nodes) {
         if (matchingHeadIds.size > 0) {
           matchingHeadIds.forEach(hid => final.push(`committee_head:${hid}`))
         } else {
-          final.push(k) // standalone committee hull
+          final.push(k)
         }
         return
       }
-      // amanah, project, etc. — pass through
+      if (k.startsWith('age_committee:')) {
+        const committeeKey = k.slice('age_committee:'.length)
+        const memberComs = committeeKey.split(/ و /).map(s => s.trim())
+        const matchingHeadIds = new Set()
+        memberComs.forEach(com => {
+          ;(ageCommitteeHeadsByKey.get(com) || []).forEach(hid => matchingHeadIds.add(hid))
+        })
+        if (matchingHeadIds.size > 0) {
+          matchingHeadIds.forEach(hid => final.push(`age_committee_head:${hid}`))
+        } else {
+          final.push(k)
+        }
+        return
+      }
+      // amanah, me_coord, project, etc. — pass through
       final.push(k)
     })
-    // Deduplicate
     finalByNode.set(n.id, [...new Set(final)])
   })
 
@@ -5912,25 +5977,38 @@ function _resolveGSHullKeys(nodes) {
 // Label for a resolved final hull key
 function _gsGroupKeyLabel(key) {
   if (key === 'amanah:الأمانة العامة') return 'الأمانة العامة'
-  if (key.startsWith('committee_head:')) return 'لجنة'   // fallback; overridden below with head's committeeKey
+  if (key.startsWith('committee_head:')) return 'لجنة'
   if (key.startsWith('committee:')) return key.slice('committee:'.length)
+  if (key.startsWith('age_committee_head:')) return 'لجنة فئة'
+  if (key.startsWith('age_committee:')) return key.slice('age_committee:'.length)
+  if (key.startsWith('me_coord:')) return key.slice('me_coord:'.length)
   if (key.startsWith('project:')) return key.slice('project:'.length)
   return key
 }
 
-// Better label for committee_head keys — needs the nodes list to look up the head
-  function _gsGroupKeyLabelWithNodes(key, nodes) {
-    if (key.startsWith('committee_head:')) {
-      const headId = key.slice('committee_head:'.length)
-      const head = (nodes || []).find(n => n.id === headId)
-      if (head) {
-        const c = _classifyGSRole(head.role)
-        if (c?.committeeKey) return c.committeeKey
-        return head.role || 'لجنة'
-      }
-      return 'لجنة'
+// Better label — needs the nodes list to look up committee_head / age_committee_head keys
+function _gsGroupKeyLabelWithNodes(key, nodes) {
+  if (key.startsWith('committee_head:')) {
+    const headId = key.slice('committee_head:'.length)
+    const head = (nodes || []).find(n => n.id === headId)
+    if (head) {
+      const c = _classifyGSRole(head.role)
+      if (c?.committeeKey) return c.committeeKey
+      return head.role || 'لجنة'
     }
-    return _gsGroupKeyLabel(key)
+    return 'لجنة'
+  }
+  if (key.startsWith('age_committee_head:')) {
+    const headId = key.slice('age_committee_head:'.length)
+    const head = (nodes || []).find(n => n.id === headId)
+    if (head) {
+      const c = _classifyGSRole(head.role)
+      if (c?.committeeKey) return c.committeeKey
+      return head.role || 'لجنة فئة'
+    }
+    return 'لجنة فئة'
+  }
+  return _gsGroupKeyLabel(key)
 }
 
 function buildGSOrgHistory(personIdOrMatcher, allPeriodTrees) {
@@ -5939,7 +6017,13 @@ function buildGSOrgHistory(personIdOrMatcher, allPeriodTrees) {
     ? personIdOrMatcher
     : (n) => String(n.personId) === String(personIdOrMatcher)
 
-  for (const { groupName, period, nodes, edges } of allPeriodTrees) {
+  for (const { groupName, period, nodes: rawNodes, edges } of allPeriodTrees) {
+    // Populate reportsToHeadId from reports_to edges, mirroring nodeFromGSApi in the main tree.
+    // Without this, all committee members fall into both heads' hulls (the 10-instead-of-5 bug).
+    const reportsToMap = {}
+    ;(edges || []).forEach(e => { if (e.type === 'reports_to') reportsToMap[e.from] = e.to })
+    const nodes = rawNodes.map(n => reportsToMap[n.id] ? { ...n, reportsToHeadId: reportsToMap[n.id] } : n)
+
     const myNodes = nodes.filter(matcher)
     for (const thisNode of myNodes) {
       const role    = thisNode.role || ''

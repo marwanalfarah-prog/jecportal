@@ -120,6 +120,13 @@ def _normalize_profile_person_fields(person_fields: dict) -> dict:
     return normalized
 
 
+def _strip_person_projection_fields(person_fields: dict) -> dict:
+    cleaned = dict(person_fields or {})
+    for key in S.PERSON_ADDRESS_PROJECTION_COLUMNS:
+        cleaned.pop(key, None)
+    return cleaned
+
+
 def _populate_arabic_name_from_full_name(person_fields: dict, raw_name) -> dict:
     if person_fields.get("ar_first_name"):
         return person_fields
@@ -566,8 +573,7 @@ def prepare_profile_person_payload(raw_person, *, addresses_rows=_MISSING, infer
         if inferred_addresses:
             resolved_addresses = inferred_addresses
 
-    for obsolete_col in ("governorate", "city", "country", "address"):
-        person_fields.pop(obsolete_col, None)
+    person_fields = _strip_person_projection_fields(person_fields)
 
     return person_fields, {
         "title_in_payload": title_in_payload,
@@ -2854,44 +2860,66 @@ def register_unregistered_routes(app):
         if issues:
             return jsonify({"error": "لا يمكن إتمام التسجيل. يرجى استكمال البيانات الناقصة.", "issues": issues}), 422
 
-        with S.lock:
-            new_pid = S._next_person_id()
-            p = dict(record.get("person") or {})
-            p.pop("person_id", None)
-            person_title = p.pop("title", None)
-            school_system_sector = p.pop("school_system_sector", None)
-            p["person_id"] = new_pid
-            p["registered"] = True
-            new_person_scd = S._scd_new_metadata("admin")
-            S.store["persons"] = pd.concat([S.store["persons"], pd.DataFrame([{**p, **new_person_scd}])], ignore_index=True)
-            S.replace_person_title(S.store, new_pid, person_title, changed_by="admin")
-            S.replace_person_school_system_sector(S.store, new_pid, school_system_sector, changed_by="admin")
+        promoted_pid = S._normalize_person_id(uid)
+        if promoted_pid in (None, ""):
+            return jsonify({"error": "invalid person_id"}), 400
 
-            for sheet in ("nationality", "mobile_numbers", "emails", "social_media", "addresses", "schools", "higher_education", "jobs", "responsibilities", "person_youth_group", "hobbies_skills", S.PERSON_HEALTH_CONDITION_SHEET, S.PERSON_SPECIAL_NOTE_SHEET):
-                rows = record.get(sheet, [])
-                if rows:
-                    replace_profile_sub_rows(S.store, new_pid, sheet, rows, compare_as_string=False, changed_by="admin")
+        with S.lock:
+            persons_df = S._scd_ensure_columns(S.store.get("persons", pd.DataFrame()).copy())
+            if "person_id" not in persons_df.columns:
+                persons_df["person_id"] = None
+
+            active_mask = (
+                (persons_df["person_id"].astype(str) == str(promoted_pid))
+                & S._scd_active_mask(persons_df)
+            )
+            now = S._scd_timestamp()
+
+            if active_mask.any():
+                current_row = (
+                    persons_df.loc[active_mask]
+                    .replace({np.nan: None})
+                    .to_dict(orient="records")[-1]
+                )
+                persons_df.loc[active_mask, S.SCD_ACTIVE_TO_COL] = now
+                persons_df.loc[active_mask, S.SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+                persons_df.loc[active_mask, S.SCD_CHANGED_BY_USER_COL] = "admin"
+                promoted_person = {
+                    key: value
+                    for key, value in current_row.items()
+                    if key not in S.SCD_METADATA_COLUMNS
+                }
+            else:
+                promoted_person = dict(record.get("person") or {})
+
+            promoted_person.pop("title", None)
+            promoted_person.pop("school_system_sector", None)
+            promoted_person = _strip_person_projection_fields(promoted_person)
+            promoted_person["person_id"] = promoted_pid
+            promoted_person["registered"] = True
+
+            S.store["persons"] = pd.concat(
+                [
+                    persons_df,
+                    pd.DataFrame([{**promoted_person, **S._scd_new_metadata("admin")}]),
+                ],
+                ignore_index=True,
+            )
             S.save()
 
         src_path, ext = S.get_unreg_photo_path(uid)
         if ext and src_path:
-            try:
-                os.replace(src_path, os.path.join(S.PROFILE_PHOTOS_DIR, f"{new_pid}.{ext}"))
-            except Exception:
-                pass
+            dest_path = os.path.join(S.PROFILE_PHOTOS_DIR, f"{promoted_pid}.{ext}")
+            if os.path.abspath(src_path) != os.path.abspath(dest_path):
+                try:
+                    os.replace(src_path, dest_path)
+                except Exception:
+                    pass
 
         with S.unreg_lock:
-            remove_profile_rows_by_person_id(
-                S.unreg_store,
-                uid,
-                compare_as_string=True,
-                changed_by="admin",
-                sheet_names=S.UNREG_SHEETS,
-                remove_membership_history=True,
-            )
-            S._save_unreg_store()
+            S._sync_unreg_view_from_store()
 
-        return jsonify({"ok": True, "person_id": new_pid})
+        return jsonify({"ok": True, "person_id": promoted_pid})
 
     @app.post("/api/unregistered/sync")
     def sync_unregistered():

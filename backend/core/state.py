@@ -492,6 +492,17 @@ APPROVAL_STATUS_APPROVED = "approved"
 
 APPROVAL_STATUS_REJECTED = "rejected"
 
+PERSON_ADDRESS_PROJECTION_COLUMNS = (
+    "lat",
+    "lng",
+    STREET_ADDRESS_COL,
+    "country",
+    "governorate",
+    "city",
+    "address",
+    "location_url",
+)
+
 
 
 _youth_group_name_by_id: dict[str, str] = {}
@@ -8511,6 +8522,14 @@ def _ensure_persons_schema():
     if "archived" in persons.columns:
 
         persons = persons.drop(columns=["archived"])
+
+        changed = True
+
+    embedded_address_cols = [col for col in PERSON_ADDRESS_PROJECTION_COLUMNS if col in persons.columns]
+
+    if embedded_address_cols:
+
+        persons = persons.drop(columns=embedded_address_cols)
 
         changed = True
 

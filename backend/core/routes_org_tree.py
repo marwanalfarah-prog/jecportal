@@ -49,6 +49,29 @@ GS_GROUP_ALIASES = {
     "الأمانة العامة",
 }
 GS_GROUP_ALIAS_SAFE_KEYS = {S.safe_youth_group_key(v) for v in GS_GROUP_ALIASES}
+GS_ACTING_PREFIX = "قائم بأعمال "
+GS_COMMITTEE_MEMBER_PREFIX = "عضو لجنة"
+
+
+def _normalize_gs_committee_member_role(role):
+    text = _none_if_blank(role)
+    if text is None:
+        return role
+    acting = ""
+    base = text
+    if base.startswith(GS_ACTING_PREFIX):
+        acting = GS_ACTING_PREFIX
+        base = base[len(GS_ACTING_PREFIX):].strip()
+    if base.startswith(GS_COMMITTEE_MEMBER_PREFIX):
+        base = base[len("عضو "):].strip()
+        return f"{acting}{base}".strip()
+    return text
+
+
+def _normalize_gs_tree_node(node: dict) -> dict:
+    normalized = dict(node or {})
+    normalized["role"] = _normalize_gs_committee_member_role(normalized.get("role"))
+    return normalized
 
 
 def _canonical_group_ref(group_ref: str | None) -> str | None:
@@ -443,7 +466,10 @@ def _save_csv_tree_data(group_id: str, period_id: str, data: dict, *, changed_by
     old_node_ids = {node_id for node_id in old_node_ids if node_id}
 
     node_rows = _read_csv_records(ORG_TREE_NODES_CSV, ORG_TREE_NODE_COLUMNS, active_only=False, include_scd=True)
-    new_node_rows = [_node_to_csv_record(period_id, node) for node in (data.get("nodes") or [])]
+    source_nodes = data.get("nodes") or []
+    if group_id == GS_GROUP_ID:
+        source_nodes = [_normalize_gs_tree_node(node) for node in source_nodes]
+    new_node_rows = [_node_to_csv_record(period_id, node) for node in source_nodes]
     merged_nodes = _scd_merge_records(
         node_rows,
         new_node_rows,

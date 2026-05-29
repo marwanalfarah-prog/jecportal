@@ -566,6 +566,15 @@ const GS_PROJECTS = [
   'المسرح',
 ]
 
+// Age group committees (لجان الفئات) — one per age group, can span multiple groups
+const GS_AGE_GROUP_COMMITTEES = [
+  'لجنة البراعم',
+  'لجنة الإعدادي',
+  'لجنة الثانوي',
+  'لجنة الجامعيّة',
+  'لجنة العاملة',
+]
+
 const ACTING_PREFIX = 'قائم بأعمال '
 
 // Build committee head/member role string
@@ -573,7 +582,7 @@ function buildCommitteeTitle(committees, memberType) {
   if (!committees || !committees.length) return ''
   const name = committees.length === 1 ? committees[0] : committees.join(' و ')
   if (memberType === 'مسؤول') return `مسؤول ${name}`
-  if (memberType === 'عضو لجنة') return `عضو ${name}`
+  if (memberType === 'عضو' || memberType === 'عضو لجنة') return name
   return name
 }
 
@@ -613,6 +622,8 @@ function parseGSRoleBase(role) {
     if (parts.length && parts.every(p => GS_COMMITTEES.includes(p))) return parts
     return null
   }
+  const memberParts = tryParseComs(role)
+  if (memberParts) return { type: 'committee', committees: memberParts, memberType: 'عضو' }
   // head: مسؤول <name>
   if (role.startsWith('مسؤول ')) {
     const rest = role.slice('مسؤول '.length)
@@ -623,7 +634,7 @@ function parseGSRoleBase(role) {
   if (role.startsWith('عضو ')) {
     const rest = role.slice('عضو '.length)
     const memParts = tryParseComs(rest)
-    if (memParts) return { type: 'committee', committees: memParts, memberType: 'عضو لجنة' }
+    if (memParts) return { type: 'committee', committees: memParts, memberType: 'عضو' }
   }
 
   // Tab 3 — project
@@ -634,13 +645,35 @@ function parseGSRoleBase(role) {
     if (role === `عضو ${proj}`)   return { type: 'project', project: proj, memberType: 'عضو' }
   }
 
+  // Age group committee (لجان الفئات)
+  {
+    const tryParseAgeComms = (str) => {
+      const parts = str.split(/\s+و\s*|\s*و\s+/).map(s => s.trim()).filter(Boolean)
+      if (parts.length && parts.every(p => GS_AGE_GROUP_COMMITTEES.includes(p))) return parts
+      return null
+    }
+    const ageMemParts = tryParseAgeComms(role)
+    if (ageMemParts) return { type: 'agecommittee', committees: ageMemParts, memberType: 'عضو' }
+    if (role.startsWith('مسؤول ')) {
+      const rest = role.slice('مسؤول '.length)
+      const ageHeadParts = tryParseAgeComms(rest)
+      if (ageHeadParts) return { type: 'agecommittee', committees: ageHeadParts, memberType: 'مسؤول' }
+    }
+    if (role.startsWith('عضو ')) {
+      const rest = role.slice('عضو '.length)
+      const ageMem2 = tryParseAgeComms(rest)
+      if (ageMem2) return { type: 'agecommittee', committees: ageMem2, memberType: 'عضو' }
+    }
+  }
+
   return { type: null, unknownValue: role }
 }
 
 const GS_ROLE_TABS = [
-  { id: 'leadership', label: 'القيادة' },
-  { id: 'committee',  label: 'اللجان' },
-  { id: 'project',    label: 'المشاريع' },
+  { id: 'leadership',   label: 'القيادة' },
+  { id: 'committee',    label: 'اللجان' },
+  { id: 'agecommittee', label: 'لجان الفئات' },
+  { id: 'project',      label: 'المشاريع' },
 ]
 
 function GSRolePicker({ role, currentReportsToHeadId, allNodes, onChange }) {
@@ -650,6 +683,8 @@ function GSRolePicker({ role, currentReportsToHeadId, allNodes, onChange }) {
   const [leaderValue, setLeaderValue]         = useState(parsed.type === 'leadership' ? parsed.value : '')
   const [selectedCommittees, setSelComm]      = useState(parsed.type === 'committee' ? (parsed.committees || []) : [])
   const [committeeMemberType, setCommMT]      = useState(parsed.memberType || 'مسؤول')
+  const [selectedAgeCommittees, setSelAgeComm] = useState(parsed.type === 'agecommittee' ? (parsed.committees || []) : [])
+  const [ageCommitteeMemberType, setAgeCommMT] = useState(parsed.type === 'agecommittee' ? (parsed.memberType || 'مسؤول') : 'مسؤول')
   const [selectedProject, setSelProj]         = useState(parsed.type === 'project' ? (parsed.project || '') : '')
   const [projectMemberType, setProjMT]        = useState(parsed.type === 'project' ? (parsed.memberType || 'مسؤول') : 'مسؤول')
   const [isActing, setIsActing]               = useState(parsed.isActing || false)
@@ -665,7 +700,16 @@ function GSRolePicker({ role, currentReportsToHeadId, allNodes, onChange }) {
     return selectedCommittees.some(c => headComs.includes(c))
   })
   // Only show the head picker when there are 2+ heads for the same committees
-  const showHeadPicker = committeeMemberType === 'عضو لجنة' && potentialHeads.length >= 2
+  const showHeadPicker = committeeMemberType === 'عضو' && potentialHeads.length >= 2
+
+  // Potential heads for age group committees
+  const potentialAgeHeads = (allNodes || []).filter(n => {
+    const nc = classifyGSRole(n.role)
+    if (!nc || nc.tier !== 'age_committee_head') return false
+    const headComs = nc.committeeKey.split(/ و /).map(s => s.trim())
+    return selectedAgeCommittees.some(c => headComs.includes(c))
+  })
+  const showAgeHeadPicker = ageCommitteeMemberType === 'عضو' && potentialAgeHeads.length >= 2
 
   // When committees/memberType change, reset reportsToHeadId if it no longer applies
   useEffect(() => {
@@ -677,21 +721,23 @@ function GSRolePicker({ role, currentReportsToHeadId, allNodes, onChange }) {
 
   const computeRole = useCallback((
     t = tab, lv = leaderValue, coms = selectedCommittees, cmt = committeeMemberType,
-    proj = selectedProject, pmt = projectMemberType, acting = isActing
+    proj = selectedProject, pmt = projectMemberType, acting = isActing,
+    agComs = selectedAgeCommittees, agCmt = ageCommitteeMemberType
   ) => {
     let base = ''
-    if (t === 'leadership') base = lv
-    else if (t === 'committee') base = buildCommitteeTitle(coms, cmt)
-    else if (t === 'project') base = buildProjectTitle(proj, pmt)
+    if (t === 'leadership')   base = lv
+    else if (t === 'committee')    base = buildCommitteeTitle(coms, cmt)
+    else if (t === 'agecommittee') base = buildCommitteeTitle(agComs, agCmt)
+    else if (t === 'project')      base = buildProjectTitle(proj, pmt)
     if (!base) return ''
     return acting ? `${ACTING_PREFIX}${base}` : base
-  }, [tab, leaderValue, selectedCommittees, committeeMemberType, selectedProject, projectMemberType, isActing])
+  }, [tab, leaderValue, selectedCommittees, committeeMemberType, selectedProject, projectMemberType, isActing, selectedAgeCommittees, ageCommitteeMemberType])
 
   useEffect(() => {
     const r = computeRole()
     if (r) onChange(r, reportsToHeadId)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, leaderValue, selectedCommittees, committeeMemberType, selectedProject, projectMemberType, isActing, reportsToHeadId])
+  }, [tab, leaderValue, selectedCommittees, committeeMemberType, selectedProject, projectMemberType, isActing, reportsToHeadId, selectedAgeCommittees, ageCommitteeMemberType])
 
   const preview = computeRole()
 
@@ -710,7 +756,7 @@ function GSRolePicker({ role, currentReportsToHeadId, allNodes, onChange }) {
       <label style={{ fontSize:'0.78rem', fontWeight:700, color:'var(--gray-500)', display:'block', marginBottom:6 }}>المسؤولية / الدور</label>
 
       {/* Tabs */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:3, marginBottom:10 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:3, marginBottom:10 }}>
         {GS_ROLE_TABS.map(({ id, label }) => (
           <button key={id} type="button"
             style={{ padding:'5px 4px', borderRadius:8, fontSize:'0.72rem', fontWeight:700, cursor:'pointer', border:'1.5px solid', transition:'all 0.15s', fontFamily:'var(--font-body)', textAlign:'center', lineHeight:1.3, ...(tab===id ? { background:'var(--navy)', borderColor:'var(--navy)', color:'white' } : { background:'white', borderColor:'var(--gray-200)', color:'var(--gray-600)' }) }}
@@ -750,7 +796,7 @@ function GSRolePicker({ role, currentReportsToHeadId, allNodes, onChange }) {
           </div>
           <span style={labelStyle}>الصفة</span>
           <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom: showHeadPicker ? 10 : 0 }}>
-            {['مسؤول','عضو لجنة'].map(mt => (
+            {['مسؤول','عضو'].map(mt => (
               <button key={mt} type="button" style={committeeMemberType===mt ? checkActive : checkInactive} onClick={()=>setCommMT(mt)}>{mt}</button>
             ))}
           </div>
@@ -809,7 +855,73 @@ function GSRolePicker({ role, currentReportsToHeadId, allNodes, onChange }) {
         </div>
       )}
 
-      {/* Tab 3 — Project */}
+      {/* Tab 3 — Age group committees */}
+      {tab === 'agecommittee' && (
+        <div style={sectionStyle}>
+          <span style={labelStyle}>لجان الفئات (يمكن اختيار أكثر من واحدة)</span>
+          <div style={{ display:'flex', flexDirection:'column', gap:4, marginBottom:10 }}>
+            {GS_AGE_GROUP_COMMITTEES.map(c => {
+              const checked = selectedAgeCommittees.includes(c)
+              return (
+                <button key={c} type="button"
+                  style={{ ...rowBtn(checked), justifyContent:'space-between' }}
+                  onClick={() => setSelAgeComm(prev => prev.includes(c) ? prev.filter(x=>x!==c) : [...prev,c])}>
+                  <span>{c}</span>
+                  <span style={{ width:16, height:16, borderRadius:4, flexShrink:0, border:`2px solid ${checked?'white':'var(--gray-300)'}`, background:checked?'rgba(255,255,255,0.3)':'white', display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:'0.65rem', color:checked?'white':'transparent' }}>✓</span>
+                </button>
+              )
+            })}
+          </div>
+          <span style={labelStyle}>الصفة</span>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom: showAgeHeadPicker ? 10 : 0 }}>
+            {['مسؤول','عضو'].map(mt => (
+              <button key={mt} type="button" style={ageCommitteeMemberType===mt ? checkActive : checkInactive} onClick={()=>setAgeCommMT(mt)}>{mt}</button>
+            ))}
+          </div>
+
+          {/* ── Age committee head picker: shown when 2+ heads share the same committee ── */}
+          {showAgeHeadPicker && (
+            <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid var(--gray-200)' }}>
+              <span style={{ ...labelStyle, color:'#c9963c', display:'flex', alignItems:'center', gap:5 }}>
+                <span>⚠</span> يوجد أكثر من مسؤول لهذه اللجنة — اختر من يتبعه هذا العضو:
+              </span>
+              <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                {potentialAgeHeads.map(head => {
+                  const isSelected = reportsToHeadId === head.id
+                  const displayName = nodeDisplayName(head) || head.name || 'بدون اسم'
+                  return (
+                    <button key={head.id} type="button"
+                      onClick={() => setReportsToHeadId(isSelected ? null : head.id)}
+                      style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', borderRadius:8, cursor:'pointer', border:`2px solid ${isSelected?'var(--navy)':'var(--gray-200)'}`, background:isSelected?'#eef4ff':'white', fontFamily:'var(--font-body)', textAlign:'right', transition:'all 0.15s' }}>
+                      <div style={{ width:30, height:30, borderRadius:'50%', background:'var(--navy)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, overflow:'hidden' }}>
+                        {head.photo
+                          ? <img src={head.photo} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+                          : <span style={{ color:'white', fontSize:'0.65rem', fontWeight:700 }}>{firstNameInitial(head.baseName || head.name || displayName)}</span>
+                        }
+                      </div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontWeight:700, fontSize:'0.85rem', color:isSelected?'var(--navy)':'var(--gray-800)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{displayName}</div>
+                        <div style={{ fontSize:'0.72rem', color:'var(--gold)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{head.role||''}</div>
+                      </div>
+                      <div style={{ width:18, height:18, borderRadius:4, border:`2px solid ${isSelected?'var(--navy)':'var(--gray-300)'}`, background:isSelected?'var(--navy)':'white', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                        {isSelected && <span style={{ color:'white', fontSize:'0.6rem', fontWeight:800 }}>✓</span>}
+                      </div>
+                    </button>
+                  )
+                })}
+                {reportsToHeadId && (
+                  <button type="button" onClick={() => setReportsToHeadId(null)}
+                    style={{ fontSize:'0.75rem', color:'var(--gray-400)', background:'none', border:'none', cursor:'pointer', textAlign:'right', padding:'2px 4px', fontFamily:'var(--font-body)' }}>
+                    ✕ إلغاء التحديد (تحديد تلقائي)
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab 4 — Project */}
       {tab === 'project' && (
         <div style={sectionStyle}>
           <span style={labelStyle}>المشاريع</span>
@@ -883,10 +995,28 @@ function classifyGSRole(role) {
     const rest = role.slice('مسؤول '.length)
     if (isGSCompositeCommittee(rest)) return { tier: 'committee_head', committeeKey: rest }
   }
+  // Committee member: the role is the committee name itself.
+  if (isGSCompositeCommittee(role)) {
+    return { tier: 'committee_member', committeeKey: role }
+  }
   // Committee member
   if (role.startsWith('عضو ')) {
     const rest = role.slice('عضو '.length)
     if (isGSCompositeCommittee(rest)) return { tier: 'committee_member', committeeKey: rest }
+  }
+
+  // Age group committee head
+  if (role.startsWith('مسؤول ')) {
+    const rest = role.slice('مسؤول '.length)
+    if (isGSCompositeAgeCommittee(rest)) return { tier: 'age_committee_head', committeeKey: rest }
+  }
+  // Age group committee member
+  if (isGSCompositeAgeCommittee(role)) {
+    return { tier: 'age_committee_member', committeeKey: role }
+  }
+  if (role.startsWith('عضو ')) {
+    const rest = role.slice('عضو '.length)
+    if (isGSCompositeAgeCommittee(rest)) return { tier: 'age_committee_member', committeeKey: rest }
   }
 
   // Project head
@@ -907,19 +1037,30 @@ function isGSCompositeCommittee(str) {
   return parts.length > 1 && parts.every(p => GS_COMMITTEES.includes(p))
 }
 
+function isGSCompositeAgeCommittee(str) {
+  if (!str) return false
+  if (GS_AGE_GROUP_COMMITTEES.includes(str)) return true
+  const parts = str.split(/ و /).map(s => s.trim())
+  return parts.length > 1 && parts.every(p => GS_AGE_GROUP_COMMITTEES.includes(p))
+}
+
 function isDefaultGSGroupMember(role) {
   if (!role) return false
   const c = classifyGSRole(role)
   if (!c) return false
-  if (c.tier === 'committee_head')    return true
-  if (c.tier === 'committee_member')  return true
-  if (c.tier === 'project_head')      return true
-  if (c.tier === 'project_director')  return true
-  if (c.tier === 'project_employee')  return true
-  if (c.tier === 'project_member')    return true
+  if (c.tier === 'committee_head')          return true
+  if (c.tier === 'committee_member')        return true
+  if (c.tier === 'age_committee_head')      return true
+  if (c.tier === 'age_committee_member')    return true
+  if (c.tier === 'middle_east_coordinator') return true
+  if (c.tier === 'deputy_me_coordinator')   return true
+  if (c.tier === 'project_head')         return true
+  if (c.tier === 'project_director')     return true
+  if (c.tier === 'project_employee')     return true
+  if (c.tier === 'project_member')       return true
   // شبيبة ستور — both manager/responsible AND employees go in the store hull
-  if (c.tier === 'store_manager')     return true
-  if (c.tier === 'store_employee')    return true
+  if (c.tier === 'store_manager')        return true
+  if (c.tier === 'store_employee')       return true
   return false
 }
 
@@ -941,11 +1082,13 @@ function nodeGSGroupKeys(node) {
   const keys = []
 
   // ── الأمانة العامة hull ─────────────────────────────────────────────────────
-  // Eligible: SG, spiritual guides, deputy, committee heads, منسق الشرق الأوسط
-  // NOT eligible: نائب منسق, committee members, project/store roles
+  // Eligible: SG, spiritual guides, deputy, committee heads, age committee heads, منسق الشرق الأوسط,
+  //           and مسؤول الفرقة الموسيقيّة JEC Band
+  // NOT eligible: نائب منسق, committee members, other project/store roles
   if (c) {
     const defaultInAmanah = ['secretary_general','spiritual_guide','spiritual_guide_assistant',
-      'reports_to_sg','committee_head','middle_east_coordinator'].includes(c.tier)
+      'reports_to_sg','committee_head','age_committee_head','middle_east_coordinator'].includes(c.tier)
+      || (c.tier === 'project_head' && c.project === 'الفرقة الموسيقيّة JEC Band')
     const effectiveInAmanah = node.inAmanah !== undefined && node.inAmanah !== null
       ? node.inAmanah
       : defaultInAmanah
@@ -954,6 +1097,11 @@ function nodeGSGroupKeys(node) {
 
   if (!c) return keys
   if (!effectiveGSInGroup(node)) return keys
+
+  // ── منسقيّة الشرق الأوسط hull ─────────────────────────────────────────────
+  if (c.tier === 'middle_east_coordinator' || c.tier === 'deputy_me_coordinator') {
+    return [...keys, 'me_coord:منسقيّة الشرق الأوسط']
+  }
 
   // ── Committee hulls — each head is its own hull keyed by nodeId ─────────────
   if (c.tier === 'committee_head') {
@@ -964,6 +1112,16 @@ function nodeGSGroupKeys(node) {
       return [...keys, `committee_head:${node.reportsToHeadId}`]
     }
     return [...keys, `committee:${c.committeeKey}`]
+  }
+  // ── Age group committee hulls ───────────────────────────────────────────────
+  if (c.tier === 'age_committee_head') {
+    return [...keys, `age_committee_head:${node.id}`]
+  }
+  if (c.tier === 'age_committee_member') {
+    if (node.reportsToHeadId) {
+      return [...keys, `age_committee_head:${node.reportsToHeadId}`]
+    }
+    return [...keys, `age_committee:${c.committeeKey}`]
   }
   if (['project_head','project_director','project_employee','project_member'].includes(c.tier)) {
     return [...keys, `project:${c.project}`]
@@ -992,14 +1150,19 @@ function computeGSHullNames(node) {
 
   if (c) {
     const defaultInAmanah = ['secretary_general', 'spiritual_guide', 'spiritual_guide_assistant',
-      'reports_to_sg', 'committee_head', 'middle_east_coordinator'].includes(c.tier)
+      'reports_to_sg', 'committee_head', 'age_committee_head', 'middle_east_coordinator'].includes(c.tier)
+      || (c.tier === 'project_head' && c.project === 'الفرقة الموسيقيّة JEC Band')
     const effInAmanah = node.inAmanah !== undefined && node.inAmanah !== null ? node.inAmanah : defaultInAmanah
     if (effInAmanah) hulls.push(GS_AMANAH_HULL)
   }
 
   if (!c || !effectiveGSInGroup(node)) return hulls
 
-  if (c.tier === 'committee_head' || c.tier === 'committee_member') {
+  if (c.tier === 'middle_east_coordinator' || c.tier === 'deputy_me_coordinator') {
+    hulls.push('منسقيّة الشرق الأوسط')
+  } else if (c.tier === 'committee_head' || c.tier === 'committee_member') {
+    hulls.push(c.committeeKey)
+  } else if (c.tier === 'age_committee_head' || c.tier === 'age_committee_member') {
     hulls.push(c.committeeKey)
   } else if (['project_head', 'project_director', 'project_employee', 'project_member'].includes(c.tier)) {
     hulls.push(c.project)
@@ -1061,6 +1224,7 @@ function computeGSAutoEdges(nodes) {
   if (sg) {
     byTier('reports_to_sg').forEach(n => push(sg.id, n.id, 'hierarchy'))
     byTier('committee_head').forEach(n => push(sg.id, n.id, 'hierarchy'))
+    byTier('age_committee_head').forEach(n => push(sg.id, n.id, 'hierarchy'))
     // Project heads report to SG
     byTier('project_head').forEach(n => push(sg.id, n.id, 'hierarchy'))
     // منسق الشرق الأوسط → SG (hierarchy, directly under)
@@ -1084,8 +1248,7 @@ function computeGSAutoEdges(nodes) {
   nodes.forEach(member => {
     const mc = classifyGSRole(member.role)
     if (!mc || mc.tier !== 'committee_member') return
-    const memberBase = baseRole(member.role).slice('عضو '.length) // strip 'عضو '
-    const memberComs = memberBase.split(/ و /).map(s => s.trim()).filter(s => GS_COMMITTEES.includes(s))
+    const memberComs = mc.committeeKey.split(/ و /).map(s => s.trim()).filter(s => GS_COMMITTEES.includes(s))
 
     // If the member is pinned to a specific head, only wire to that head
     if (member.reportsToHeadId) {
@@ -1099,6 +1262,30 @@ function computeGSAutoEdges(nodes) {
     const matchingHeads = nodes.filter(n => {
       const nc = classifyGSRole(n.role)
       if (!nc || nc.tier !== 'committee_head') return false
+      const headComs = nc.committeeKey.split(/ و /).map(s => s.trim())
+      return memberComs.some(c => headComs.includes(c))
+    })
+    if (matchingHeads.length > 0) {
+      matchingHeads.forEach(head => push(head.id, member.id, 'hierarchy'))
+    } else if (sg) {
+      push(sg.id, member.id, 'hierarchy')
+    }
+  })
+
+  // ── Age group committee members → their committee head (or SG) ─────────────
+  nodes.forEach(member => {
+    const mc = classifyGSRole(member.role)
+    if (!mc || mc.tier !== 'age_committee_member') return
+    const memberComs = mc.committeeKey.split(/ و /).map(s => s.trim()).filter(s => GS_AGE_GROUP_COMMITTEES.includes(s))
+
+    if (member.reportsToHeadId) {
+      const pinnedHead = nodes.find(n => n.id === member.reportsToHeadId)
+      if (pinnedHead) { push(pinnedHead.id, member.id, 'hierarchy'); return }
+    }
+
+    const matchingHeads = nodes.filter(n => {
+      const nc = classifyGSRole(n.role)
+      if (!nc || nc.tier !== 'age_committee_head') return false
       const headComs = nc.committeeKey.split(/ و /).map(s => s.trim())
       return memberComs.some(c => headComs.includes(c))
     })
@@ -1383,13 +1570,13 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
           onChange={(role, reportsToHeadId) => {
             const c = classifyGSRole(role)
             // inAmanah default: SG, deputy, spiritual guides, committee heads, منسق — NOT نائب منسق or members
-            const defaultInAmanah = c && ['secretary_general','spiritual_guide','spiritual_guide_assistant',
-              'reports_to_sg','committee_head','middle_east_coordinator'].includes(c.tier)
-            const prevDefaultInAmanah = (() => {
-              const pc = classifyGSRole(node.role||'')
-              return pc && ['secretary_general','spiritual_guide','spiritual_guide_assistant',
-                'reports_to_sg','committee_head','middle_east_coordinator'].includes(pc.tier)
-            })()
+            const isAmanahDefault = (rc) => rc && (
+              ['secretary_general','spiritual_guide','spiritual_guide_assistant',
+                'reports_to_sg','committee_head','age_committee_head','middle_east_coordinator'].includes(rc.tier)
+              || (rc.tier === 'project_head' && rc.project === 'الفرقة الموسيقيّة JEC Band')
+            )
+            const defaultInAmanah = isAmanahDefault(c)
+            const prevDefaultInAmanah = isAmanahDefault(classifyGSRole(node.role||''))
             const amanahIsDefault = node.inAmanah === prevDefaultInAmanah || node.inAmanah === undefined || node.inAmanah === null
             const shouldBeGroup = isDefaultGSGroupMember(role)
             const prevGroupDefault = isDefaultGSGroupMember(node.role||'')
@@ -1405,8 +1592,11 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
         {/* ضمن إطار الأمانة العامة checkbox — always visible for relevant roles */}
         {(() => {
           const c = classifyGSRole(node.role||'')
-          const eligibleForAmanah = c && ['secretary_general','spiritual_guide','spiritual_guide_assistant',
-            'reports_to_sg','committee_head','middle_east_coordinator'].includes(c.tier)
+          const eligibleForAmanah = c && (
+            ['secretary_general','spiritual_guide','spiritual_guide_assistant',
+              'reports_to_sg','committee_head','age_committee_head','middle_east_coordinator'].includes(c.tier)
+            || (c.tier === 'project_head' && c.project === 'الفرقة الموسيقيّة JEC Band')
+          )
           if (!eligibleForAmanah) return null
           const defaultInAmanah = true
           const effectiveInAmanah = node.inAmanah !== undefined && node.inAmanah !== null ? node.inAmanah : defaultInAmanah
@@ -1444,6 +1634,14 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
                         return k
                       }
                       if (k.startsWith('committee:')) return k.slice('committee:'.length)
+                      if (k.startsWith('age_committee_head:')) {
+                        const headId = k.slice('age_committee_head:'.length)
+                        const headNode = allNodes.find(n => n.id === headId)
+                        if (headNode) { const hc = classifyGSRole(headNode.role); return hc?.committeeKey || headNode.role || k }
+                        return k
+                      }
+                      if (k.startsWith('age_committee:')) return k.slice('age_committee:'.length)
+                      if (k.startsWith('me_coord:')) return k.slice('me_coord:'.length)
                       if (k.startsWith('project:')) return k.slice('project:'.length)
                       return k
                     }).join(' · ')}
@@ -2224,6 +2422,11 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
         if (!keySet.has(k)) keySet.set(k, new Set())
         keySet.get(k).add(n)
       }
+      if (c?.tier === 'age_committee_head' && effectiveGSInGroup(n)) {
+        const k = `age_committee_head:${n.id}`
+        if (!keySet.has(k)) keySet.set(k, new Set())
+        keySet.get(k).add(n)
+      }
     })
 
     // Second pass: assign all other nodes
@@ -2231,6 +2434,9 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
       const rawKeys = nodeGSGroupKeys(n)
       rawKeys.forEach(k => {
         if (k.startsWith('committee_head:') && classifyGSRole(n.role)?.tier === 'committee_head') {
+          return // already handled above
+        }
+        if (k.startsWith('age_committee_head:') && classifyGSRole(n.role)?.tier === 'age_committee_head') {
           return // already handled above
         }
         if (k.startsWith('committee:')) {
@@ -2249,7 +2455,28 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
               assigned = true
             }
           })
-          // If no matching head found, create a standalone committee hull
+          if (!assigned) {
+            if (!keySet.has(k)) keySet.set(k, new Set())
+            keySet.get(k).add(n)
+          }
+          return
+        }
+        if (k.startsWith('age_committee:')) {
+          // Unpinned age committee member — find matching head(s) by committeeKey
+          const committeeKey = k.slice('age_committee:'.length)
+          let assigned = false
+          visibleNodes.forEach(head => {
+            const hc = classifyGSRole(head.role)
+            if (hc?.tier !== 'age_committee_head' || !effectiveGSInGroup(head)) return
+            const headComs = hc.committeeKey.split(/ و /).map(s => s.trim())
+            const memberComs = committeeKey.split(/ و /).map(s => s.trim())
+            if (memberComs.some(c => headComs.includes(c))) {
+              const hk = `age_committee_head:${head.id}`
+              if (!keySet.has(hk)) keySet.set(hk, new Set())
+              keySet.get(hk).add(n)
+              assigned = true
+            }
+          })
           if (!assigned) {
             if (!keySet.has(k)) keySet.set(k, new Set())
             keySet.get(k).add(n)
@@ -2282,6 +2509,17 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
         return key
       }
       if (key.startsWith('committee:')) return key.slice('committee:'.length)
+      if (key.startsWith('age_committee_head:')) {
+        const headId = key.slice('age_committee_head:'.length)
+        const headNode = visibleNodes.find(n => n.id === headId)
+        if (headNode) {
+          const c = classifyGSRole(headNode.role)
+          return c?.committeeKey || headNode.role || key
+        }
+        return key
+      }
+      if (key.startsWith('age_committee:')) return key.slice('age_committee:'.length)
+      if (key.startsWith('me_coord:')) return key.slice('me_coord:'.length)
       if (key.startsWith('project:')) return key.slice('project:'.length)
       return key
     }
@@ -2360,6 +2598,44 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
       svgClone.setAttribute('viewBox', `0 0 ${treeW} ${treeH}`)
       const bgRect=svgClone.querySelector('rect[fill="var(--cream)"]')
       if (bgRect) bgRect.setAttribute('fill','white')
+      const svgColorVars = {
+        '--navy': '#0f2744',
+        '--navy-mid': '#1a3a5c',
+        '--navy-light': '#2d5986',
+        '--gold': '#c9963c',
+        '--gold-light': '#e8b55a',
+        '--cream': '#faf8f4',
+        '--gray-400': '#9ba5bc',
+        '--gray-500': '#6b778f',
+        '--gray-600': '#4a5568',
+        '--gray-700': '#2d3748',
+      }
+      Object.entries(svgColorVars).forEach(([name, value]) => svgClone.style.setProperty(name, value))
+      const resolveSvgColor = (value) => {
+        const match = typeof value === 'string' ? value.match(/^var\((--[^),]+)(?:,[^)]+)?\)$/) : null
+        return match ? (svgColorVars[match[1]] || value) : value
+      }
+      svgClone.querySelectorAll('[stroke], [fill]').forEach(el => {
+        const stroke = el.getAttribute('stroke')
+        const fill = el.getAttribute('fill')
+        if (stroke) el.setAttribute('stroke', resolveSvgColor(stroke))
+        if (fill) el.setAttribute('fill', resolveSvgColor(fill))
+      })
+      svgClone.querySelectorAll('path[marker-end]').forEach(path => {
+        const markerEnd = path.getAttribute('marker-end') || ''
+        const isPeer = markerEnd.includes('gs-arrow-p')
+        const isAuto = markerEnd.includes('auto')
+        path.setAttribute('stroke', isAuto ? (isPeer ? '#e8b55a' : '#4a7fb5') : (isPeer ? '#c9963c' : '#0f2744'))
+        path.setAttribute('stroke-opacity', isAuto ? '0.95' : (isPeer ? '0.85' : '0.75'))
+        path.setAttribute('stroke-width', isAuto ? '4' : '3.5')
+      })
+      svgClone.querySelectorAll('marker path').forEach(markerPath => {
+        const markerId = markerPath.parentElement?.getAttribute('id') || ''
+        const isPeer = markerId.includes('arrow-p')
+        const isAuto = markerId.includes('auto')
+        markerPath.setAttribute('fill', isAuto ? (isPeer ? '#e8b55a' : '#4a7fb5') : (isPeer ? '#c9963c' : '#0f2744'))
+        markerPath.setAttribute('opacity', '0.95')
+      })
       const styleEl=document.createElementNS('http://www.w3.org/2000/svg','style')
       styleEl.textContent=`@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&family=Cairo:wght@600;700;900&display=swap');`
       svgClone.insertBefore(styleEl,svgClone.firstChild)
@@ -2392,11 +2668,12 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
       ctx.fillStyle='#888'; ctx.font=`${11*SCALE}px Tajawal,sans-serif`
       ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.direction='rtl'
       ctx.fillText(new Date().toLocaleDateString('ar-EG',{year:'numeric',month:'long',day:'numeric'}),fullW/2,HEADER_H+treeCanvas.height+FOOTER_H/2)
-      const isLandscape=fullW>fullH
-      const [pageW_mm,pageH_mm]=isLandscape?[297,210]:[210,297]
-      const scaleToFit=Math.min(pageW_mm/(fullW/SCALE),pageH_mm/(fullH/SCALE))
-      const imgW_mm=(fullW/SCALE)*scaleToFit, imgH_mm=(fullH/SCALE)*scaleToFit
-      const offX_mm=(pageW_mm-imgW_mm)/2, offY_mm=(pageH_mm-imgH_mm)/2
+      const imageW=fullW/SCALE, imageH=fullH/SCALE
+      const imageRatio=imageW/imageH
+      const isLandscape=imageRatio>=1
+      const EXPORT_MAX_MM=297
+      const pageW_mm=isLandscape?EXPORT_MAX_MM:EXPORT_MAX_MM*imageRatio
+      const pageH_mm=isLandscape?EXPORT_MAX_MM/imageRatio:EXPORT_MAX_MM
       const loadJsPDF=()=>new Promise((resolve,reject)=>{
         if(window.jspdf?.jsPDF){resolve(window.jspdf.jsPDF);return}
         const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'
@@ -2404,7 +2681,7 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
       })
       const jsPDF=await loadJsPDF()
       const doc=new jsPDF({orientation:isLandscape?'l':'p',unit:'mm',format:[pageW_mm,pageH_mm]})
-      doc.addImage(full.toDataURL('image/png'),'PNG',offX_mm,offY_mm,imgW_mm,imgH_mm)
+      doc.addImage(full.toDataURL('image/png'),'PNG',0,0,pageW_mm,pageH_mm)
       doc.save('general-secretariat-tree.pdf')
     } catch(err) { console.error('PDF export failed:',err) }
     setExporting(false)
