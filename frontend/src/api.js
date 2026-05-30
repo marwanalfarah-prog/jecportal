@@ -114,6 +114,8 @@ export const api = {
   chartYG:         ()           => req('/chart/youth_group'),
   chartAge:        ()           => req('/chart/age_group'),
 
+  getCalendarBirthdays: ()      => req('/calendar/birthdays'),
+
   personsEnriched: ()           => req('/persons/enriched'),
   membersIndex:    ()           => req('/persons/members-index'),
   getPerson:       (id)         => req(`/person/${id}`),

@@ -1,3 +1,116 @@
 {
-  "notifications": []
+  "notifications": [
+    {
+      "id": "364ee057-a64",
+      "type": "registration_pending_admin",
+      "for_person_id": null,
+      "read": true,
+      "created_at": "2026-05-29 22:24:41",
+      "person_id": 3195,
+      "person_name": "يوسف رامي عيسى حداد",
+      "username": "test",
+      "message": "طلب تسجيل جديد: يوسف رامي عيسى حداد (@test) بانتظار موافقتك",
+      "respondent_person_id": null
+    },
+    {
+      "id": "2e73c6e0-cf9",
+      "type": "registration_admin_approved",
+      "for_person_id": 3195,
+      "read": false,
+      "created_at": "2026-05-29 22:28:39",
+      "person_id": 3195,
+      "message": "تمت الموافقة على بياناتك الشخصية. طلبك الآن بانتظار موافقة فرق الشبيبة.",
+      "respondent_person_id": null
+    },
+    {
+      "id": "c0c372d6-cd8",
+      "type": "registration_pending_yg",
+      "for_person_id": 1255,
+      "read": false,
+      "created_at": "2026-05-29 22:28:39",
+      "person_id": 3195,
+      "person_name": "يوسف رامي عيسى حداد",
+      "youth_group_id": "YG022",
+      "youth_group_name": "شبيبة قلب مريم الطاهر - الفحيص",
+      "record_id": "PRYG003321",
+      "role": "مسؤول فئتيّ الجامعيّة والعاملة",
+      "message": "طلب انضمام جديد: يوسف رامي عيسى حداد إلى شبيبة قلب مريم الطاهر - الفحيص بانتظار موافقتك (مسؤول فئتيّ الجامعيّة والعاملة)",
+      "respondent_person_id": null
+    },
+    {
+      "id": "975b632d-e78",
+      "type": "registration_pending_yg",
+      "for_person_id": 1399,
+      "read": false,
+      "created_at": "2026-05-29 22:28:39",
+      "person_id": 3195,
+      "person_name": "يوسف رامي عيسى حداد",
+      "youth_group_id": "YG022",
+      "youth_group_name": "شبيبة قلب مريم الطاهر - الفحيص",
+      "record_id": "PRYG003321",
+      "role": "مجلس فئتيّ الجامعيّة والعاملة",
+      "message": "طلب انضمام جديد: يوسف رامي عيسى حداد إلى شبيبة قلب مريم الطاهر - الفحيص بانتظار موافقتك (مجلس فئتيّ الجامعيّة والعاملة)",
+      "respondent_person_id": null
+    },
+    {
+      "id": "47e3cd04-c92",
+      "type": "registration_pending_yg",
+      "for_person_id": 2738,
+      "read": false,
+      "created_at": "2026-05-29 22:28:39",
+      "person_id": 3195,
+      "person_name": "يوسف رامي عيسى حداد",
+      "youth_group_id": "YG022",
+      "youth_group_name": "شبيبة قلب مريم الطاهر - الفحيص",
+      "record_id": "PRYG003321",
+      "role": "مجلس فئتيّ الجامعيّة والعاملة",
+      "message": "طلب انضمام جديد: يوسف رامي عيسى حداد إلى شبيبة قلب مريم الطاهر - الفحيص بانتظار موافقتك (مجلس فئتيّ الجامعيّة والعاملة)",
+      "respondent_person_id": null
+    },
+    {
+      "id": "4864c955-55a",
+      "type": "registration_pending_yg",
+      "for_person_id": 1484,
+      "read": false,
+      "created_at": "2026-05-29 22:28:39",
+      "person_id": 3195,
+      "person_name": "يوسف رامي عيسى حداد",
+      "youth_group_id": "YG022",
+      "youth_group_name": "شبيبة قلب مريم الطاهر - الفحيص",
+      "record_id": "PRYG003321",
+      "role": "مجلس فئتيّ الجامعيّة والعاملة",
+      "message": "طلب انضمام جديد: يوسف رامي عيسى حداد إلى شبيبة قلب مريم الطاهر - الفحيص بانتظار موافقتك (مجلس فئتيّ الجامعيّة والعاملة)",
+      "respondent_person_id": null
+    },
+    {
+      "id": "8f14a216-171",
+      "type": "registration_pending_yg",
+      "for_person_id": 1259,
+      "read": false,
+      "created_at": "2026-05-29 22:28:39",
+      "person_id": 3195,
+      "person_name": "يوسف رامي عيسى حداد",
+      "youth_group_id": "YG022",
+      "youth_group_name": "شبيبة قلب مريم الطاهر - الفحيص",
+      "record_id": "PRYG003321",
+      "role": "مجلس فئتيّ الجامعيّة والعاملة",
+      "message": "طلب انضمام جديد: يوسف رامي عيسى حداد إلى شبيبة قلب مريم الطاهر - الفحيص بانتظار موافقتك (مجلس فئتيّ الجامعيّة والعاملة)",
+      "respondent_person_id": null
+    },
+    {
+      "id": "76302757-2f0",
+      "type": "registration_pending_yg",
+      "for_person_id": 3112,
+      "read": false,
+      "created_at": "2026-05-29 22:28:39",
+      "person_id": 3195,
+      "person_name": "يوسف رامي عيسى حداد",
+      "youth_group_id": "YG022",
+      "youth_group_name": "شبيبة قلب مريم الطاهر - الفحيص",
+      "record_id": "PRYG003321",
+      "role": "المرشد الروحي",
+      "message": "طلب انضمام جديد: يوسف رامي عيسى حداد إلى شبيبة قلب مريم الطاهر - الفحيص بانتظار موافقتك (المرشد الروحي)",
+      "respondent_person_id": null
+    }
+  ]
 }

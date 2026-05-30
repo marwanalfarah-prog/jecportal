@@ -1638,6 +1638,81 @@ def register_registered_routes(app):
             "hobby_skill": S.pid_counts(hob, "hobby_skill"),
         })
 
+    @app.get("/api/calendar/birthdays")
+    def get_calendar_birthdays():
+        user = _current_user()
+        if not user:
+            return jsonify({"error": "unauthorized"}), 401
+
+        role        = user.get("role", "")
+        person_type = user.get("person_type", "")
+        person_id   = user.get("person_id")
+        own_pid_str = str(S._normalize_person_id(person_id)) if person_id else ""
+
+        persons_df = _active_registered_persons_df()
+        if persons_df.empty:
+            return jsonify({"birthdays": []})
+
+        # Ensure needed columns exist
+        for col in ("person_id", "birth_month", "birth_day", "ar_first_name", "ar_last_name"):
+            if col not in persons_df.columns:
+                persons_df[col] = None
+
+        # Only keep persons with valid birth month + day
+        valid = persons_df[
+            persons_df["birth_month"].notna() & persons_df["birth_day"].notna()
+        ].copy()
+        if valid.empty:
+            return jsonify({"birthdays": []})
+
+        valid_pid_strs = valid["person_id"].astype(str)
+
+        if role == "admin":
+            accessible_pids = set(valid_pid_strs)
+            viewable_pids   = accessible_pids
+        else:
+            youth_groups   = _get_person_youth_groups(person_type, person_id)
+            council_access = _get_council_access(person_type, person_id, youth_groups)
+            council_group_ids = {str(gid).strip() for gid in council_access.keys() if str(gid).strip()}
+            all_group_ids = {str(gid).strip() for gid in youth_groups if str(gid).strip()} | council_group_ids
+
+            pyg = _active_registered_membership_df()
+            def pids_in_groups(group_ids):
+                if pyg.empty or S.YOUTH_GROUP_ID_COL not in pyg.columns or not group_ids:
+                    return set()
+                return set(pyg[pyg[S.YOUTH_GROUP_ID_COL].astype(str).isin(group_ids)]["person_id"].astype(str))
+
+            # Accessible = own groups + council groups (all community members)
+            accessible_pids = pids_in_groups(all_group_ids) | ({own_pid_str} if own_pid_str else set())
+            # Viewable = council groups + self (can click through to profile)
+            viewable_pids   = pids_in_groups(council_group_ids) | ({own_pid_str} if own_pid_str else set())
+
+        valid = valid[valid_pid_strs.isin(accessible_pids)]
+
+        result = []
+        for _, row in valid.iterrows():
+            pid_str = str(row.get("person_id", ""))
+            try:
+                month = int(float(row["birth_month"]))
+                day   = int(float(row["birth_day"]))
+            except (ValueError, TypeError):
+                continue
+            if not (1 <= month <= 12 and 1 <= day <= 31):
+                continue
+            first = S._normalize_text(row.get("ar_first_name")) or ""
+            last  = S._normalize_text(row.get("ar_last_name"))  or ""
+            name  = f"{first} {last}".strip() or "—"
+            result.append({
+                "person_id": pid_str,
+                "birth_month": month,
+                "birth_day":   day,
+                "name":        name,
+                "can_view":    pid_str in viewable_pids,
+            })
+
+        result.sort(key=lambda x: (x["birth_month"], x["birth_day"]))
+        return jsonify({"birthdays": result})
+
     @app.get("/api/nationality-iso-codes")
     def get_nationality_iso_codes():
         err = _require_auth()

@@ -1,5 +1,5 @@
 import { Component, Suspense, lazy, startTransition, useEffect, useState } from 'react'
-import { LayoutDashboard, Users, GitBranch, LogOut, ShieldCheck, User as UserIcon, Eye, X, Search, ClipboardList, Settings, Building2, ImageOff, Key, MapPin, BookOpenText, Menu, UserPlus } from 'lucide-react'
+import { LayoutDashboard, Users, GitBranch, LogOut, ShieldCheck, User as UserIcon, Eye, X, Search, ClipboardList, Settings, Building2, ImageOff, Key, MapPin, BookOpenText, Menu, UserPlus, Calendar as CalendarIcon } from 'lucide-react'
 import Login from './pages/Login.jsx'
 import Registration from './pages/Registration.jsx'
 import { useToast, ToastContainer } from './useToast.jsx'
@@ -22,6 +22,7 @@ const YouthGroupAdmin = lazy(() => import('./pages/YouthGroupAdmin.jsx'))
 const ChurchesMap = lazy(() => import('./pages/ChurchesMap.jsx'))
 const BibleReader = lazy(() => import('./pages/BibleReader.jsx'))
 const Requests = lazy(() => import('./pages/Requests.jsx'))
+const Calendar = lazy(() => import('./pages/Calendar.jsx'))
 
 const ROUTE_PRELOADERS = {
   dashboard: () => import('./pages/Dashboard.jsx'),
@@ -38,6 +39,7 @@ const ROUTE_PRELOADERS = {
   churches_map: () => import('./pages/ChurchesMap.jsx'),
   bible_reader: () => import('./pages/BibleReader.jsx'),
   requests: () => import('./pages/Requests.jsx'),
+  calendar: () => import('./pages/Calendar.jsx'),
 }
 
 const preloadedRoutes = new Set()
@@ -519,6 +521,7 @@ const PAGE_TITLES = {
   youth_groups:        'ملف فرق الشبيبة',
   churches_map:        'خريطة الكنائس',
   bible_reader:        'قارئ الكتاب المقدس',
+  calendar:            'التقويم',
 }
 
 // ── URL routing utilities ────────────────────────────────────────────────────
@@ -536,6 +539,7 @@ const PAGE_PATHS = {
   youth_groups:         '/youth-groups',
   churches_map:         '/churches-map',
   bible_reader:         '/bible-reader',
+  calendar:             '/calendar',
   council_members:      '/council-members',
   requests:             '/requests',
   add_member:           '/add-member',
@@ -871,30 +875,33 @@ export default function App() {
 
   // ── Navigation ──────────────────────────────────────────────────────────────
   const NAV = isPendingUser ? [
-    { id: 'requests',    label: 'حالة طلبي',              icon: ClipboardList },
-    { id: 'profile',     label: 'ملفي الشخصي (معلّق)',    icon: UserIcon },
-    { id: 'bible_reader', label: 'قارئ الكتاب المقدس',   icon: BookOpenText },
-    { id: 'churches_map', label: 'خريطة الكنائس',         icon: MapPin },
+    { id: 'requests',     label: 'حالة طلبي',              icon: ClipboardList },
+    { id: 'profile',      label: 'ملفي الشخصي (معلّق)',    icon: UserIcon },
+    { id: 'calendar',     label: 'التقويم',                icon: CalendarIcon },
+    { id: 'bible_reader', label: 'قارئ الكتاب المقدس',     icon: BookOpenText },
+    { id: 'churches_map', label: 'خريطة الكنائس',          icon: MapPin },
   ] : isAdmin ? [
     { id: 'dashboard',           label: 'لوحة المعلومات',              icon: LayoutDashboard },
     { id: 'members',             label: 'الأعضاء',                      icon: Users },
+    { id: 'calendar',            label: 'التقويم',                      icon: CalendarIcon },
     { id: 'orgtree',             label: 'الهيكل التنظيمي',             icon: GitBranch },
     { id: 'general_secretariat', label: 'الأمانة العامة',              icon: GitBranch },
     { id: 'users',               label: 'إدارة المستخدمين',            icon: ShieldCheck },
     { id: 'requests',            label: 'طلبات التسجيل',               icon: ClipboardList },
-    { id: 'questionnaires',       label: 'إدارة الاستبيانات',           icon: ClipboardList },
-    { id: 'youth_groups',         label: 'ملف فرق الشبيبة',              icon: Building2 },
-    { id: 'churches_map',         label: 'خريطة الكنائس',                 icon: MapPin },
-    { id: 'bible_reader',         label: 'قارئ الكتاب المقدس',            icon: BookOpenText },
-    { id: 'config',               label: 'الإعدادات',                    icon: Settings },
+    { id: 'questionnaires',      label: 'إدارة الاستبيانات',           icon: ClipboardList },
+    { id: 'youth_groups',        label: 'ملف فرق الشبيبة',             icon: Building2 },
+    { id: 'churches_map',        label: 'خريطة الكنائس',               icon: MapPin },
+    { id: 'bible_reader',        label: 'قارئ الكتاب المقدس',          icon: BookOpenText },
+    { id: 'config',              label: 'الإعدادات',                    icon: Settings },
   ] : [
-    { id: 'profile',         label: 'ملفي الشخصي',       icon: UserIcon },
-    { id: 'orgtree',         label: 'الهيكل التنظيمي',   icon: GitBranch },
-    ...(isCouncil ? [{ id: 'council_members', label: 'أعضاء فئتي', icon: Users }] : []),
-    ...(isCouncil ? [{ id: 'requests', label: 'طلبات الانضمام', icon: ClipboardList }] : []),
-    { id: 'churches_map', label: 'خريطة الكنائس', icon: MapPin },
-    { id: 'bible_reader', label: 'قارئ الكتاب المقدس', icon: BookOpenText },
-    { id: 'my_questions', label: 'استبياناتي', icon: ClipboardList },
+    { id: 'profile',         label: 'ملفي الشخصي',         icon: UserIcon },
+    { id: 'calendar',        label: 'التقويم',              icon: CalendarIcon },
+    { id: 'orgtree',         label: 'الهيكل التنظيمي',     icon: GitBranch },
+    ...(isCouncil ? [{ id: 'council_members', label: 'أعضاء فئتي',     icon: Users }] : []),
+    ...(isCouncil ? [{ id: 'requests',        label: 'طلبات الانضمام', icon: ClipboardList }] : []),
+    { id: 'churches_map',    label: 'خريطة الكنائس',        icon: MapPin },
+    { id: 'bible_reader',    label: 'قارئ الكتاب المقدس',  icon: BookOpenText },
+    { id: 'my_questions',    label: 'استبياناتي',           icon: ClipboardList },
   ]
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -946,10 +953,10 @@ export default function App() {
 
   const navigate = (p, { skipUnsavedPrompt = false } = {}) => {
     const allowed = isPendingUser
-      ? ['requests', 'profile', 'bible_reader', 'churches_map']
+      ? ['requests', 'profile', 'calendar', 'bible_reader', 'churches_map']
       : isAdmin
-        ? ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches_map', 'bible_reader', 'config', 'requests', 'add_member']
-        : ['profile', 'orgtree', 'council_members', 'churches_map', 'bible_reader', 'my_questions', 'requests', 'add_member']
+        ? ['dashboard', 'members', 'calendar', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches_map', 'bible_reader', 'config', 'requests', 'add_member']
+        : ['profile', 'calendar', 'orgtree', 'council_members', 'churches_map', 'bible_reader', 'my_questions', 'requests', 'add_member']
     if (!allowed.includes(p)) return
     if (!confirmLeavingDirtyProfile({ skipUnsavedPrompt })) return
     preloadRoute(p)
@@ -1436,6 +1443,12 @@ export default function App() {
 
             {page === 'churches_map' && (
               <ChurchesMap toast={toast} />
+            )}
+
+            {page === 'calendar' && (
+              <Calendar
+                onViewProfile={(pid) => goProfile(pid, null, false, 'calendar')}
+              />
             )}
 
             {page === 'bible_reader' && (

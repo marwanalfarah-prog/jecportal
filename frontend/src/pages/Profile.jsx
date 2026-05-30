@@ -6512,7 +6512,6 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
 
   useEffect(() => {
     if (filtersLoaded.current) return
-    if (registrationMode) { filtersLoaded.current = true; return }
     let cancelled = false
     api.filters()
       .then((filtersResponse) => {
