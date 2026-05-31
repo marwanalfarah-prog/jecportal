@@ -555,7 +555,7 @@ export default function CouncilMembers({ councilAccess, currentUser, onSelectPer
     const map = { ...groupLabels }
     Object.entries(councilAccess || {}).forEach(([gid, info]) => {
       const label = String(info?.group_name || '').trim()
-      if (label) map[gid] = label
+      if (label && !api.isRawYouthGroupIdentifier(label)) map[gid] = label
     })
     return map
   }, [groupLabels, councilAccess])

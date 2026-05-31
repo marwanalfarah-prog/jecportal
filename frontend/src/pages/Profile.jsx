@@ -9,6 +9,7 @@ import { parsePhoneNumberFromString } from 'libphonenumber-js'
 import { api, getApiErrorMessage } from '../api.js'
 import { buildGoogleMapsOpenUrl, parseGoogleMapsUrl, sanitizeStoredCoordinate } from '../location.js'
 import { downloadProfilePdf } from '../profilePdf.js'
+import { computePermissions } from '../permissions.js'
 
 function GenderChipContent({ gender }) {
   const normalized = String(gender || '').trim()
@@ -6500,7 +6501,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   const dataRef = useRef(null)
   const savedDataRef = useRef(null)
   const lastArchivableMemberships = useRef([])
-  const isViewerAdmin = currentUser?.role === 'admin'
+  const { isAdmin: isViewerAdmin, isCouncil: _isViewerCouncil } = computePermissions(currentUser)
   const isViewingOwnProfile =
     !registrationMode
     && currentUser
@@ -6660,12 +6661,15 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     opts('youth_group').forEach((option) => {
       const value = String(option?.value || '').trim()
       if (!value || !membershipIds.has(value) || optionMap.has(value)) return
-      optionMap.set(value, { value, label: option?.label || api.formatYouthGroupLabel(value) || value })
+      const label = option?.label && !api.isRawYouthGroupIdentifier(option.label)
+        ? option.label
+        : api.formatYouthGroupLabel(value)
+      optionMap.set(value, { value, label })
     })
 
     membershipIds.forEach((value) => {
       if (optionMap.has(value)) return
-      optionMap.set(value, { value, label: api.formatYouthGroupLabel(value) || value })
+      optionMap.set(value, { value, label: api.formatYouthGroupLabel(value) })
     })
 
     return Array.from(optionMap.values())
@@ -7287,9 +7291,9 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     const gid = String(groupId || '').trim()
     if (!gid) return fallbackLabel
     const found = opts('youth_group').find(o => String(o?.value || '').trim() === gid)
-    if (found?.label) return found.label
+    if (found?.label && !api.isRawYouthGroupIdentifier(found.label)) return found.label
     if (!allowCodeFallback) return fallbackLabel
-    return api.formatYouthGroupLabel(gid) || gid
+    return api.formatYouthGroupLabel(gid, { fallback: fallbackLabel }) || fallbackLabel
   }
 
   const youthGroupLogoUrl = (groupId) => {
@@ -7299,7 +7303,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   }
 
   const viewerCouncilGroupIds = Object.keys(currentUser?.council_access || {})
-  const isViewerLeader = (currentUser?.role === 'member') && viewerCouncilGroupIds.length > 0
+  const isViewerLeader = _isViewerCouncil
 
   // Leaders can inspect member profiles, but only in their own youth groups.
   const shouldScopeToViewerGroups = isViewerLeader && !isViewingOwnProfile

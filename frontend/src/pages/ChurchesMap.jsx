@@ -71,7 +71,10 @@ function churchDisplayName(church) {
 function youthGroupNames(church) {
   const groups = Array.isArray(church?.parish_youth_groups) ? church.parish_youth_groups : []
   return groups
-    .map((g) => normalizeText(g?.group_name || g?.group_id))
+    .map((g) => {
+      const name = String(g?.group_name || '').trim()
+      return normalizeText(name && !api.isRawYouthGroupIdentifier(name) ? name : api.formatYouthGroupLabel(g?.group_id))
+    })
     .filter(Boolean)
 }
 

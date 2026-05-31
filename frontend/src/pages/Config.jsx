@@ -10,6 +10,12 @@ function cleanText(value) {
   return text
 }
 
+function youthGroupDisplayName(groupName, groupId) {
+  const name = cleanText(groupName)
+  if (name && !api.isRawYouthGroupIdentifier(name)) return name
+  return api.formatYouthGroupLabel(groupId)
+}
+
 function convertArabicDigitsToLatin(value) {
   return String(value ?? '').replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
 }
@@ -466,7 +472,7 @@ export default function Config({ toast }) {
       { value: 'JEC_JORDAN', label: 'JECJordan' },
       ...(youthGroupScopes || []).map((group) => ({
         value: String(group.group_id || ''),
-        label: String(group.group_name || group.group_id || ''),
+        label: youthGroupDisplayName(group.group_name, group.group_id),
       })).filter((item) => item.value),
     ]
   }, [youthGroupScopes])
@@ -1355,11 +1361,11 @@ export default function Config({ toast }) {
                     const targetNames = []
                     if (item?.targets?.jec_jordan) targetNames.push('JECJordan')
                     const groups = item?.targets_meta?.youth_groups || []
-                    groups.forEach((g) => targetNames.push(g.group_name || g.group_id))
+                    groups.forEach((g) => targetNames.push(youthGroupDisplayName(g.group_name, g.group_id)))
 
                     const scopeBase = item?.targets?.jec_jordan
                       ? 'شعار شبيبة الأردن'
-                      : (groups.length ? `شعار شبيبة ${groups.map((g) => g.group_name || g.group_id).join('، ')}` : 'شعار الشبيبة')
+                      : (groups.length ? `شعار شبيبة ${groups.map((g) => youthGroupDisplayName(g.group_name, g.group_id)).join('، ')}` : 'شعار الشبيبة')
                     const scopeWithYear = item?.year_label
                       ? `${scopeBase} لعام ${item.year_label}`
                       : scopeBase

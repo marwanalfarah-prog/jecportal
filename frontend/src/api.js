@@ -56,10 +56,25 @@ export function getApiErrorMessage(error, fallback = 'حدث خطأ غير مت�
   return fallback
 }
 
-function formatYouthGroupLabel(raw) {
+const GENERIC_YOUTH_GROUP_LABEL = 'الشبيبة'
+const GENERAL_SECRETARIAT_LABEL = 'الأمانة العامة'
+const YOUTH_GROUP_CODE_RE = /^YG\d{3,}$/i
+
+function isYouthGroupCode(raw) {
+  const text = (raw ?? '').toString().trim()
+  return YOUTH_GROUP_CODE_RE.test(text)
+}
+
+function isRawYouthGroupIdentifier(raw) {
+  const text = (raw ?? '').toString().trim()
+  return text === 'GS' || isYouthGroupCode(text)
+}
+
+function formatYouthGroupLabel(raw, { fallback = GENERIC_YOUTH_GROUP_LABEL } = {}) {
   const text = (raw ?? '').toString().trim()
   if (!text) return ''
-  if (/^YG\d{3,}$/i.test(text) || text === 'GS') return text
+  if (text === 'GS') return GENERAL_SECRETARIAT_LABEL
+  if (isYouthGroupCode(text)) return fallback
   if (text.startsWith('شبيبة')) return text
   return `شبيبة ${text}`
 }
@@ -87,6 +102,10 @@ async function req(path, opts = {}) {
 
 export const api = {
   formatYouthGroupLabel,
+  isYouthGroupCode,
+  isRawYouthGroupIdentifier,
+  genericYouthGroupLabel: GENERIC_YOUTH_GROUP_LABEL,
+  generalSecretariatLabel: GENERAL_SECRETARIAT_LABEL,
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   logout:       ()             => req('/auth/logout', { method: 'POST' }),
@@ -310,6 +329,14 @@ export const api = {
   submitRegistration: (body) => req('/registration/submit', { method: 'POST', body }),
   checkUsername: (username) => req(`/registration/check-username?username=${encodeURIComponent(username)}`),
   myRegistrationStatus: () => req('/registration/my-status'),
+
+  // ── Privileges ──────────────────────────────────────────────────────────────
+  getPrivilegeMatrix:    ()             => req('/privileges/matrix'),
+  getPrivilegePositions: ()             => req('/privileges/positions'),
+  listPrivilegeOverrides: ()            => req('/privileges/overrides'),
+  createPrivilegeOverride: (body)       => req('/privileges/overrides', { method: 'POST', body }),
+  updatePrivilegeOverride: (id, body)   => req(`/privileges/overrides/${encodeURIComponent(id)}`, { method: 'PUT', body }),
+  deletePrivilegeOverride: (id)         => req(`/privileges/overrides/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   // ── Requests ────────────────────────────────────────────────────────────────
   getRequests: () => req('/requests'),

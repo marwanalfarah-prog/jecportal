@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import {
   GitBranch, Search, X, Plus, Save, Trash2, UserPlus,
   Camera, AlertCircle, Link, Link2Off, ArrowRight, Sparkles, CheckCircle, ExternalLink,
-  Calendar, ChevronDown, Clock, FileDown
+  Calendar, ChevronDown, Clock, FileDown, Eye, ShieldCheck
 } from 'lucide-react'
 import { api } from '../api.js'
 import { ErrorState } from '../pageStates.jsx'
@@ -18,6 +18,13 @@ function normalizeWord(w) {
 function normalizeArabic(t) {
   if (!t) return ''
   return String(t).replace(/\s+/g,' ').trim().split(' ').map(normalizeWord).join(' ')
+}
+
+const NODE_VISIBILITY_PUBLIC = 'public'
+const NODE_VISIBILITY_ADMIN_ONLY = 'admin_only'
+
+function normalizeNodeVisibility(value) {
+  return value === NODE_VISIBILITY_ADMIN_ONLY ? NODE_VISIBILITY_ADMIN_ONLY : NODE_VISIBILITY_PUBLIC
 }
 
 function normalizeNameVariations(raw) {
@@ -1175,7 +1182,7 @@ function computeGSHullNames(node) {
 
 function nodeToGSApi(node) {
   const { inAmanah: _a, inGroup: _g, reportsToHeadId: _r, ...rest } = node
-  return { ...rest, hulls: computeGSHullNames(node) }
+  return { ...rest, visibility: normalizeNodeVisibility(rest.visibility), hulls: computeGSHullNames(node) }
 }
 
 function nodeFromGSApi(node, reportsToMap = {}) {
@@ -1184,7 +1191,7 @@ function nodeFromGSApi(node, reportsToMap = {}) {
   const inAmanah = hulls.includes(GS_AMANAH_HULL)
   const inGroup  = hulls.some(h => h !== GS_AMANAH_HULL)
   const reportsToHeadId = reportsToMap[rest.id] || null
-  return { ...rest, inAmanah, inGroup, reportsToHeadId }
+  return { ...rest, visibility: normalizeNodeVisibility(rest.visibility), inAmanah, inGroup, reportsToHeadId }
 }
 
 function buildReportsToMap(edges) {
@@ -1400,18 +1407,24 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
 
   const pickPerson = (p) => {
     const base = [p.ar_first_name, p.ar_second_name, p.ar_third_name, p.ar_last_name].filter(Boolean).join(' ')
-    const combined = (personType === 'مكرّس' && laqab.trim()) ? `${laqab.trim()} ${base}` : base
+    const pickedTitle = String(p.title || '').trim()
+    const nextPersonType = pickedTitle ? 'مكرّس' : 'علماني'
+    const nextLaqab = pickedTitle
+    const combined = (nextPersonType === 'مكرّس' && nextLaqab.trim()) ? `${nextLaqab.trim()} ${base}` : base
     setBaseName(base)
-    onUpdate({ personId: p.person_id, unregisteredId: null, name: combined, photo: p._photo || null, unregistered: false, personType, laqab, baseName: base })
+    setPersonType(nextPersonType)
+    setLaqab(nextLaqab)
+    onUpdate({ personId: p.person_id, unregisteredId: null, name: combined, photo: p._photo || null, unregistered: false, personType: nextPersonType, laqab: nextLaqab, baseName: base })
     setNameQ(''); setRes([])
   }
 
   const pickUnregistered = (u) => {
     const base = [u.ar_first_name, u.ar_second_name, u.ar_third_name, u.ar_last_name].filter(Boolean).join(' ')
     const uLaqab = u.title || ''
-    setBaseName(base); setPersonType('علماني'); setLaqab(uLaqab)
+    const uType = uLaqab ? 'مكرّس' : 'علماني'
+    setBaseName(base); setPersonType(uType); setLaqab(uLaqab)
     const combined = uLaqab ? `${uLaqab} ${base}` : base
-    onUpdate({ name: combined, baseName: base, laqab: uLaqab, personType: 'علماني', photo: u._photo || null, unregistered: true, personId: String(u.person_id), unregisteredId: String(u.person_id) })
+    onUpdate({ name: combined, baseName: base, laqab: uLaqab, personType: uType, photo: u._photo || null, unregistered: true, personId: String(u.person_id), unregisteredId: String(u.person_id) })
     setNameQ(''); setRes([])
   }
 
@@ -1483,6 +1496,43 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
           </button>
         )}
 
+        {/* Visibility */}
+        <div style={{ marginBottom:12 }}>
+          <label style={{ fontSize:'0.78rem', fontWeight:700, color:'var(--gray-500)', display:'block', marginBottom:6 }}>الظهور</label>
+          <div style={{ display:'flex', gap:6 }}>
+            {[
+              { value: NODE_VISIBILITY_PUBLIC, label: 'عام', icon: Eye },
+              { value: NODE_VISIBILITY_ADMIN_ONLY, label: 'للمدراء فقط', icon: ShieldCheck },
+            ].map(option => {
+              const active = normalizeNodeVisibility(node.visibility) === option.value
+              const Icon = option.icon
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => onUpdate({ visibility: option.value })}
+                  style={{
+                    flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+                    padding:'8px 6px', borderRadius:'var(--radius-md)', fontSize:'0.82rem', fontWeight:700,
+                    cursor:'pointer', transition:'all 0.15s', fontFamily:'var(--font-body)',
+                    border:active?'2px solid var(--navy)':'2px solid var(--gray-200)',
+                    background:active?'var(--navy)':'white',
+                    color:active?'white':'var(--gray-500)',
+                  }}
+                >
+                  <Icon size={13}/>
+                  {option.label}
+                </button>
+              )
+            })}
+          </div>
+          {normalizeNodeVisibility(node.visibility) === NODE_VISIBILITY_ADMIN_ONLY && (
+            <div style={{ marginTop:5, fontSize:'0.72rem', color:'#92400e', background:'#fffbeb', border:'1px solid #fde68a', borderRadius:6, padding:'5px 8px' }}>
+              هذه العقدة مخفية عن غير المدراء.
+            </div>
+          )}
+        </div>
+
         {/* Person type */}
         <div style={{ marginBottom:12 }}>
           <label style={{ fontSize:'0.78rem', fontWeight:700, color:'var(--gray-500)', display:'block', marginBottom:6 }}>نوع الشخص</label>
@@ -1550,7 +1600,8 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
               return normalizeArabic(uBase.trim()) === norm
             }) : null
             if (existing) {
-              onUpdate({ unregistered:true, baseName:newBase, personId:String(existing.person_id), unregisteredId:String(existing.person_id), laqab:existing.title||laqab })
+              const existingTitle = existing.title || ''
+              onUpdate({ unregistered:true, baseName:newBase, personId:String(existing.person_id), unregisteredId:String(existing.person_id), laqab:existingTitle, personType:existingTitle?'مكرّس':'علماني' })
             } else {
               onUpdate({ unregistered:isUnregisteredNode || !hasLinkedIdentity, baseName:newBase })
             }
@@ -1775,7 +1826,7 @@ function buildHullPath(pts) {
 // ─────────────────────────────────────────────────────────────────────────────
 // PERIOD BROWSER MODAL
 // ─────────────────────────────────────────────────────────────────────────────
-function PeriodBrowserModal({ periods, currentPeriod, groupKey, onSelect, onPeriodsUpdated, onClose }) {
+function PeriodBrowserModal({ periods, currentPeriod, groupKey, onSelect, onPeriodsUpdated, onClose, viewOnly = false }) {
   const todayStr = today()
   const [editingId, setEditingId]   = useState(null)
   const [editForm, setEditForm]     = useState({})
@@ -1794,6 +1845,7 @@ function PeriodBrowserModal({ periods, currentPeriod, groupKey, onSelect, onPeri
 
   const startEdit = (p, e) => {
     e.stopPropagation()
+    if (viewOnly) return
     setEditingId(p.id)
     setEditForm({
       jec_year:  p.jec_year  ? String(p.jec_year) : '',
@@ -1833,6 +1885,7 @@ function PeriodBrowserModal({ periods, currentPeriod, groupKey, onSelect, onPeri
 
   const saveEdit = async (e) => {
     e.stopPropagation()
+    if (viewOnly) return
     const err = validateEdit(editForm, editingId)
     if (err) { setEditError(err); return }
     setSaving(true)
@@ -1855,6 +1908,7 @@ function PeriodBrowserModal({ periods, currentPeriod, groupKey, onSelect, onPeri
   const setF = (k) => (ev) => setEditForm(f => ({ ...f, [k]: ev.target.value }))
 
   const handleDelete = async (periodId) => {
+    if (viewOnly) return
     setDeleting(true)
     try {
       await api.deletePeriod(groupKey, periodId)
@@ -1930,7 +1984,7 @@ function PeriodBrowserModal({ periods, currentPeriod, groupKey, onSelect, onPeri
                         </div>
                         {isCurrent && <span style={{ fontSize:'0.7rem', color:'var(--navy)', background:'#dbeafe', padding:'1px 7px', borderRadius:20, flexShrink:0 }}>محددة</span>}
 
-                        {confirmDeleteId === p.id ? (
+                        {!viewOnly && confirmDeleteId === p.id ? (
                           <div onClick={e => e.stopPropagation()} style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
                             <span style={{ fontSize:'0.75rem', color:'#c62828', fontWeight:600 }}>حذف؟</span>
                             <button onClick={() => handleDelete(p.id)} disabled={deleting} style={{ padding:'3px 10px', borderRadius:6, border:'none', background:'#c62828', color:'white', fontFamily:'var(--font-body)', fontSize:'0.75rem', fontWeight:700, cursor:'pointer' }}>
@@ -1940,7 +1994,7 @@ function PeriodBrowserModal({ periods, currentPeriod, groupKey, onSelect, onPeri
                               لا
                             </button>
                           </div>
-                        ) : (
+                        ) : !viewOnly ? (
                           <div onClick={e => e.stopPropagation()} style={{ display:'flex', gap:5, flexShrink:0 }}>
                             <button onClick={(e) => startEdit(p, e)} title="تعديل" style={{ background:'none', border:'1px solid var(--gray-200)', borderRadius:6, padding:'4px 7px', cursor:'pointer', color:'var(--gray-400)', display:'flex', alignItems:'center', fontSize:'0.75rem', gap:3, transition:'all 0.15s' }}
                               onMouseEnter={e => { e.currentTarget.style.background='var(--gray-100)'; e.currentTarget.style.color='var(--navy)' }}
@@ -1953,11 +2007,11 @@ function PeriodBrowserModal({ periods, currentPeriod, groupKey, onSelect, onPeri
                               🗑️
                             </button>
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     )}
 
-                    {isEditing && (
+                    {!viewOnly && isEditing && (
                       <div onClick={e => e.stopPropagation()} style={{ padding:'14px 16px' }}>
                         {editError && (
                           <div style={{ background:'#fdecea', border:'1px solid #ef9a9a', borderRadius:'var(--radius-md)', padding:'7px 10px', marginBottom:10, fontSize:'0.8rem', color:'#c62828' }}>
@@ -2048,12 +2102,14 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
 
   // ── Load data ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    api.personsEnriched().then(p => setAllPersons(p))
-    api.getUnregistered().then(u => setAllUnregistered(u))
+    if (!viewOnly) {
+      api.personsEnriched().then(p => setAllPersons(p))
+      api.getUnregistered().then(u => setAllUnregistered(u))
+    }
     api.getConfig()
       .then((cfg) => setDefaultJecYear(String(cfg?.config?.active_jec_year || '').trim()))
       .catch(() => setDefaultJecYear(''))
-  }, [])
+  }, [viewOnly])
 
   useEffect(() => {
     setLoading(true)
@@ -2105,7 +2161,9 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
     if (!nodesNeedingLink.length) return currentNodes
 
     let latestUnreg = allUnregistered
-    try { latestUnreg = await api.getUnregistered() } catch { /* use cached */ }
+    if (!viewOnly) {
+      try { latestUnreg = await api.getUnregistered() } catch { /* use cached */ }
+    }
 
     const autoLinked = {}
     const newNodes   = []
@@ -2142,11 +2200,11 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
           return newUid ? { ...n, unregisteredId: newUid } : n
         })
       }
-      api.getUnregistered().then(u => setAllUnregistered(u)).catch(() => {})
+      if (!viewOnly) api.getUnregistered().then(u => setAllUnregistered(u)).catch(() => {})
     } catch { /* non-critical */ }
     setNodes(linkedNodes)
     return linkedNodes
-  }, [allUnregistered])
+  }, [allUnregistered, viewOnly])
 
   // ── Auto-wiring ────────────────────────────────────────────────────────────
   const autoWireRef = useRef(false)
@@ -2170,15 +2228,26 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
   }, [nodes, suppressedAutoEdges])
 
   useEffect(() => {
-    if (autoWireRef.current) { autoWireRef.current = false; setDirty(true); setStructuralDirty(true) }
-  }, [edges])
+    if (autoWireRef.current) {
+      autoWireRef.current = false
+      if (!viewOnly) {
+        setDirty(true)
+        setStructuralDirty(true)
+      }
+    }
+  }, [edges, viewOnly])
 
   // ── Save ───────────────────────────────────────────────────────────────────
-  const handleSaveClick = () => { if (!dirty) return; setShowSaveModal(true) }
+  const handleSaveClick = () => { if (viewOnly || !dirty) return; setShowSaveModal(true) }
 
-  const handleSaveToPeriod = () => { setShowSaveModal(false); doSave(currentPeriod) }
+  const handleSaveToPeriod = () => {
+    if (viewOnly) return
+    setShowSaveModal(false)
+    doSave(currentPeriod)
+  }
 
   const handleSaveWithPeriod = async (periodMeta, isBecomingActive) => {
+    if (viewOnly) return
     setShowSaveModal(false); setSaving(true)
     try {
       const linkedNodes = await syncUnregisteredNodes(nodes)
@@ -2204,6 +2273,7 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
   }
 
   const doSave = async (period) => {
+    if (viewOnly) return
     setSaving(true)
     try {
       const linkedNodes = await syncUnregisteredNodes(nodes)
@@ -2317,7 +2387,7 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
         x=parent.x+(siblings-1)*(pW+H_GAP); y=parent.y+pH+V_GAP
       }
     }
-    const newNode = { id:newId, x, y, name:'', role:'', personId:null, unregistered:true, photo:null }
+    const newNode = { id:newId, x, y, name:'', role:'', personId:null, unregistered:true, photo:null, visibility:NODE_VISIBILITY_PUBLIC }
     setNodes(ns => [...ns, newNode])
     if (parentId) setEdges(es => [...es, { id:uid(), from:parentId, to:newId, type:'hierarchy' }])
     setSelected(newId); markDirty(true)
@@ -2868,10 +2938,11 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
               if (data.period) setCurrentPeriod(data.period)
             })
           }}
+          viewOnly={viewOnly}
           onClose={() => setShowPeriodModal(false)}
         />
       )}
-      {showSaveModal && (
+      {!viewOnly && showSaveModal && (
         <UnifiedSaveModal
           currentPeriod={currentPeriod}
           periods={periods}

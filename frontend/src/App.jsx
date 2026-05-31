@@ -1,10 +1,18 @@
 import { Component, Suspense, lazy, startTransition, useEffect, useState } from 'react'
-import { LayoutDashboard, Users, GitBranch, LogOut, ShieldCheck, User as UserIcon, Eye, X, Search, ClipboardList, Settings, Building2, ImageOff, Key, MapPin, BookOpenText, Menu, UserPlus, Calendar as CalendarIcon } from 'lucide-react'
+import { LogOut, ShieldCheck, User as UserIcon, Eye, X, Search, ImageOff, Key, Menu, UserPlus } from 'lucide-react'
 import Login from './pages/Login.jsx'
 import Registration from './pages/Registration.jsx'
 import { useToast, ToastContainer } from './useToast.jsx'
 import NotificationBell from './NotificationBell.jsx'
 import { api } from './api.js'
+import {
+  computePermissions,
+  canViewProfile as _canViewProfile,
+  getNavItems,
+  getAllowedPages,
+  getAdminAllowedUrlPages,
+  hasAnyProfileAccess,
+} from './permissions.js'
 import { LoadingState } from './pageStates.jsx'
 import { buildMottoBibleReaderTarget, formatMottoTextWithSource } from './mottoBibleReference.js'
 
@@ -14,7 +22,7 @@ const Profile = lazy(() => import('./pages/Profile.jsx'))
 const OrgTree = lazy(() => import('./pages/OrgTree.jsx'))
 const GeneralSecretariatTree = lazy(() => import('./pages/GeneralSecretariatTree.jsx'))
 const UserManagement = lazy(() => import('./pages/UserManagement.jsx'))
-const CouncilMembers = lazy(() => import('./pages/CouncilMembers.jsx'))
+const Promotions = lazy(() => import('./pages/Promotions.jsx'))
 const Questionnaire = lazy(() => import('./pages/Questionnaire.jsx'))
 const MyQuestions = lazy(() => import('./pages/MyQuestions.jsx'))
 const Config = lazy(() => import('./pages/Config.jsx'))
@@ -23,6 +31,7 @@ const ChurchesMap = lazy(() => import('./pages/ChurchesMap.jsx'))
 const BibleReader = lazy(() => import('./pages/BibleReader.jsx'))
 const Requests = lazy(() => import('./pages/Requests.jsx'))
 const Calendar = lazy(() => import('./pages/Calendar.jsx'))
+const PrivilegeManager = lazy(() => import('./pages/PrivilegeManager.jsx'))
 
 const ROUTE_PRELOADERS = {
   dashboard: () => import('./pages/Dashboard.jsx'),
@@ -31,7 +40,7 @@ const ROUTE_PRELOADERS = {
   orgtree: () => import('./pages/OrgTree.jsx'),
   general_secretariat: () => import('./pages/GeneralSecretariatTree.jsx'),
   users: () => import('./pages/UserManagement.jsx'),
-  council_members: () => import('./pages/CouncilMembers.jsx'),
+  promotions: () => import('./pages/Promotions.jsx'),
   questionnaires: () => import('./pages/Questionnaire.jsx'),
   my_questions: () => import('./pages/MyQuestions.jsx'),
   config: () => import('./pages/Config.jsx'),
@@ -40,6 +49,7 @@ const ROUTE_PRELOADERS = {
   bible_reader: () => import('./pages/BibleReader.jsx'),
   requests: () => import('./pages/Requests.jsx'),
   calendar: () => import('./pages/Calendar.jsx'),
+  privileges: () => import('./pages/PrivilegeManager.jsx'),
 }
 
 const preloadedRoutes = new Set()
@@ -66,8 +76,9 @@ const ROUTE_LOADING_TITLES = {
   bible_reader: 'جارٍ تحميل قارئ الكتاب المقدس',
   config: 'جارٍ تحميل الإعدادات',
   my_questions: 'جارٍ تحميل استبياناتي',
-  council_members: 'جارٍ تحميل أعضاء الفئة',
+  promotions: 'جارٍ تحميل الترفيعات',
   requests: 'جارٍ تحميل الطلبات',
+  privileges: 'جارٍ تحميل مدير الصلاحيات',
 }
 
 function RouteLoader({ page, minHeight = 320, description = 'يتم تجهيز مكونات الصفحة الآن.' }) {
@@ -288,6 +299,7 @@ function ViewAsPicker({ currentAdminUser, onSelect, onClose }) {
 function MemberYouthGroupLogoTile({ groupId, label }) {
   const [missing, setMissing] = useState(false)
   const [specialMissing, setSpecialMissing] = useState(false)
+  const displayLabel = String(label || '').trim() || api.genericYouthGroupLabel
 
   useEffect(() => {
     setMissing(false)
@@ -306,7 +318,7 @@ function MemberYouthGroupLogoTile({ groupId, label }) {
         borderRadius: 10,
         background: 'white',
       }}
-      title={label}
+      title={displayLabel}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
         {missing ? (
@@ -329,7 +341,7 @@ function MemberYouthGroupLogoTile({ groupId, label }) {
         ) : (
           <img
             src={api.youthGroupLogoUrl(groupId)}
-            alt={label || groupId}
+            alt={displayLabel}
             style={{
               width: 34,
               height: 34,
@@ -346,7 +358,7 @@ function MemberYouthGroupLogoTile({ groupId, label }) {
         {!specialMissing ? (
           <img
             src={api.youthGroupActiveSpecialLogoUrl(groupId)}
-            alt={label ? `Special Logo - ${label}` : 'Special Occasion Logo'}
+            alt={`Special Logo - ${displayLabel}`}
             style={{
               width: 34,
               height: 34,
@@ -386,7 +398,7 @@ function MemberYouthGroupLogoTile({ groupId, label }) {
             textOverflow: 'ellipsis',
           }}
         >
-          {label || groupId}
+          {displayLabel}
         </div>
       </div>
     </div>
@@ -515,13 +527,14 @@ const PAGE_TITLES = {
   profile:             'ملف العضو',
   orgtree:             'الهيكل التنظيمي',
   users:               'إدارة المستخدمين',
-  council_members:     'أعضاء فئتي',
+  promotions:          'الترفيعات',
   general_secretariat: 'الأمانة العامة للشبيبة المسيحيّة',
   config:              'الإعدادات والتهيئة',
   youth_groups:        'ملف فرق الشبيبة',
   churches_map:        'خريطة الكنائس',
   bible_reader:        'قارئ الكتاب المقدس',
   calendar:            'التقويم',
+  privileges:          'إدارة الصلاحيات',
 }
 
 // ── URL routing utilities ────────────────────────────────────────────────────
@@ -540,9 +553,10 @@ const PAGE_PATHS = {
   churches_map:         '/churches-map',
   bible_reader:         '/bible-reader',
   calendar:             '/calendar',
-  council_members:      '/council-members',
+  promotions:           '/promotions',
   requests:             '/requests',
   add_member:           '/add-member',
+  privileges:           '/privileges',
 }
 
 const PATH_PAGES = Object.fromEntries(
@@ -631,7 +645,7 @@ export default function App() {
         replaceRoute('profile', user.person_id, user.person_type === 'unregistered')
       } else if (user?.role === 'admin' && !user?.is_pending) {
         const { page: urlPage } = parseRoute(window.location.pathname)
-        const adminAllowed = ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches_map', 'bible_reader', 'config', 'profile', 'requests', 'add_member']
+        const adminAllowed = getAdminAllowedUrlPages()
         if (!urlPage || !adminAllowed.includes(urlPage)) {
           setPage('dashboard')
           replaceRoute('dashboard')
@@ -764,13 +778,9 @@ export default function App() {
   }
 
   // When impersonating, use the viewAsUser as effective context (read-only for everything)
-  const effectiveUser  = viewAsUser || authUser
-  const isAdmin        = authUser?.role === 'admin' && !viewAsUser
-  const isMember       = effectiveUser?.role === 'member'
-  const isPendingUser  = !isAdmin && (effectiveUser?.is_pending || effectiveUser?.account_status === 'pending' || effectiveUser?.account_status === 'pending_yg')
-  // council_access: { youth_group_name: [age_group, ...] }
-  const councilAccess  = effectiveUser?.council_access || {}
-  const isCouncil      = isMember && !isPendingUser && Object.keys(councilAccess).length > 0
+  // All permission logic is centralised in permissions.js — do not add inline checks here.
+  const perms = computePermissions(authUser, viewAsUser)
+  const { effectiveUser, isAdmin, isMember, isPendingUser, councilAccess, isCouncil } = perms
   const memberYouthGroups = [...new Set((effectiveUser?.youth_groups || []).filter(Boolean))]
   const memberYouthGroupsKey = memberYouthGroups.join('|')
 
@@ -782,23 +792,33 @@ export default function App() {
 
     if (sameAsJecJordan) return buildWithYear('شعار شبيبة الأردن')
     const raw = String(groupLabel || '').trim()
+    if (raw === api.genericYouthGroupLabel) return buildWithYear('شعار الشبيبة')
     const withoutPrefix = raw.replace(/^\s*شبيبة\s*/u, '').trim()
     const suffix = withoutPrefix || raw || '—'
     return buildWithYear(`شعار شبيبة ${suffix}`)
   }
 
-  const memberYouthGroupCards = memberYouthGroups.map(gid => ({
-    id: gid,
-    label: youthGroupLabels[gid] || api.formatYouthGroupLabel(gid) || gid,
-    mottoLogoUrl: memberMottoByGroup[gid]?.logoUrl || '',
-    mottoScopeLabel: buildMemberMottoLabel(
-      youthGroupLabels[gid] || api.formatYouthGroupLabel(gid) || gid,
-      !!memberMottoByGroup[gid]?.sameAsJecJordan,
-      memberMottoByGroup[gid]?.yearLabel,
-    ),
-    mottoVerseText: memberMottoByGroup[gid]?.mottoText || '',
-    mottoTarget: memberMottoByGroup[gid]?.mottoTarget || null,
-  }))
+  const displayYouthGroupName = (label, groupId) => {
+    const text = String(label || '').trim()
+    if (text && !api.isRawYouthGroupIdentifier(text)) return text
+    return api.formatYouthGroupLabel(groupId)
+  }
+
+  const memberYouthGroupCards = memberYouthGroups.map(gid => {
+    const label = displayYouthGroupName(youthGroupLabels[gid], gid)
+    return {
+      id: gid,
+      label,
+      mottoLogoUrl: memberMottoByGroup[gid]?.logoUrl || '',
+      mottoScopeLabel: buildMemberMottoLabel(
+        label,
+        !!memberMottoByGroup[gid]?.sameAsJecJordan,
+        memberMottoByGroup[gid]?.yearLabel,
+      ),
+      mottoVerseText: memberMottoByGroup[gid]?.mottoText || '',
+      mottoTarget: memberMottoByGroup[gid]?.mottoTarget || null,
+    }
+  })
 
   useEffect(() => {
     api.filters()
@@ -807,7 +827,7 @@ export default function App() {
         for (const yg of (f?.youth_group || [])) {
           const gid = String(yg?.value || '').trim()
           if (!gid) continue
-          map[gid] = api.formatYouthGroupLabel(yg?.label || gid) || gid
+          map[gid] = displayYouthGroupName(yg?.label, gid)
         }
         setYouthGroupLabels(map)
       })
@@ -873,48 +893,12 @@ export default function App() {
     }
   }, [isMember, memberYouthGroupsKey])
 
-  // ── Navigation ──────────────────────────────────────────────────────────────
-  const NAV = isPendingUser ? [
-    { id: 'requests',     label: 'حالة طلبي',              icon: ClipboardList },
-    { id: 'profile',      label: 'ملفي الشخصي (معلّق)',    icon: UserIcon },
-    { id: 'calendar',     label: 'التقويم',                icon: CalendarIcon },
-    { id: 'bible_reader', label: 'قارئ الكتاب المقدس',     icon: BookOpenText },
-    { id: 'churches_map', label: 'خريطة الكنائس',          icon: MapPin },
-  ] : isAdmin ? [
-    { id: 'dashboard',           label: 'لوحة المعلومات',              icon: LayoutDashboard },
-    { id: 'members',             label: 'الأعضاء',                      icon: Users },
-    { id: 'calendar',            label: 'التقويم',                      icon: CalendarIcon },
-    { id: 'orgtree',             label: 'الهيكل التنظيمي',             icon: GitBranch },
-    { id: 'general_secretariat', label: 'الأمانة العامة',              icon: GitBranch },
-    { id: 'users',               label: 'إدارة المستخدمين',            icon: ShieldCheck },
-    { id: 'requests',            label: 'طلبات التسجيل',               icon: ClipboardList },
-    { id: 'questionnaires',      label: 'إدارة الاستبيانات',           icon: ClipboardList },
-    { id: 'youth_groups',        label: 'ملف فرق الشبيبة',             icon: Building2 },
-    { id: 'churches_map',        label: 'خريطة الكنائس',               icon: MapPin },
-    { id: 'bible_reader',        label: 'قارئ الكتاب المقدس',          icon: BookOpenText },
-    { id: 'config',              label: 'الإعدادات',                    icon: Settings },
-  ] : [
-    { id: 'profile',         label: 'ملفي الشخصي',         icon: UserIcon },
-    { id: 'calendar',        label: 'التقويم',              icon: CalendarIcon },
-    { id: 'orgtree',         label: 'الهيكل التنظيمي',     icon: GitBranch },
-    ...(isCouncil ? [{ id: 'council_members', label: 'أعضاء فئتي',     icon: Users }] : []),
-    ...(isCouncil ? [{ id: 'requests',        label: 'طلبات الانضمام', icon: ClipboardList }] : []),
-    { id: 'churches_map',    label: 'خريطة الكنائس',        icon: MapPin },
-    { id: 'bible_reader',    label: 'قارئ الكتاب المقدس',  icon: BookOpenText },
-    { id: 'my_questions',    label: 'استبياناتي',           icon: ClipboardList },
-  ]
+  // ── Navigation — sourced from central permissions.js ─────────────────────────
+  const NAV = getNavItems(perms)
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
-  const canViewProfile = (pid, unreg = false) => {
-    if (authUser?.role === 'admin' && !viewAsUser) return true
-    if (!isMember) return false
-    // Own profile always
-    if (String(pid) === String(effectiveUser.person_id) &&
-        unreg === (effectiveUser.person_type === 'unregistered')) return true
-    // Council member can view profiles in their age groups
-    if (isCouncil) return true  // fine-grained check done in CouncilMembers
-    return false
-  }
+  // Delegate to the central permission module
+  const canViewProfile = (pid, unreg = false) => _canViewProfile(perms, effectiveUser, pid, unreg)
 
   const confirmLeavingDirtyProfile = ({ skipUnsavedPrompt = false } = {}) => {
     if (skipUnsavedPrompt || page !== 'profile' || !profileHasUnsavedChanges) return true
@@ -940,7 +924,7 @@ export default function App() {
   const goBack = ({ skipUnsavedPrompt = false } = {}) => {
     if (!confirmLeavingDirtyProfile({ skipUnsavedPrompt })) return
     const targetPage = isMember
-      ? (profileReturnPage === 'council_members' ? 'council_members' : 'orgtree')
+      ? (profileReturnPage === 'promotions' ? 'promotions' : 'orgtree')
       : profileReturnPage
     preloadRoute(targetPage)
     startTransition(() => {
@@ -952,11 +936,7 @@ export default function App() {
   }
 
   const navigate = (p, { skipUnsavedPrompt = false } = {}) => {
-    const allowed = isPendingUser
-      ? ['requests', 'profile', 'calendar', 'bible_reader', 'churches_map']
-      : isAdmin
-        ? ['dashboard', 'members', 'calendar', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches_map', 'bible_reader', 'config', 'requests', 'add_member']
-        : ['profile', 'calendar', 'orgtree', 'council_members', 'churches_map', 'bible_reader', 'my_questions', 'requests', 'add_member']
+    const allowed = getAllowedPages(perms)
     if (!allowed.includes(p)) return
     if (!confirmLeavingDirtyProfile({ skipUnsavedPrompt })) return
     preloadRoute(p)
@@ -1024,7 +1004,7 @@ export default function App() {
       const { page: newPage, pid, unreg } = parseRoute(window.location.pathname)
       const isAdminNow = authUser.role === 'admin' && !viewAsUser
       const adminAllowed = ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches_map', 'bible_reader', 'config', 'requests', 'add_member']
-      const memberAllowed = ['profile', 'orgtree', 'council_members', 'churches_map', 'bible_reader', 'my_questions', 'requests', 'add_member']
+      const memberAllowed = ['profile', 'orgtree', 'general_secretariat', 'promotions', 'churches_map', 'bible_reader', 'my_questions', 'requests', 'add_member']
       if (newPage === 'profile') {
         startTransition(() => {
           if (pid) setSelected(pid)
@@ -1193,7 +1173,7 @@ export default function App() {
               </div>
               {Object.entries(councilAccess).map(([grp, info]) => (
                 <div key={grp} style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.6)', lineHeight: 1.8 }}>
-                  <span style={{ color: '#ffffff', opacity: 0.9 }}>{info.group_name || grp}: </span>
+                  <span style={{ color: '#ffffff', opacity: 0.9 }}>{displayYouthGroupName(info.group_name, grp)}: </span>
                   {info.full_group
                     ? <span style={{ color: '#e8b55a', fontWeight: 700 }}>جميع الأعضاء</span>
                     : (info.age_groups || []).join(' · ')
@@ -1371,11 +1351,12 @@ export default function App() {
           <Suspense fallback={<RouteLoader page={page} />}>
             {isAdmin && page === 'dashboard' && <Dashboard onOpenBibleReference={openBibleReaderReference} />}
 
-            {isAdmin && page === 'members' && (
+            {hasAnyProfileAccess(perms, effectiveUser) && page === 'members' && (
               <Members
                 onSelectPerson={pid => goProfile(pid, null, false, 'members')}
                 onSelectUnregistered={uid => goProfile(uid, null, true, 'members')}
                 toast={toast}
+                currentUser={isAdmin ? null : effectiveUser}
               />
             )}
 
@@ -1406,32 +1387,32 @@ export default function App() {
                   goProfile(uid, null, true, 'orgtree')
                 }}
                 viewOnly={isMember}
-                allowedGroups={isMember ? memberYouthGroups : null}
               />
             )}
 
-            {isCouncil && page === 'council_members' && (
-              <CouncilMembers
+            {isCouncil && page === 'promotions' && (
+              <Promotions
                 councilAccess={councilAccess}
                 currentUser={effectiveUser}
-                onSelectPerson={pid => goProfile(pid, null, false, 'council_members')}
-                onSelectUnregistered={uid => goProfile(uid, null, true, 'council_members')}
+                onSelectPerson={pid => goProfile(pid, null, false, 'promotions')}
                 toast={toast}
               />
             )}
 
-            {isAdmin && page === 'general_secretariat' && (
+            {page === 'general_secretariat' && (
               <GeneralSecretariatTree
                 toast={toast}
                 onViewProfile={(pid, ctx) => goProfile(pid, ctx, false, 'general_secretariat')}
                 onViewUnregisteredProfile={uid => {
                   goProfile(uid, null, true, 'general_secretariat')
                 }}
-                viewOnly={false}
+                viewOnly={!isAdmin}
               />
             )}
 
             {isAdmin && page === 'users' && <UserManagement toast={toast}/>}
+
+            {isAdmin && page === 'privileges' && <PrivilegeManager toast={toast}/>}
 
             {isAdmin && page === 'questionnaires' && (
               <Questionnaire toast={toast} />

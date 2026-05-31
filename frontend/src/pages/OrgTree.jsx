@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import {
   GitBranch, Search, X, Plus, Save, Trash2, UserPlus,
   Camera, AlertCircle, Link, Link2Off, ArrowRight, Sparkles, CheckCircle, ExternalLink,
-  Calendar, ChevronDown, Clock, FileDown
+  Calendar, ChevronDown, Clock, FileDown, Eye, ShieldCheck
 } from 'lucide-react'
 import { api } from '../api.js'
 import { ErrorState, LoadingState } from '../pageStates.jsx'
@@ -18,6 +18,13 @@ function normalizeWord(w) {
 function normalizeArabic(t) {
   if (!t) return ''
   return String(t).replace(/\s+/g,' ').trim().split(' ').map(normalizeWord).join(' ')
+}
+
+const NODE_VISIBILITY_PUBLIC = 'public'
+const NODE_VISIBILITY_ADMIN_ONLY = 'admin_only'
+
+function normalizeNodeVisibility(value) {
+  return value === NODE_VISIBILITY_ADMIN_ONLY ? NODE_VISIBILITY_ADMIN_ONLY : NODE_VISIBILITY_PUBLIC
 }
 
 function normalizeNameVariations(raw) {
@@ -43,6 +50,21 @@ function normalizeNameVariations(raw) {
   }
 
   return out
+}
+
+function normalizePersonTitles(raw) {
+  const entries = Array.isArray(raw) ? raw : []
+  const seen = new Set()
+  const titles = []
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object') continue
+    const arabicTitle = String(entry.arabic_title || entry.arabic || entry.title || entry.name || '').replace(/\s+/g, ' ').trim()
+    const englishTitle = String(entry.english_title || entry.english || '').replace(/\s+/g, ' ').trim()
+    if (!arabicTitle || seen.has(arabicTitle)) continue
+    seen.add(arabicTitle)
+    titles.push({ arabic_title: arabicTitle, english_title: englishTitle })
+  }
+  return titles
 }
 
 function buildNameAliasLookup(variationMap) {
@@ -638,7 +660,7 @@ function UnifiedSaveModal({ currentPeriod, periods, defaultJecYear = '', onSaveT
 }
 
 // ── Period browser modal ──────────────────────────────────────────────────────
-function PeriodBrowserModal({ periods, currentPeriod, selectedGroup, onSelect, onPeriodsUpdated, onClose }) {
+function PeriodBrowserModal({ periods, currentPeriod, selectedGroup, onSelect, onPeriodsUpdated, onClose, viewOnly = false }) {
   const todayStr = today()
   const [editingId, setEditingId]   = useState(null)   // period id being edited
   const [editForm, setEditForm]     = useState({})
@@ -658,6 +680,7 @@ function PeriodBrowserModal({ periods, currentPeriod, selectedGroup, onSelect, o
 
   const startEdit = (p, e) => {
     e.stopPropagation()
+    if (viewOnly) return
     setEditingId(p.id)
     setEditForm({
       jec_year:  p.jec_year  ? String(p.jec_year) : '',
@@ -697,6 +720,7 @@ function PeriodBrowserModal({ periods, currentPeriod, selectedGroup, onSelect, o
 
   const saveEdit = async (e) => {
     e.stopPropagation()
+    if (viewOnly) return
     const err = validateEdit(editForm, editingId)
     if (err) { setEditError(err); return }
     setSaving(true)
@@ -719,6 +743,7 @@ function PeriodBrowserModal({ periods, currentPeriod, selectedGroup, onSelect, o
   const setF = (k) => (ev) => setEditForm(f => ({ ...f, [k]: ev.target.value }))
 
   const handleDelete = async (periodId) => {
+    if (viewOnly) return
     setDeleting(true)
     try {
       await api.deletePeriod(selectedGroup, periodId)
@@ -804,7 +829,7 @@ function PeriodBrowserModal({ periods, currentPeriod, selectedGroup, onSelect, o
                         {isCurrent && <span style={{ fontSize:'0.7rem', color:'var(--navy)', background:'#dbeafe', padding:'1px 7px', borderRadius:20, flexShrink:0 }}>محددة</span>}
 
                         {/* Confirm delete inline */}
-                        {confirmDeleteId === p.id ? (
+                        {!viewOnly && confirmDeleteId === p.id ? (
                           <div onClick={e => e.stopPropagation()} style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
                             <span style={{ fontSize:'0.75rem', color:'#c62828', fontWeight:600 }}>حذف؟</span>
                             <button onClick={() => handleDelete(p.id)} disabled={deleting} style={{ padding:'3px 10px', borderRadius:6, border:'none', background:'#c62828', color:'white', fontFamily:'var(--font-body)', fontSize:'0.75rem', fontWeight:700, cursor:'pointer' }}>
@@ -814,7 +839,7 @@ function PeriodBrowserModal({ periods, currentPeriod, selectedGroup, onSelect, o
                               لا
                             </button>
                           </div>
-                        ) : (
+                        ) : !viewOnly ? (
                           <div onClick={e => e.stopPropagation()} style={{ display:'flex', gap:5, flexShrink:0 }}>
                             <button onClick={(e) => startEdit(p, e)} title="تعديل" style={{ background:'none', border:'1px solid var(--gray-200)', borderRadius:6, padding:'4px 7px', cursor:'pointer', color:'var(--gray-400)', display:'flex', alignItems:'center', fontSize:'0.75rem', gap:3, transition:'all 0.15s' }}
                               onMouseEnter={e => { e.currentTarget.style.background='var(--gray-100)'; e.currentTarget.style.color='var(--navy)' }}
@@ -827,12 +852,12 @@ function PeriodBrowserModal({ periods, currentPeriod, selectedGroup, onSelect, o
                               🗑️
                             </button>
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     )}
 
                     {/* Inline edit form */}
-                    {isEditing && (
+                    {!viewOnly && isEditing && (
                       <div onClick={e => e.stopPropagation()} style={{ padding:'14px 16px' }}>
                         {editError && (
                           <div style={{ background:'#fdecea', border:'1px solid #ef9a9a', borderRadius:'var(--radius-md)', padding:'7px 10px', marginBottom:10, fontSize:'0.8rem', color:'#c62828' }}>
@@ -1342,9 +1367,18 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
   const [laqab, setLaqab]           = useState(node.laqab || '')
   const [baseName, setBaseName]     = useState(node.baseName || node.name || '')
   const [nameVariations, setNameVariations] = useState({})
+  const [personTitles, setPersonTitles] = useState([])
   const fileRef = useRef(null)
 
   const nameAliasLookup = useMemo(() => buildNameAliasLookup(nameVariations), [nameVariations])
+  const personTitleOptions = useMemo(() => {
+    const options = personTitles.map((row) => ({ value: row.arabic_title, label: row.arabic_title }))
+    const current = String(laqab || '').trim()
+    if (current && !options.some((option) => option.value === current)) {
+      options.push({ value: current, label: current })
+    }
+    return options
+  }, [personTitles, laqab])
   const extraHulls = nodeExtraHullLabels(node)
   const autoHullLabelSet = new Set(nodeAutoGroupHullLabels(node))
   const extraHullOptions = uniqueHullLabels([...collectTreeGroupHullLabels(allNodes), ...extraHulls])
@@ -1374,10 +1408,16 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
     let cancelled = false
     api.getConfig()
       .then((cfg) => {
-        if (!cancelled) setNameVariations(normalizeNameVariations(cfg?.config?.name_variations || {}))
+        if (!cancelled) {
+          setNameVariations(normalizeNameVariations(cfg?.config?.name_variations || {}))
+          setPersonTitles(normalizePersonTitles(cfg?.config?.person_titles || []))
+        }
       })
       .catch(() => {
-        if (!cancelled) setNameVariations({})
+        if (!cancelled) {
+          setNameVariations({})
+          setPersonTitles([])
+        }
       })
     return () => { cancelled = true }
   }, [])
@@ -1425,17 +1465,22 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
 
   const pickPerson = (p) => {
     const base = [p.ar_first_name, p.ar_second_name, p.ar_third_name, p.ar_last_name].filter(Boolean).join(' ')
-    const combined = (personType === 'مكرّس' && laqab.trim()) ? `${laqab.trim()} ${base}` : base
+    const pickedTitle = String(p.title || '').trim()
+    const nextPersonType = pickedTitle ? 'مكرّس' : 'علماني'
+    const nextLaqab = pickedTitle
+    const combined = (nextPersonType === 'مكرّس' && nextLaqab.trim()) ? `${nextLaqab.trim()} ${base}` : base
     setBaseName(base)
-    onUpdate({ personId: p.person_id, name: combined, photo: p._photo || null, unregistered: false, personType, laqab, baseName: base })
+    setPersonType(nextPersonType)
+    setLaqab(nextLaqab)
+    onUpdate({ personId: p.person_id, name: combined, photo: p._photo || null, unregistered: false, personType: nextPersonType, laqab: nextLaqab, baseName: base })
     setNameQ(''); setRes([])
   }
 
   const pickUnregistered = (u) => {
     // u is an enriched unregistered record: { person_id, ar_first_name, ar_last_name, title, _photo, ... }
     const base = [u.ar_first_name, u.ar_second_name, u.ar_third_name, u.ar_last_name].filter(Boolean).join(' ')
-    const uType = 'علماني'  // personType is not stored in person record; treat all as علماني in tree
     const uLaqab = u.title || ''
+    const uType = uLaqab ? 'مكرّس' : 'علماني'
     setBaseName(base); setPersonType(uType); setLaqab(uLaqab)
     const combined = uLaqab ? `${uLaqab} ${base}` : base
     onUpdate({ name: combined, baseName: base, laqab: uLaqab, personType: uType,
@@ -1560,6 +1605,43 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
           </button>
         )}
 
+        {/* Visibility */}
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ fontSize:'0.78rem', fontWeight:700, color:'var(--gray-500)', display:'block', marginBottom:6 }}>الظهور</label>
+          <div style={{ display:'flex', gap:6 }}>
+            {[
+              { value: NODE_VISIBILITY_PUBLIC, label: 'عام', icon: Eye },
+              { value: NODE_VISIBILITY_ADMIN_ONLY, label: 'للمدراء فقط', icon: ShieldCheck },
+            ].map(option => {
+              const active = normalizeNodeVisibility(node.visibility) === option.value
+              const Icon = option.icon
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => onUpdate({ visibility: option.value })}
+                  style={{
+                    flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+                    padding:'8px 6px', borderRadius:'var(--radius-md)', fontSize:'0.82rem', fontWeight:700,
+                    cursor:'pointer', transition:'all 0.15s', fontFamily:'var(--font-body)',
+                    border: active ? '2px solid var(--navy)' : '2px solid var(--gray-200)',
+                    background: active ? 'var(--navy)' : 'white',
+                    color: active ? 'white' : 'var(--gray-500)',
+                  }}
+                >
+                  <Icon size={13}/>
+                  {option.label}
+                </button>
+              )
+            })}
+          </div>
+          {normalizeNodeVisibility(node.visibility) === NODE_VISIBILITY_ADMIN_ONLY && (
+            <div style={{ marginTop:5, fontSize:'0.72rem', color:'#92400e', background:'#fffbeb', border:'1px solid #fde68a', borderRadius:6, padding:'5px 8px' }}>
+              هذه العقدة مخفية عن غير المدراء.
+            </div>
+          )}
+        </div>
+
         {/* مكرّس / علماني toggle */}
         <div style={{ marginBottom: 12 }}>
           <label style={{ fontSize:'0.78rem', fontWeight:700, color:'var(--gray-500)', display:'block', marginBottom:6 }}>نوع الشخص</label>
@@ -1584,12 +1666,16 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
         {personType === 'مكرّس' && (
           <div style={{ marginBottom: 12 }}>
             <label style={{ fontSize:'0.78rem', fontWeight:700, color:'var(--gray-500)', display:'block', marginBottom:4 }}>اللقب</label>
-            <input
+            <select
               value={laqab}
               onChange={e => setLaqab(e.target.value)}
-              placeholder="مثال: الأخ، الأخت، الأب…"
               style={{ width:'100%', padding:'7px 10px', border:'1.5px solid var(--navy)', borderRadius:'var(--radius-md)', fontFamily:'var(--font-body)', fontSize:'0.85rem', direction:'rtl', textAlign:'right', color:'var(--gray-700)', boxSizing:'border-box', background:'#f8f9ff' }}
-            />
+            >
+              <option value="">اختر لقباً</option>
+              {personTitleOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
           </div>
         )}
 
@@ -1653,10 +1739,12 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
               return normalizeArabic(uBase.trim()) === norm
             }) : null
             if (existing) {
+              const existingTitle = existing.title || ''
               onUpdate({
                 unregistered: true, baseName: newBase,
                 unregisteredId: existing.person_id,
-                laqab: existing.title || laqab,
+                laqab: existingTitle,
+                personType: existingTitle ? 'مكرّس' : 'علماني',
               })
             } else {
               onUpdate({ unregistered: !node.personId, baseName: newBase })
@@ -2264,7 +2352,7 @@ function nodeToApi(node) {
   if (effectiveInCouncil(node)) hulls.push(COUNCIL_HULL_NAME)
   if (effectiveInGroup(node)) nodeGroupKeys(node).forEach(k => hulls.push(groupKeyLabel(k)))
   nodeExtraHullLabels(node).forEach(h => hulls.push(h))
-  return { ...rest, hulls: uniqueHullLabels(hulls) }
+  return { ...rest, visibility: normalizeNodeVisibility(rest.visibility), hulls: uniqueHullLabels(hulls) }
 }
 
 // Convert hulls[] from API load → inCouncil/inGroup flags
@@ -2274,6 +2362,7 @@ function nodeFromApi(node) {
   const autoGroupLabels = new Set(nodeRoleGroupKeys(rest).map(groupKeyLabel))
   return {
     ...rest,
+    visibility: normalizeNodeVisibility(rest.visibility),
     inCouncil: hulls.includes(COUNCIL_HULL_NAME),
     inGroup: hulls.some(h => autoGroupLabels.has(h)),
     extraHulls: hulls.filter(h => h !== COUNCIL_HULL_NAME && !autoGroupLabels.has(h)),
@@ -2356,10 +2445,19 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
   const groupLabelById = useMemo(() => {
     const out = {}
     for (const g of (groups || [])) {
-      if (g?.value) out[g.value] = g.label || g.value
+      if (g?.value) {
+        out[g.value] = g.label && !api.isRawYouthGroupIdentifier(g.label)
+          ? g.label
+          : api.formatYouthGroupLabel(g.value)
+      }
     }
     return out
   }, [groups])
+  const displayGroupLabel = useCallback((groupId, fallback = api.genericYouthGroupLabel) => {
+    const gid = String(groupId || '').trim()
+    if (!gid) return fallback
+    return groupLabelById[gid] || api.formatYouthGroupLabel(gid) || fallback
+  }, [groupLabelById])
 
   // ── Load groups + persons ──────────────────────────────────────────────────
   useEffect(() => {
@@ -2370,8 +2468,11 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
       }))
       setGroups(ys)
     }).finally(() => setLoadingGroups(false))
-    api.personsEnriched().then(p => setAllPersons(p))
-    api.getUnregistered().then(u => setAllUnregistered(u))
+    // personsEnriched and getUnregistered are only needed for the admin NodeEditor
+    if (!viewOnly) {
+      api.personsEnriched().then(p => setAllPersons(p))
+      api.getUnregistered().then(u => setAllUnregistered(u))
+    }
     api.getConfig()
       .then((cfg) => setDefaultJecYear(String(cfg?.config?.active_jec_year || '').trim()))
       .catch(() => setDefaultJecYear(''))
@@ -2513,9 +2614,11 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
     )
     if (!nodesNeedingLink.length) return currentNodes
 
-    // Re-fetch latest unregistered list (may have changed since page load)
+    // Re-fetch latest unregistered list (may have changed since page load) — admin only
     let latestUnreg = allUnregistered
-    try { latestUnreg = await api.getUnregistered() } catch { /* use cached */ }
+    if (!viewOnly) {
+      try { latestUnreg = await api.getUnregistered() } catch { /* use cached */ }
+    }
 
     // Separate: nodes we can auto-link by name vs. nodes that need a new record
     const autoLinked = {}   // nodeId → existing unregisteredId
@@ -2558,8 +2661,8 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
           return newUid ? { ...n, unregisteredId: newUid } : n
         })
       }
-      // Refresh the unregistered list so newly created/linked people appear in search
-      api.getUnregistered().then(u => setAllUnregistered(u)).catch(() => {})
+      // Refresh the unregistered list so newly created/linked people appear in search — admin only
+      if (!viewOnly) api.getUnregistered().then(u => setAllUnregistered(u)).catch(() => {})
     } catch { /* non-critical */ }
     setNodes(linkedNodes)
     return linkedNodes
@@ -2705,7 +2808,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
         y = parent.y + pH + V_GAP
       }
     }
-    const newNode = { id: newId, x, y, name: '', role: '', personId: null, unregistered: true, photo: null }
+    const newNode = { id: newId, x, y, name: '', role: '', personId: null, unregistered: true, photo: null, visibility: NODE_VISIBILITY_PUBLIC }
     setNodes(ns => [...ns, newNode])
     if (parentId) setEdges(es => [...es, { id: uid(), from: parentId, to: newId, type: 'hierarchy' }])
     setSelected(newId)
@@ -3029,7 +3132,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
       ctx.fillRect(0, 0, fullW, HEADER_H)
 
       // Header text — drawn by browser, so Arabic works perfectly
-      const groupLabel   = groupLabelById[selectedGroup] || selectedGroup || 'الهيكل التنظيمي'
+      const groupLabel   = displayGroupLabel(selectedGroup, 'الهيكل التنظيمي')
       const periodLabel  = currentPeriod
         ? `  •  ${currentPeriod.from_date || ''}${currentPeriod.to_date ? ' ← ' + currentPeriod.to_date : ' ← الآن'}`
         : ''
@@ -3082,20 +3185,20 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
       })
 
       doc.addImage(full.toDataURL('image/png'), 'PNG', 0, 0, pageW_mm, pageH_mm)
-      doc.save(`org-tree-${(groupLabelById[selectedGroup] || selectedGroup || 'tree').replace(/\s+/g, '-')}.pdf`)
+      doc.save(`org-tree-${displayGroupLabel(selectedGroup, 'tree').replace(/\s+/g, '-')}.pdf`)
 
     } catch (err) {
       console.error('PDF export failed:', err)
     }
     setExporting(false)
-  }, [nodes, selectedGroup, currentPeriod])
+  }, [nodes, selectedGroup, currentPeriod, displayGroupLabel])
 
   const filteredGroups = groups.filter(g => {
     // If allowedGroups is set (member view), only show those groups
     if (allowedGroups !== null) {
       if (!allowedGroups.includes(g.value)) return false
     }
-    const label = g.label || g.value
+    const label = g.label || api.formatYouthGroupLabel(g.value)
     return !groupSearch || normalizeArabic(label).includes(normalizeArabic(groupSearch))
   })
 
@@ -3138,7 +3241,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
                 onMouseEnter={e=>e.currentTarget.style.background='var(--gray-50)'}
                 onMouseLeave={e=>e.currentTarget.style.background='white'}>
                 <div>
-                  <div style={{ fontWeight:700, color:'var(--navy)', fontSize:'0.95rem' }}>{g.label || g.value}</div>
+                  <div style={{ fontWeight:700, color:'var(--navy)', fontSize:'0.95rem' }}>{g.label || api.formatYouthGroupLabel(g.value)}</div>
                   <div style={{ fontSize:'0.78rem', color:'var(--gray-400)', marginTop:2 }}>{g.count} عضو</div>
                 </div>
                 <ArrowRight size={16} style={{ color:'var(--gray-300)', transform:'rotate(180deg)' }}/>
@@ -3168,6 +3271,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
               if (data.period) setCurrentPeriod(data.period)
             })
           }}
+          viewOnly={viewOnly}
           onClose={() => setShowPeriodModal(false)}
         />
       )}
@@ -3188,12 +3292,12 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
       <div style={{ background:'white', border:'1px solid var(--gray-200)', borderRadius:'var(--radius-lg)', padding:'10px 16px', marginBottom:12, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
         {(!allowedGroups || allowedGroups.length > 1) && (
           <button onClick={() => { setGroup(''); setNodes([]); setEdges([]) }} className="btn btn-ghost btn-sm">
-            <ArrowRight size={14}/> {groupLabelById[selectedGroup] || selectedGroup}
+            <ArrowRight size={14}/> {displayGroupLabel(selectedGroup)}
           </button>
         )}
         {(!allowedGroups || allowedGroups.length > 1) && <div style={{ width:1, height:24, background:'var(--gray-200)' }}/>}
         {allowedGroups && allowedGroups.length === 1 && (
-          <span style={{ fontWeight:700, color:'var(--navy)', fontSize:'0.9rem' }}>{groupLabelById[selectedGroup] || selectedGroup}</span>
+          <span style={{ fontWeight:700, color:'var(--navy)', fontSize:'0.9rem' }}>{displayGroupLabel(selectedGroup)}</span>
         )}
 
         {/* Period badge */}

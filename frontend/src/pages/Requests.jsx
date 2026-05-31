@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, RefreshCw, ClipboardList, User, Users, Shield, ExternalLink } from 'lucide-react'
 import { api, getApiErrorMessage } from '../api.js'
+import { computePermissions, canApproveYG } from '../permissions.js'
 
 const STATUS_COLORS = {
   pending:  { bg: '#fffbeb', border: '#fde68a', text: '#92400e', icon: Clock,        label: 'قيد الانتظار' },
@@ -163,23 +164,18 @@ function PipelineCard({ pipeline, canAdminApprove, onAction, loading, currentUse
               </div>
               {(pipeline.yg_memberships || []).map((yg, i) => {
                 const ygStatus = yg.yg_approval_status || 'pending'
-                const canApproveThisYG = !isPendingUser && !isMyOwnRequest && (
-                  currentUser?.role === 'admin' ||
-                  (() => {
-                    const ca = currentUser?.council_access || {}
-                    const info = ca[yg.youth_group_id]
-                    if (!info) return false
-                    if (info.full_group) return true
-                    if (!yg.age_group) return (info.age_groups || []).length > 0
-                    return (info.age_groups || []).includes(yg.age_group)
-                  })()
-                )
+                const _perms = computePermissions(currentUser)
+                const canApproveThisYG = !isPendingUser && !isMyOwnRequest &&
+                  canApproveYG(_perms, yg.youth_group_id, yg.age_group)
+                const youthGroupName = yg.youth_group_name && !api.isRawYouthGroupIdentifier(yg.youth_group_name)
+                  ? yg.youth_group_name
+                  : api.formatYouthGroupLabel(yg.youth_group_id)
 
                 return (
                   <div key={i} style={{ background: '#f9fafb', borderRadius: 8, padding: '12px', marginBottom: 8, border: '1px solid #e2e6ef' }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0f2744' }}>{yg.youth_group_name || yg.youth_group_id}</div>
+                        <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0f2744' }}>{youthGroupName}</div>
                         {yg.age_group && <div style={{ fontSize: '0.75rem', color: '#9ba5bc', marginTop: 2 }}>الفئة: {yg.age_group}</div>}
                         {yg.yg_approved_by && (
                           <div style={{ fontSize: '0.73rem', color: '#9ba5bc', marginTop: 2 }}>
@@ -232,9 +228,7 @@ export default function Requests({ currentUser, toast, onViewProfile }) {
   const [actionLoading, setActionLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const isAdmin = currentUser?.role === 'admin'
-  const isPending = currentUser?.is_pending
-  const isCouncil = !isAdmin && Object.keys(currentUser?.council_access || {}).length > 0
+  const { isAdmin, isPendingUser: isPending, isCouncil } = computePermissions(currentUser)
 
   const loadRequests = async () => {
     setLoading(true); setError('')
