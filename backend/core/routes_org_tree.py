@@ -27,7 +27,9 @@ def _next_period_id() -> str:
     return f"OTPD{(max_n + 1):06d}"
 
 
-ORG_TREE_NODE_COLUMNS = ["period_id", "node_id", "person_id", "role"]
+NODE_VISIBILITY_PUBLIC = "public"
+NODE_VISIBILITY_ADMIN_ONLY = "admin_only"
+ORG_TREE_NODE_COLUMNS = ["period_id", "node_id", "person_id", "role", "visibility"]
 ORG_TREE_EDGE_COLUMNS = ["period_id", "from_node_id", "to_node_id", "edge_type"]
 ORG_TREE_HULL_COLUMNS = ["node_id", "hull"]
 ORG_TREE_NODE_ALL_COLUMNS = ORG_TREE_NODE_COLUMNS + ORG_TREE_SCD_COLUMNS
@@ -125,6 +127,42 @@ def _csv_number(value):
         return int(number) if number.is_integer() else number
     except Exception:
         return text
+
+
+def _normalize_node_visibility(value) -> str:
+    text = _none_if_blank(value)
+    if text is None:
+        return NODE_VISIBILITY_PUBLIC
+    normalized = text.strip().lower().replace("-", "_").replace(" ", "_")
+    if normalized in {"admin", "admins", "admin_only", "admins_only", "private"}:
+        return NODE_VISIBILITY_ADMIN_ONLY
+    return NODE_VISIBILITY_PUBLIC
+
+
+def _node_is_public(node: dict | None) -> bool:
+    return _normalize_node_visibility((node or {}).get("visibility")) == NODE_VISIBILITY_PUBLIC
+
+
+def _filter_tree_data_for_user(data: dict, user: dict | None = None) -> dict:
+    nodes = list((data or {}).get("nodes") or [])
+    edges = list((data or {}).get("edges") or [])
+
+    current_user = user if user is not None else _org_tree_current_user()
+    if current_user and current_user.get("role") == "admin":
+        return {"nodes": nodes, "edges": edges}
+
+    visible_nodes = [node for node in nodes if _node_is_public(node)]
+    visible_node_ids = {
+        str(node.get("id")).strip()
+        for node in visible_nodes
+        if node.get("id") is not None and str(node.get("id")).strip()
+    }
+    visible_edges = [
+        edge for edge in edges
+        if str(edge.get("from") or "").strip() in visible_node_ids
+        and str(edge.get("to") or "").strip() in visible_node_ids
+    ]
+    return {"nodes": visible_nodes, "edges": visible_edges}
 
 
 def _scd_timestamp() -> str:
@@ -282,6 +320,24 @@ def _changed_by_from_current_user() -> str:
     return str(person_id)
 
 
+def _ot_require_auth():
+    """Auth guard for org-tree routes. Uses lazy import to avoid circular dependency."""
+    try:
+        from core.routes_auth import exports as auth_exports
+        return auth_exports["_require_auth"]()
+    except Exception:
+        return None
+
+
+def _ot_require_admin():
+    """Admin guard for org-tree write routes. Uses lazy import to avoid circular dependency."""
+    try:
+        from core.routes_auth import exports as auth_exports
+        return auth_exports["_require_admin"]()
+    except Exception:
+        return None
+
+
 def _period_from_csv_record(row: dict) -> dict:
     return {
         "id": _none_if_blank(row.get("period_id")),
@@ -313,6 +369,7 @@ def _node_from_csv_record(row: dict) -> dict:
     role = _none_if_blank(row.get("role"))
     if role is not None:
         node["role"] = role
+    node["visibility"] = _normalize_node_visibility(row.get("visibility"))
     return node
 
 
@@ -322,6 +379,7 @@ def _node_to_csv_record(period_id: str, node: dict) -> dict:
         "node_id": _csv_value(node.get("id")),
         "person_id": _csv_value(node.get("personId")),
         "role": _csv_value(node.get("role")),
+        "visibility": _normalize_node_visibility(node.get("visibility")),
     }
 
 
@@ -579,6 +637,95 @@ def _find_period(periods: list, period_id: str):
     return next((p for p in (periods or []) if p.get("id") == period_id), None)
 
 
+def _active_period(periods: list) -> dict | None:
+    if not periods:
+        return None
+    active = next((p for p in periods if p.get("to_date") is None), None)
+    if active:
+        return active
+    return sorted(periods, key=lambda p: p.get("from_date") or "", reverse=True)[0]
+
+
+def _org_tree_current_user():
+    try:
+        from core.routes_auth import exports as auth_exports
+
+        return auth_exports["_current_user"]()
+    except Exception:
+        return None
+
+
+def _membership_row_is_active(row: dict) -> bool:
+    if _csv_bool(row.get("archived")) is True:
+        return False
+    status = _none_if_blank(row.get(S.YG_APPROVAL_STATUS_COL))
+    if status is None:
+        return True
+    return status.strip().lower() not in {
+        S.APPROVAL_STATUS_PENDING,
+        S.APPROVAL_STATUS_REJECTED,
+    }
+
+
+def _active_membership_group_ids_for_user(user: dict | None) -> set[str]:
+    if not user or user.get("role") != "member":
+        return set()
+    person_id = user.get("person_id")
+    if person_id is None or str(person_id).strip() == "":
+        return set()
+
+    person_type = user.get("person_type")
+    if person_type == "registered":
+        df = S._scd_filter_active(S.store.get(S.PERSON_YOUTH_GROUP_SHEET, pd.DataFrame()))
+    elif person_type == "unregistered":
+        df = S._scd_filter_active(S.unreg_store.get(S.PERSON_YOUTH_GROUP_SHEET, pd.DataFrame()))
+    else:
+        return set()
+
+    if df.empty or "person_id" not in df.columns or S.YOUTH_GROUP_ID_COL not in df.columns:
+        return set()
+
+    rows = df[df["person_id"].astype(str) == str(person_id)]
+    group_ids: set[str] = set()
+    for row in rows.replace({np.nan: None}).to_dict(orient="records"):
+        if not _membership_row_is_active(row):
+            continue
+        group_id = _none_if_blank(row.get(S.YOUTH_GROUP_ID_COL))
+        if group_id:
+            group_ids.add(_resolve_group_id(group_id))
+    return group_ids
+
+
+def _visible_periods_for_user(
+    group_ref: str,
+    periods: list,
+    *,
+    user: dict | None = None,
+    active_membership_group_ids: set[str] | None = None,
+) -> list:
+    current_user = user if user is not None else _org_tree_current_user()
+    if not current_user:
+        return []
+    if current_user.get("role") == "admin":
+        return list(periods or [])
+
+    group_id = _resolve_group_id(group_ref)
+    if group_id == GS_GROUP_ID:
+        return list(periods or [])
+
+    if current_user.get("role") == "member":
+        membership_group_ids = (
+            active_membership_group_ids
+            if active_membership_group_ids is not None
+            else _active_membership_group_ids_for_user(current_user)
+        )
+        if group_id in membership_group_ids:
+            return list(periods or [])
+
+    active = _active_period(periods or [])
+    return [active] if active else []
+
+
 def _load_index(group_name: str) -> list:
     group_id = _resolve_group_id(group_name)
     periods = _load_csv_index(group_id)
@@ -727,11 +874,12 @@ def _enrich_node_with_identity(node: dict, pid, unregistered: bool) -> dict:
                 return n
             base = _compose_base_name(row)
             photo_path, _ = S.get_photo_path(int(pid))
+            laqab = str(row.get("title") or "").strip()
             n["baseName"] = base
-            n["laqab"] = ""
-            n["personType"] = "علماني"
+            n["laqab"] = laqab
+            n["personType"] = "مكرّس" if laqab else "علماني"
             n["photo"] = f"/api/person/{pid}/photo" if photo_path else None
-            n["name"] = base
+            n["name"] = f"{laqab} {base}".strip() if laqab else base
             return n
 
         row = _UNREGISTERED_PERSON_ROWS.get(S._normalize_person_id(pid))
@@ -805,7 +953,7 @@ def _group_display_name(group_ref: str) -> str:
     group_id = _resolve_group_id(group_ref)
     if group_id == GS_GROUP_ID:
         return "الأمانة العامة"
-    return S.youth_group_name(group_id) or group_id
+    return S.youth_group_display_label(group_id)
 
 
 def _build_history_target_matcher(person_id=None, unregistered_id=None):
@@ -846,12 +994,26 @@ def _parse_group_refs(raw_group_ids: str | None) -> list[str]:
     return resolved
 
 
-def _load_history_trees(group_refs: list[str], person_id=None, unregistered_id=None) -> list[dict]:
+def _load_history_trees(
+    group_refs: list[str],
+    person_id=None,
+    unregistered_id=None,
+    *,
+    user: dict | None = None,
+    active_membership_group_ids: set[str] | None = None,
+) -> list[dict]:
     matches = []
     target_person_id = S._normalize_person_id(person_id) if person_id is not None and str(person_id).strip() != "" else None
     target_unregistered_id = S._normalize_person_id(unregistered_id) if unregistered_id is not None and str(unregistered_id).strip() != "" else None
+    target_matches = _build_history_target_matcher(person_id=person_id, unregistered_id=unregistered_id)
     for group_ref in group_refs:
-        periods = _load_index(group_ref)
+        all_periods = _load_index(group_ref)
+        periods = _visible_periods_for_user(
+            group_ref,
+            all_periods,
+            user=user,
+            active_membership_group_ids=active_membership_group_ids,
+        )
         if not periods:
             continue
 
@@ -864,21 +1026,18 @@ def _load_history_trees(group_refs: list[str], person_id=None, unregistered_id=N
                 continue
 
             period_cache = _period_cache_entry(group_id, period_id)
-            if target_unregistered_id is not None:
-                if str(target_unregistered_id) not in period_cache["unregistered_ids"]:
-                    continue
-            elif target_person_id is not None:
-                if str(target_person_id) not in period_cache["person_ids"]:
-                    continue
-            else:
+            visible_tree = _filter_tree_data_for_user(period_cache, user)
+            if target_unregistered_id is None and target_person_id is None:
+                continue
+            if not any(target_matches(node) for node in visible_tree["nodes"]):
                 continue
 
             matches.append({
                 "groupId": group_id,
                 "groupName": group_name,
                 "period": _period_for_response(period),
-                "nodes": period_cache["nodes"],
-                "edges": period_cache["edges"],
+                "nodes": visible_tree["nodes"],
+                "edges": visible_tree["edges"],
             })
 
     return matches
@@ -911,7 +1070,7 @@ def _delete_tree_data(group_name: str, period_id: str, *, changed_by: str = "adm
     _delete_csv_tree_data(group_id, period_id, changed_by=changed_by)
 
 
-def build_person_org_tree_index() -> tuple[dict, dict]:
+def build_person_org_tree_index(*, include_admin_only: bool = True) -> tuple[dict, dict]:
     """Return (org_map, gs_map) for member-page filtering.
 
     org_map: str(person_id) → {"groups": [...], "jec_years": [...], "roles": [...]}
@@ -936,6 +1095,8 @@ def build_person_org_tree_index() -> tuple[dict, dict]:
     gs_map: dict[str, dict] = {}
 
     for row in _read_csv_records(ORG_TREE_NODES_CSV, ORG_TREE_NODE_COLUMNS):
+        if not include_admin_only and not _node_is_public(row):
+            continue
         raw_pid = _none_if_blank(row.get("person_id"))
         if not raw_pid:
             continue
@@ -959,7 +1120,7 @@ def build_person_org_tree_index() -> tuple[dict, dict]:
         else:
             entry = org_map.setdefault(pid_key, {"groups": set(), "jec_years": set(), "roles": set()})
             if group_id:
-                entry["groups"].add(S.youth_group_name(group_id) or group_id)
+                entry["groups"].add(S.youth_group_display_label(group_id))
             if jec_year:
                 entry["jec_years"].add(jec_year)
             if role:
@@ -994,54 +1155,83 @@ def register_org_tree_routes(app):
         if err:
             return err
 
+        user = _org_tree_current_user()
+        active_group_ids = _active_membership_group_ids_for_user(user)
         group_refs = _parse_group_refs(request.args.get("group_ids"))
-        history = _load_history_trees(group_refs, person_id=person_id, unregistered_id=unregistered_id)
+        history = _load_history_trees(
+            group_refs,
+            person_id=person_id,
+            unregistered_id=unregistered_id,
+            user=user,
+            active_membership_group_ids=active_group_ids,
+        )
         return jsonify({"items": history})
 
     @app.get("/api/org-tree/<path:group_name>/periods")
     def get_org_tree_periods(group_name):
+        err = _ot_require_auth()
+        if err:
+            return err
         periods = _load_index(group_name)
-        return jsonify(_periods_for_response(periods))
+        visible_periods = _visible_periods_for_user(group_name, periods)
+        return jsonify(_periods_for_response(visible_periods))
 
     @app.get("/api/org-tree/<path:group_name>/<period_id>")
     def get_org_tree_period(group_name, period_id):
+        err = _ot_require_auth()
+        if err:
+            return err
         periods = _load_index(group_name)
+        visible_periods = _visible_periods_for_user(group_name, periods)
         period = _find_period(periods, period_id)
+        if period and not _find_period(visible_periods, period_id):
+            return jsonify({"error": "forbidden"}), 403
         if not _tree_period_exists(group_name, period_id):
             return jsonify({"nodes": [], "edges": [], "period": _period_for_response(period) if period else None}), 404
         cached = _period_cache_entry(group_name, period_id)
-        return jsonify({"nodes": cached["nodes"], "edges": cached["edges"], "period": _period_for_response(period) if period else None})
+        visible_tree = _filter_tree_data_for_user(cached)
+        return jsonify({"nodes": visible_tree["nodes"], "edges": visible_tree["edges"], "period": _period_for_response(period) if period else None})
 
     @app.get("/api/org-tree/<path:group_name>")
     def get_org_tree(group_name):
+        err = _ot_require_auth()
+        if err:
+            return err
         period_id = request.args.get("period_id")
         if period_id:
             periods = _load_index(group_name)
+            visible_periods = _visible_periods_for_user(group_name, periods)
             period = _find_period(periods, period_id)
+            if period and not _find_period(visible_periods, period_id):
+                return jsonify({"error": "forbidden"}), 403
             if not _tree_period_exists(group_name, period_id):
-                return jsonify({"nodes": [], "edges": [], "period": _period_for_response(period) if period else None, "periods": _periods_for_response(periods)})
+                return jsonify({"nodes": [], "edges": [], "period": _period_for_response(period) if period else None, "periods": _periods_for_response(visible_periods)})
             cached = _period_cache_entry(group_name, period_id)
-            payload = {"nodes": cached["nodes"], "edges": cached["edges"], "period": _period_for_response(period) if period else None}
-            payload["periods"] = _periods_for_response(periods)
+            visible_tree = _filter_tree_data_for_user(cached)
+            payload = {"nodes": visible_tree["nodes"], "edges": visible_tree["edges"], "period": _period_for_response(period) if period else None}
+            payload["periods"] = _periods_for_response(visible_periods)
             return jsonify(payload)
 
         periods = _load_index(group_name)
-        if not periods:
+        visible_periods = _visible_periods_for_user(group_name, periods)
+        if not visible_periods:
             return jsonify({"nodes": [], "edges": [], "period": None, "periods": []})
 
-        active = next((p for p in periods if p.get("to_date") is None), None)
-        if not active:
-            active = sorted(periods, key=lambda p: p.get("from_date") or "", reverse=True)[0]
+        active = _active_period(visible_periods)
 
         if not _tree_period_exists(group_name, active["id"]):
-            return jsonify({"nodes": [], "edges": [], "period": _period_for_response(active), "periods": _periods_for_response(periods)})
+            return jsonify({"nodes": [], "edges": [], "period": _period_for_response(active), "periods": _periods_for_response(visible_periods)})
         cached = _period_cache_entry(group_name, active["id"])
-        data = {"nodes": cached["nodes"], "edges": cached["edges"], "period": _period_for_response(active)}
-        data["periods"] = _periods_for_response(periods)
+        visible_tree = _filter_tree_data_for_user(cached)
+        data = {"nodes": visible_tree["nodes"], "edges": visible_tree["edges"], "period": _period_for_response(active)}
+        data["periods"] = _periods_for_response(visible_periods)
         return jsonify(data)
 
     @app.put("/api/org-tree/<path:group_name>")
     def put_org_tree(group_name):
+        err = _ot_require_admin()
+        if err:
+            return err
         body = request.json or {}
         changed_by = _changed_by_from_current_user()
         periods = _load_index(group_name)
@@ -1127,6 +1317,9 @@ def register_org_tree_routes(app):
 
     @app.route("/api/org-tree/<path:group_name>/period/<period_id>", methods=["PATCH"])
     def patch_org_tree_period(group_name, period_id):
+        err = _ot_require_admin()
+        if err:
+            return err
         body = request.json or {}
         changed_by = _changed_by_from_current_user()
         periods = _load_index(group_name)
@@ -1159,6 +1352,9 @@ def register_org_tree_routes(app):
 
     @app.route("/api/org-tree/<path:group_name>/period/<period_id>", methods=["DELETE"])
     def delete_org_tree_period(group_name, period_id):
+        err = _ot_require_admin()
+        if err:
+            return err
         changed_by = _changed_by_from_current_user()
         periods = _load_index(group_name)
         target = next((p for p in periods if p["id"] == period_id), None)

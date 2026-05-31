@@ -175,7 +175,7 @@ def _build_registration_pipeline(person_id: int) -> dict:
             yg_memberships.append({
                 "record_id": str(r.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL) or ""),
                 "youth_group_id": yg_id,
-                "youth_group_name": S.youth_group_name(yg_id) or yg_id,
+                "youth_group_name": S.youth_group_display_label(yg_id),
                 "age_group": age_group,
                 "yg_approval_status": yg_status,
                 "yg_approved_by": yg_by,

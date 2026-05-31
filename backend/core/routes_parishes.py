@@ -85,7 +85,7 @@ def _youth_groups_by_parish() -> dict[str, list[dict]]:
         if not parish_id or not group_id:
             continue
 
-        group_name = _clean_text(S.youth_group_name(group_id) or group_id)
+        group_name = _clean_text(S.youth_group_display_label(group_id))
         out.setdefault(parish_id, []).append({
             "group_id": group_id,
             "group_name": group_name,

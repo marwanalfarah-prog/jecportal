@@ -661,7 +661,7 @@ def _serialize_motto(row: dict) -> dict:
     target = item.get("targets") if isinstance(item.get("targets"), dict) else {}
     youth_groups = []
     for gid in target.get("youth_groups", []):
-        name = S.youth_group_name(gid) or gid
+        name = S.youth_group_display_label(gid)
         youth_groups.append({"group_id": gid, "group_name": name})
     item["targets_meta"] = {
         "jec_jordan": bool(target.get("jec_jordan") or False),
@@ -991,7 +991,7 @@ def _youth_group_scope_options() -> list[dict]:
             continue
         options.append({
             "group_id": gid,
-            "group_name": label or gid,
+            "group_name": label or S.youth_group_display_label(gid),
         })
     return options
 

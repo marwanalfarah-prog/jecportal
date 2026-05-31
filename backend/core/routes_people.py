@@ -10,10 +10,13 @@ from flask import jsonify, request, send_from_directory
 from core import state as S
 from core.database import SCD_LOGICAL_SHEETS as _SCD_LOGICAL_SHEETS
 from core.database import logical_sheet_name as _logical_sheet_name
+import core.privilege_store as PS
 from core.routes_auth import (
     _current_user,
     _deactivate_auth_users_for_person,
     _get_council_access,
+    _get_council_accessible_persons,
+    _get_org_tree_descendants,
     _get_person_youth_groups,
     _require_admin,
     _require_auth,
@@ -1026,6 +1029,7 @@ def profile_edit_scope(person_type: str, pid):
 
 
 def _profile_group_ids(person_type: str, pid) -> set[str]:
+    """Return all youth-group IDs the person belongs to (active memberships + responsibilities)."""
     groups: set[str] = set()
     if person_type not in {"registered", "unregistered"}:
         return groups
@@ -1034,24 +1038,49 @@ def _profile_group_ids(person_type: str, pid) -> set[str]:
     compare_as_string = person_type == "unregistered"
 
     for sheet in ("person_youth_group", "responsibilities"):
-        df = store.get(sheet, pd.DataFrame())
+        df = S._scd_filter_active(store.get(sheet, pd.DataFrame()))
         if df.empty or "person_id" not in df.columns or S.YOUTH_GROUP_ID_COL not in df.columns:
             continue
-
-        if compare_as_string:
-            rows = df[df["person_id"].astype(str) == str(pid)]
-        else:
-            rows = df[df["person_id"] == pid]
-
+        rows = df[df["person_id"].astype(str) == str(pid)] if compare_as_string else df[df["person_id"] == pid]
         for value in rows[S.YOUTH_GROUP_ID_COL].dropna().astype(str):
-            group_id = value.strip()
-            if group_id:
-                groups.add(group_id)
+            gid = value.strip()
+            if gid:
+                groups.add(gid)
 
     return groups
 
 
+def _profile_age_groups_in_group(person_type: str, pid, group_id: str) -> set[str]:
+    """Return the person's current age groups within a specific youth group."""
+    ages: set[str] = set()
+    store = S.store if person_type == "registered" else S.unreg_store
+    compare_as_string = person_type == "unregistered"
+
+    pyg = S._scd_filter_active(store.get("person_youth_group", pd.DataFrame()))
+    if pyg.empty or "person_id" not in pyg.columns or S.YOUTH_GROUP_ID_COL not in pyg.columns:
+        return ages
+
+    rows = pyg[pyg["person_id"].astype(str) == str(pid)] if compare_as_string else pyg[pyg["person_id"] == pid]
+    rows = rows[rows[S.YOUTH_GROUP_ID_COL].astype(str).str.strip() == group_id]
+
+    if "age_group" in rows.columns:
+        for ag in rows["age_group"].dropna().astype(str):
+            ag = ag.strip()
+            if ag:
+                ages.add(ag)
+    return ages
+
+
 def profile_view_scope(person_type: str, pid):
+    """
+    Determine what level of profile access the current user has for person (person_type, pid).
+
+    Returns:
+      "full"     — admin, unrestricted
+      "self"     — viewing own profile
+      "scoped"   — council or org-tree access (may be read-restricted)
+      None       — no access
+    """
     user = _current_user()
     if not user:
         return None
@@ -1065,14 +1094,42 @@ def profile_view_scope(person_type: str, pid):
     if user.get("role") != "member":
         return None
 
-    youth_groups = _get_person_youth_groups(user.get("person_type"), user.get("person_id"))
-    council_access = _get_council_access(user.get("person_type"), user.get("person_id"), youth_groups)
-    accessible_group_ids = {str(group_id).strip() for group_id in council_access.keys() if str(group_id).strip()}
-    if not accessible_group_ids:
+    user_person_type = user.get("person_type")
+    user_person_id   = user.get("person_id")
+    username         = user.get("username", "")
+
+    if not user_person_type or user_person_id is None:
         return None
 
-    if accessible_group_ids & _profile_group_ids(person_type, pid):
-        return "scoped"
+    youth_groups    = _get_person_youth_groups(user_person_type, user_person_id)
+    computed_council = _get_council_access(user_person_type, user_person_id, youth_groups)
+    # Apply PrivilegeManager overrides so they are respected here too
+    council_access  = PS.apply_overrides(username, computed_council)
+
+    # ── Council access — age-group specific ──────────────────────────────────
+    if council_access:
+        target_groups = _profile_group_ids(person_type, pid)
+        for group_id, info in council_access.items():
+            if group_id not in target_groups:
+                continue
+            if info.get("full_group"):
+                return "scoped"
+            # Age-group specific: the person must be in one of the allowed age groups
+            allowed_ages = set(info.get("age_groups") or [])
+            if allowed_ages:
+                person_ages = _profile_age_groups_in_group(person_type, pid, group_id)
+                if person_ages & allowed_ages:
+                    return "scoped"
+
+    # ── Org-tree hierarchy ───────────────────────────────────────────────────
+    try:
+        descendants = _get_org_tree_descendants(user_person_type, user_person_id, youth_groups)
+        pid_str = str(pid)
+        if any(str(d.get("person_id")) == pid_str and d.get("person_type") == person_type
+               for d in descendants):
+            return "scoped"
+    except Exception:
+        pass
 
     return None
 
@@ -1382,7 +1439,7 @@ def _build_people_location_rows(persons_df: pd.DataFrame, addresses_df: pd.DataF
         age_groups = []
         for membership in memberships:
             youth_group_id = membership.get("youth_group_id")
-            youth_group_name = S.youth_group_name(youth_group_id) or youth_group_id
+            youth_group_name = S.youth_group_display_label(youth_group_id)
             if youth_group_name and youth_group_name not in youth_groups:
                 youth_groups.append(youth_group_name)
             age_group = membership.get("age_group")
@@ -1484,6 +1541,9 @@ def _active_registered_membership_df() -> pd.DataFrame:
 def register_registered_routes(app):
     @app.get("/api/stats")
     def stats():
+        err = _require_admin()
+        if err:
+            return err
         persons = _active_registered_persons_df()
         pyg = _active_registered_membership_df()
         higher_education = _filter_to_active_registered_people(S._sheet_for_registered("higher_education"))
@@ -1503,18 +1563,27 @@ def register_registered_routes(app):
 
     @app.get("/api/chart/governorate")
     def chart_gov():
+        err = _require_admin()
+        if err:
+            return err
         data = _active_registered_persons_df()["governorate"].value_counts().reset_index()
         data.columns = ["label", "value"]
         return jsonify(S.df_to_json(data))
 
     @app.get("/api/chart/gender")
     def chart_gender():
+        err = _require_admin()
+        if err:
+            return err
         data = _active_registered_persons_df()["gender"].value_counts().reset_index()
         data.columns = ["label", "value"]
         return jsonify(S.df_to_json(data))
 
     @app.get("/api/chart/youth_group")
     def chart_yg():
+        err = _require_admin()
+        if err:
+            return err
         pyg = _active_registered_membership_df()
         if pyg.empty or S.YOUTH_GROUP_ID_COL not in pyg.columns:
             return jsonify([])
@@ -1528,27 +1597,37 @@ def register_registered_routes(app):
             .reset_index()
         )
         data.columns = ["group_id", "value"]
-        data["label"] = data["group_id"].apply(lambda gid: S.youth_group_name(gid) or gid)
+        data["label"] = data["group_id"].apply(lambda gid: S.youth_group_display_label(gid))
         data = data[["label", "value", "group_id"]]
         return jsonify(S.df_to_json(data))
 
     @app.get("/api/chart/age_group")
     def chart_ag():
+        err = _require_admin()
+        if err:
+            return err
         data = _active_registered_membership_df()["age_group"].value_counts().reset_index()
         data.columns = ["label", "value"]
         return jsonify(S.df_to_json(data))
 
     @app.get("/api/persons/enriched")
     def get_persons_enriched():
+        err = _require_auth()   # non-admins get filtered to their accessible persons
+        if err:
+            return err
+        user = _current_user()
         cached_payload, cached_version, data_version = S.cache_state()
         if cached_payload is not None and cached_version == data_version:
-            return jsonify(cached_payload)
+            return jsonify(_filter_person_list(cached_payload, user))
         payload = S.build_enriched()
         S.set_enriched_cache(payload, data_version)
-        return jsonify(payload)
+        return jsonify(_filter_person_list(payload, user))
 
     @app.get("/api/persons/members-index")
     def get_persons_members_index():
+        err = _require_auth()
+        if err:
+            return err
         cached_payload, cached_version, data_version = S.members_index_cache_state()
         if cached_payload is not None and cached_version == data_version:
             return jsonify(cached_payload)
@@ -1558,6 +1637,9 @@ def register_registered_routes(app):
 
     @app.get("/api/filters")
     def filters():
+        err = _require_auth()
+        if err:
+            return err
         persons = S._registered_persons_df()
         pyg = S._sheet_for_registered("person_youth_group")
         resp = S._sheet_for_registered("responsibilities")
@@ -1590,7 +1672,7 @@ def register_registered_routes(app):
             seen_youth_group_ids.add(group_id)
             youth_group_counts.append({
                 "value": group_id,
-                "label": S.youth_group_name(group_id) or str(option.get("label") or group_id),
+                "label": S.youth_group_display_label(group_id) or str(option.get("label") or ""),
                 "count": youth_group_count_map.get(group_id, 0),
             })
 
@@ -1599,7 +1681,7 @@ def register_registered_routes(app):
                 continue
             youth_group_counts.append({
                 "value": group_id,
-                "label": S.youth_group_name(group_id) or group_id,
+                "label": S.youth_group_display_label(group_id),
                 "count": count,
             })
 
@@ -1682,10 +1764,31 @@ def register_registered_routes(app):
                     return set()
                 return set(pyg[pyg[S.YOUTH_GROUP_ID_COL].astype(str).isin(group_ids)]["person_id"].astype(str))
 
-            # Accessible = own groups + council groups (all community members)
+            # Accessible = own groups + all council groups (shows name on calendar)
             accessible_pids = pids_in_groups(all_group_ids) | ({own_pid_str} if own_pid_str else set())
-            # Viewable = council groups + self (can click through to profile)
-            viewable_pids   = pids_in_groups(council_group_ids) | ({own_pid_str} if own_pid_str else set())
+
+            # Viewable = can click through to profile.
+            # Respects age-group specificity for council access (not just any group member).
+            viewable_pids: set[str] = ({own_pid_str} if own_pid_str else set())
+            # Apply privilege overrides to get the effective council access
+            effective_council = PS.apply_overrides(user.get("username", ""), council_access)
+            for group_id, info in effective_council.items():
+                if info.get("full_group"):
+                    viewable_pids |= pids_in_groups({group_id})
+                else:
+                    allowed_ages = set(info.get("age_groups") or [])
+                    if allowed_ages and not pyg.empty and S.YOUTH_GROUP_ID_COL in pyg.columns and "age_group" in pyg.columns:
+                        mask = (pyg[S.YOUTH_GROUP_ID_COL].astype(str) == group_id) & pyg["age_group"].isin(allowed_ages)
+                        viewable_pids |= set(pyg[mask]["person_id"].astype(str))
+            # Org-tree descendants are also viewable
+            try:
+                for d in _get_org_tree_descendants(person_type, person_id, youth_groups):
+                    if d.get("person_type") == "registered":
+                        d_pid = str(d.get("person_id", "")).strip()
+                        if d_pid:
+                            viewable_pids.add(d_pid)
+            except Exception:
+                pass
 
         valid = valid[valid_pid_strs.isin(accessible_pids)]
 
@@ -2119,13 +2222,19 @@ def register_registered_routes(app):
 
     @app.patch("/api/person/<int:pid>/archive")
     def archive_person(pid):
-        err = _require_admin()
-        if err:
-            return err
+        user = _current_user()
+        if not user:
+            return jsonify({"error": "unauthorized"}), 401
         body = request.json or {}
         youth_group_ids = _request_youth_group_ids(body)
         if not youth_group_ids:
             return jsonify({"error": "youth_group_id is required"}), 400
+        # Council members may archive from groups they manage
+        if user.get("role") != "admin":
+            council = user.get("council_access") or {}
+            for gid in youth_group_ids:
+                if gid not in council:
+                    return jsonify({"error": "forbidden — no council access to group"}), 403
 
         with S.lock:
             err = update_profile_membership_archive_state(
@@ -2212,17 +2321,62 @@ def _validate_promote_record(record):
     return errors
 
 
+def _council_and_descendants_ids(user: dict, person_type: str) -> set[str]:
+    """
+    Return the set of person_id strings of a given person_type that this
+    non-admin user can access via council access (age-group specific) or
+    org-tree descendant relationships.
+    """
+    accessible: set[str] = set()
+    pt = user.get("person_type")
+    pid = user.get("person_id")
+    username = user.get("username", "")
+    if not pt or pid is None:
+        return accessible
+    youth_groups     = _get_person_youth_groups(pt, pid)
+    computed_council = _get_council_access(pt, pid, youth_groups)
+    council          = PS.apply_overrides(username, computed_council)
+    for a in _get_council_accessible_persons(council):
+        if a.get("person_type") == person_type:
+            accessible.add(str(a["person_id"]).strip())
+    for d in _get_org_tree_descendants(pt, pid, youth_groups):
+        if d.get("person_type") == person_type:
+            accessible.add(str(d["person_id"]).strip())
+    return accessible
+
+
+def _filter_person_list(payload: list, user: dict, person_type: str = "registered") -> list:
+    """Filter a list of person records to only those the user has access to."""
+    if not payload:
+        return []
+    if user.get("role") == "admin":
+        return payload
+    ids = _council_and_descendants_ids(user, person_type)
+    if not ids:
+        return []
+    return [r for r in payload if str(r.get("person_id", "")).strip() in ids]
+
+
+def _filter_unreg_list(enriched: list, user: dict):
+    """Return only the unregistered records the user is allowed to see."""
+    return _filter_person_list(enriched or [], user, "unregistered")
+
+
 def register_unregistered_routes(app):
     @app.get("/api/unregistered")
     def get_unregistered():
+        err = _require_auth()   # All authenticated users may call; non-admins get filtered results
+        if err:
+            return err
+        user = _current_user()
         cached_payload, cached_version, data_version = S.unreg_index_cache_state()
         if cached_payload is not None and cached_version == data_version:
-            return jsonify(cached_payload)
+            return jsonify(_filter_unreg_list(cached_payload, user))
 
         with S.unreg_lock:
             cached_payload, cached_version, data_version = S.unreg_index_cache_state()
             if cached_payload is not None and cached_version == data_version:
-                return jsonify(cached_payload)
+                return jsonify(_filter_unreg_list(cached_payload, user))
             persons_df = S._project_primary_addresses(
                 S.unregistered_persons_view_df(),
                 S._scd_filter_active(S.unreg_store.get("addresses", pd.DataFrame())),
@@ -2414,7 +2568,10 @@ def register_unregistered_routes(app):
                         _age_hist_lookup.setdefault(_r, set()).add(_g)
 
             from core.routes_org_tree import build_person_org_tree_index as _build_org_tree_index
-            _org_tree_map, _gs_tree_map = _build_org_tree_index()
+            _org_tree_user = _current_user()
+            _org_tree_map, _gs_tree_map = _build_org_tree_index(
+                include_admin_only=bool(_org_tree_user and _org_tree_user.get("role") == "admin")
+            )
 
             photo_ids: set[str] = set()
             try:
@@ -2441,7 +2598,7 @@ def register_unregistered_routes(app):
                 yg_ids = [entry["youth_group_id"] for entry in active_youth_rows]
                 archived_yg_ids = [entry["youth_group_id"] for entry in archived_youth_rows]
                 row["_youth_group_ids"] = yg_ids
-                row["_youth_groups"] = [S.youth_group_name(gid) or gid for gid in yg_ids]
+                row["_youth_groups"] = [S.youth_group_display_label(gid) for gid in yg_ids]
                 row["_age_groups"] = [entry["age_group"] for entry in active_youth_rows]
                 _prev_age_set = set()
                 for _entry in active_youth_rows:
@@ -2453,7 +2610,7 @@ def register_unregistered_routes(app):
                 row["_prev_age_groups"] = sorted(_prev_age_set)
                 row["_youth_join_years"] = [entry["youth_join_year"] for entry in active_youth_rows]
                 row["_archived_youth_group_ids"] = archived_yg_ids
-                row["_archived_youth_groups"] = [S.youth_group_name(gid) or gid for gid in archived_yg_ids]
+                row["_archived_youth_groups"] = [S.youth_group_display_label(gid) for gid in archived_yg_ids]
                 row["_archived_age_groups"] = [entry["age_group"] for entry in archived_youth_rows]
                 row["_archived_youth_join_years"] = [entry["youth_join_year"] for entry in archived_youth_rows]
                 statuses_yic = []
@@ -2469,7 +2626,7 @@ def register_unregistered_routes(app):
                 row["_gs_tree_roles"] = _gs.get("roles", [])
                 ryg_ids = ryg_id_map.get(uid, [])
                 row["_responsibility_youth_group_ids"] = ryg_ids
-                row["_responsibility_youth_groups"] = [S.youth_group_name(gid) or gid for gid in ryg_ids]
+                row["_responsibility_youth_groups"] = [S.youth_group_display_label(gid) for gid in ryg_ids]
                 row["_responsibility_jec_years"] = ryear_map.get(uid, [])
                 row["_responsibility_current_states"] = [
                     "حاليًّا" if S._to_bool(value) else "سابقًا"
@@ -2517,7 +2674,7 @@ def register_unregistered_routes(app):
                 enriched.append(row)
 
             S.set_unreg_index_cache(enriched, data_version)
-        return jsonify(enriched)
+        return jsonify(_filter_unreg_list(enriched, user))
 
     @app.get("/api/unregistered/<uid>")
     def get_unregistered_profile(uid):

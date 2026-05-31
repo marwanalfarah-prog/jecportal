@@ -6,6 +6,7 @@ import pandas as pd
 from flask import jsonify, request
 
 from core import state as S
+import core.privilege_store as PS
 from core.routes_auth import (
     _changed_by_user_id,
     _current_user,
@@ -108,23 +109,34 @@ def _get_all_registration_requests() -> list[dict]:
 
 
 def _get_user_council_access(user: dict) -> dict:
-    """Compute council_access for a raw auth user (not stored in session)."""
+    """
+    Compute effective council_access for a user, including privilege overrides.
+    This is used as a fallback when council_access is not already on the user dict.
+    """
     person_type = user.get("person_type")
-    person_id = user.get("person_id")
+    person_id   = user.get("person_id")
+    username    = user.get("username", "")
     if not person_type or person_id is None:
         return {}
     try:
         from core.routes_auth import _get_person_youth_groups as _gyg
         youth_groups = _gyg(person_type, person_id)
-        return _get_council_access(person_type, person_id, youth_groups)
+        computed = _get_council_access(person_type, person_id, youth_groups)
+        # Apply PrivilegeManager overrides so they take effect here too
+        return PS.apply_overrides(username, computed)
     except Exception:
         return {}
 
 
 def _can_approve_yg(user: dict, youth_group_id: str, age_group: str | None = None) -> bool:
-    """Check if the user has council access to approve a YG membership."""
+    """
+    Central check: can this user approve/reject a YG membership request?
+    Respects privilege overrides managed through PrivilegeManager.
+    Called by all request approval/rejection endpoints.
+    """
     if user.get("role") == "admin":
         return True
+    # council_access on a session user already has overrides applied (routes_auth.py)
     council = user.get("council_access") or _get_user_council_access(user)
     if youth_group_id in council:
         info = council[youth_group_id]
@@ -292,7 +304,7 @@ def register_requests_routes(app):
                 age_group = str(yg_row.get("age_group") or "")
                 record_id = str(yg_row.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL) or "")
                 approvers = _get_yg_approvers(yg_id, age_group or None)
-                yg_name = S.youth_group_name(yg_id) or yg_id
+                yg_name = S.youth_group_display_label(yg_id)
                 for approver in approvers:
                     a_pid = str(approver.get("person_id") or "")
                     if a_pid in seen_approver_pids:
@@ -418,7 +430,7 @@ def register_requests_routes(app):
                             user["account_status"] = "active"
                 _save_auth(auth_data)
 
-        yg_name = S.youth_group_name(yg_id) or yg_id
+        yg_name = S.youth_group_display_label(yg_id)
         display_name = _get_person_display_name(person_id)
 
         # Notify user
@@ -495,7 +507,7 @@ def register_requests_routes(app):
                                 user["rejection_reason"] = notes
                     _save_auth(auth_data)
 
-        yg_name = S.youth_group_name(yg_id) or yg_id
+        yg_name = S.youth_group_display_label(yg_id)
 
         # Notify user
         msg = f"تم رفض طلب انضمامك إلى {yg_name}."

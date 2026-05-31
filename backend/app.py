@@ -15,6 +15,7 @@ from core.routes_parishes import register_churches_routes
 from core.routes_bible_reader import register_bible_reader_routes
 from core.routes_registration import register_registration_routes
 from core.routes_requests import register_requests_routes
+from core.routes_privileges import register_privileges_routes
 
 
 app = Flask(__name__)
@@ -37,6 +38,7 @@ register_churches_routes(app)
 register_bible_reader_routes(app)
 register_registration_routes(app)
 register_requests_routes(app)
+register_privileges_routes(app)
 
 
 @app.get("/api/logo")

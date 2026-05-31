@@ -775,7 +775,7 @@ def _churches_for_parish(parish_id: str | None) -> list[dict]:
 
 
 def _group_meta(group_id: str) -> dict:
-    label = S.youth_group_name(group_id) or group_id
+    label = S.youth_group_display_label(group_id)
     parish_map = _parish_by_id()
     meta = {
         "group_id": group_id,
@@ -1067,7 +1067,7 @@ def register_youth_group_routes(app):
             active_special_logo_url = _effective_group_special_logo_url(gid, meta, only_if_active=True)
             groups.append({
                 "group_id": gid,
-                "group_name": opt.get("label") or gid,
+                "group_name": opt.get("label") or S.youth_group_display_label(gid),
                 "logo_url": logo_url,
                 "special_logo_url": special_logo_url,
                 "active_special_logo_url": active_special_logo_url,

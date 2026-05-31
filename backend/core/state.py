@@ -6335,6 +6335,36 @@ def youth_group_name(group_ref) -> str | None:
 
 
 
+GENERIC_YOUTH_GROUP_LABEL = "الشبيبة"
+GENERAL_SECRETARIAT_LABEL = "الأمانة العامة"
+
+
+def youth_group_display_label(group_ref, fallback: str | None = GENERIC_YOUTH_GROUP_LABEL) -> str | None:
+
+    ref = _normalize_text(group_ref)
+
+    if not ref:
+
+        return fallback
+
+    if ref == "GS":
+
+        return GENERAL_SECRETARIAT_LABEL
+
+    name = youth_group_name(ref)
+
+    if name and not _is_group_id(name) and name != "GS":
+
+        return name
+
+    if _is_group_id(ref):
+
+        return fallback
+
+    return name or fallback
+
+
+
 
 
 def youth_group_id(group_ref, create: bool = False) -> str | None:
@@ -9826,7 +9856,7 @@ def build_enriched():
 
         row["_youth_group_ids"] = yg_ids
 
-        row["_youth_groups"] = [youth_group_name(gid) or gid for gid in yg_ids]
+        row["_youth_groups"] = [youth_group_display_label(gid) for gid in yg_ids]
 
         row["_age_groups"] = [entry["age_group"] for entry in active_youth_rows]
         _prev_age_set = set()
@@ -9846,7 +9876,7 @@ def build_enriched():
 
         row["_responsibility_youth_group_ids"] = ryg_ids
 
-        row["_responsibility_youth_groups"] = [youth_group_name(gid) or gid for gid in ryg_ids]
+        row["_responsibility_youth_groups"] = [youth_group_display_label(gid) for gid in ryg_ids]
 
         row["_responsibility_jec_years"] = ryear_map.get(pid, [])
 
@@ -10368,7 +10398,7 @@ def build_members_index():
 
         row["_youth_group_ids"] = yg_ids
 
-        row["_youth_groups"] = [youth_group_name(gid) or gid for gid in yg_ids]
+        row["_youth_groups"] = [youth_group_display_label(gid) for gid in yg_ids]
 
         row["_age_groups"] = [entry["age_group"] for entry in active_youth_rows]
         _prev_age_set = set()
@@ -10384,7 +10414,7 @@ def build_members_index():
 
         row["_archived_youth_group_ids"] = archived_yg_ids
 
-        row["_archived_youth_groups"] = [youth_group_name(gid) or gid for gid in archived_yg_ids]
+        row["_archived_youth_groups"] = [youth_group_display_label(gid) for gid in archived_yg_ids]
 
         row["_archived_age_groups"] = [entry["age_group"] for entry in archived_youth_rows]
 
@@ -10403,7 +10433,7 @@ def build_members_index():
         row["_gs_tree_jec_years"] = _gs.get("jec_years", [])
         row["_gs_tree_roles"] = _gs.get("roles", [])
 
-        row["_responsibility_youth_groups"] = [youth_group_name(gid) or gid for gid in ryg_ids]
+        row["_responsibility_youth_groups"] = [youth_group_display_label(gid) for gid in ryg_ids]
 
         row["_responsibility_jec_years"] = ryear_map.get(pid, [])
 

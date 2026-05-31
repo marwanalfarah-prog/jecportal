@@ -9,7 +9,8 @@ import pandas as pd
 from flask import jsonify, request, session
 
 from core import state as S
-from core.routes_org_tree import _extract_node_identity, _load_index, _load_tree_data
+from core.routes_org_tree import _extract_node_identity, _filter_tree_data_for_user, _load_index, _load_tree_data
+import core.privilege_store as PS
 
 
 auth_lock = threading.Lock()
@@ -395,7 +396,7 @@ def _get_person_memberships(person_type: str, pid) -> tuple[list[str], list[str]
             if not gid:
                 youth_groups.append("")
                 continue
-            youth_groups.append(S.youth_group_name(gid) or gid)
+            youth_groups.append(S.youth_group_display_label(gid))
 
         return (youth_groups, age_groups)
     except Exception:
@@ -484,7 +485,7 @@ def _get_council_access(person_type: str, pid, youth_groups: list) -> dict:
 
     result = {}
     for group_id, info in access.items():
-        group_name = S.youth_group_name(group_id) or group_id
+        group_name = S.youth_group_display_label(group_id)
         if info['full_group']:
             result[group_id] = {'full_group': True, 'age_groups': AGE_GROUPS_PY, 'group_name': group_name}
         elif info['age_groups']:
@@ -494,6 +495,133 @@ def _get_council_access(person_type: str, pid, youth_groups: list) -> dict:
                 'group_name': group_name,
             }
     return result
+
+
+def _get_council_accessible_persons(council_access: dict) -> list:
+    """
+    Return every {person_id, person_type} the user can view through their council access.
+    Respects age-group specificity: full_group → all members, age_group list → only those ages.
+    This is the authoritative list for frontend profile-link visibility.
+    """
+    accessible: dict[tuple, dict] = {}
+
+    pyg_reg   = S._scd_filter_active(S.store.get("person_youth_group", pd.DataFrame()))
+    pyg_unreg = S._scd_filter_active(S.unreg_store.get("person_youth_group", pd.DataFrame()))
+
+    for group_id, info in council_access.items():
+        is_full      = bool(info.get("full_group"))
+        allowed_ages = set(info.get("age_groups") or []) if not is_full else None
+
+        for pyg, ptype in [(pyg_reg, "registered"), (pyg_unreg, "unregistered")]:
+            if pyg.empty or "person_id" not in pyg.columns or S.YOUTH_GROUP_ID_COL not in pyg.columns:
+                continue
+            mask = pyg[S.YOUTH_GROUP_ID_COL].astype(str).str.strip() == group_id
+            if not is_full and allowed_ages and "age_group" in pyg.columns:
+                mask = mask & pyg["age_group"].isin(allowed_ages)
+            for pid_str in pyg[mask]["person_id"].dropna().astype(str):
+                pid_str = pid_str.strip()
+                if pid_str:
+                    key = (pid_str, ptype)
+                    if key not in accessible:
+                        accessible[key] = {"person_id": pid_str, "person_type": ptype}
+
+    return list(accessible.values())
+
+
+def _get_org_tree_descendants(person_type: str, pid, youth_groups: list) -> list:
+    """
+    Find every person who sits below person_id in any of their org trees.
+
+    The tree is stored as a flat node list + edge list (from → to means parent → child).
+    We BFS from every node the current person occupies, following edges downward,
+    and collect all person identities we encounter.
+
+    Returns a list of {"person_id": str, "person_type": "registered"|"unregistered"}.
+    """
+    if pid is None or not person_type:
+        return []
+
+    pid_str = str(pid)
+    seen: dict[tuple, dict] = {}  # (pid_str, ptype) → record, for deduplication
+
+    for group_id in youth_groups:
+        try:
+            periods = _load_index(group_id)
+            if not periods:
+                continue
+            active = next((p for p in periods if not p.get("to_date")), None)
+            if not active:
+                active = sorted(periods, key=lambda p: p.get("from_date") or "", reverse=True)[0]
+
+            tree = _filter_tree_data_for_user(
+                _load_tree_data(group_id, active["id"]),
+                {"role": "member"},
+            )
+            nodes = tree.get("nodes", [])
+            edges = tree.get("edges", [])
+            if not nodes:
+                continue
+
+            # node_id → node object
+            node_map: dict[str, dict] = {}
+            for n in nodes:
+                nid = n.get("id")
+                if nid:
+                    node_map[nid] = n
+
+            # parent_node_id → [child_node_ids]  (edges go from parent to child)
+            children_of: dict[str, list] = {}
+            for e in edges:
+                src = e.get("from")
+                dst = e.get("to")
+                if src and dst:
+                    children_of.setdefault(src, []).append(dst)
+
+            # Find every node this person occupies
+            my_node_ids: list[str] = []
+            for n in nodes:
+                node_pid, node_unreg = _extract_node_identity(n)
+                if node_pid is None:
+                    continue
+                match = (
+                    (person_type == "registered"   and not node_unreg and str(node_pid) == pid_str) or
+                    (person_type == "unregistered" and     node_unreg and str(node_pid) == pid_str)
+                )
+                if match and n.get("id"):
+                    my_node_ids.append(n["id"])
+
+            if not my_node_ids:
+                continue
+
+            # BFS downward through the edge graph
+            visited: set[str] = set()
+            queue: list[str] = []
+            for nid in my_node_ids:
+                queue.extend(children_of.get(nid, []))
+
+            while queue:
+                nid = queue.pop(0)
+                if nid in visited:
+                    continue
+                visited.add(nid)
+                queue.extend(children_of.get(nid, []))
+
+                node = node_map.get(nid)
+                if not node:
+                    continue
+                desc_pid, desc_unreg = _extract_node_identity(node)
+                if desc_pid is None:
+                    continue
+                desc_type = "unregistered" if desc_unreg else "registered"
+                key = (str(desc_pid), desc_type)
+                if key not in seen:
+                    seen[key] = {"person_id": str(desc_pid), "person_type": desc_type}
+
+        except Exception as e:
+            print(f"Warning: org-tree descendant scan failed for {group_id}: {e}")
+            continue
+
+    return list(seen.values())
 
 
 def _current_user():
@@ -565,12 +693,20 @@ def register_auth_routes(app):
             youth_groups = _get_person_youth_groups_any(user["person_type"], user["person_id"])
             safe["youth_groups"] = youth_groups
             if not is_pending:
-                safe["council_access"] = _get_council_access(user["person_type"], user["person_id"], youth_groups)
+                computed = _get_council_access(user["person_type"], user["person_id"], youth_groups)
+                council  = PS.apply_overrides(username, computed)
+                safe["council_access"] = council
+                safe["org_tree_descendants"]      = _get_org_tree_descendants(user["person_type"], user["person_id"], youth_groups)
+                safe["council_accessible_persons"] = _get_council_accessible_persons(council)
             else:
                 safe["council_access"] = {}
+                safe["org_tree_descendants"] = []
+                safe["council_accessible_persons"] = []
         else:
             safe["youth_groups"] = []
             safe["council_access"] = {}
+            safe["org_tree_descendants"] = []
+            safe["council_accessible_persons"] = []
         return jsonify({"ok": True, "user": safe})
 
     @app.post("/api/auth/logout")
@@ -591,12 +727,20 @@ def register_auth_routes(app):
             youth_groups = _get_person_youth_groups_any(u["person_type"], u["person_id"])
             safe["youth_groups"] = youth_groups
             if not is_pending:
-                safe["council_access"] = _get_council_access(u["person_type"], u["person_id"], youth_groups)
+                computed = _get_council_access(u["person_type"], u["person_id"], youth_groups)
+                council  = PS.apply_overrides(u["username"], computed)
+                safe["council_access"] = council
+                safe["org_tree_descendants"]      = _get_org_tree_descendants(u["person_type"], u["person_id"], youth_groups)
+                safe["council_accessible_persons"] = _get_council_accessible_persons(council)
             else:
                 safe["council_access"] = {}
+                safe["org_tree_descendants"] = []
+                safe["council_accessible_persons"] = []
         else:
             safe["youth_groups"] = []
             safe["council_access"] = {}
+            safe["org_tree_descendants"] = []
+            safe["council_accessible_persons"] = []
         return jsonify({"user": safe})
 
     @app.get("/api/auth/users")
@@ -611,7 +755,8 @@ def register_auth_routes(app):
             if _has_person_link(u):
                 youth_groups = _get_person_youth_groups(u["person_type"], u["person_id"])
                 safe["youth_groups"] = youth_groups
-                safe["council_access"] = _get_council_access(u["person_type"], u["person_id"], youth_groups)
+                computed = _get_council_access(u["person_type"], u["person_id"], youth_groups)
+                safe["council_access"] = PS.apply_overrides(u["username"], computed)
             else:
                 safe["youth_groups"] = []
                 safe["council_access"] = {}
@@ -948,4 +1093,6 @@ exports = {
     "_get_person_youth_groups": _get_person_youth_groups,
     "_get_council_access": _get_council_access,
     "_has_person_link": _has_person_link,
+    "_get_council_accessible_persons": _get_council_accessible_persons,
+    "_get_org_tree_descendants": _get_org_tree_descendants,
 }

@@ -38,7 +38,7 @@ def _load_questionnaires() -> dict:
                 q["target_youth_group"] = single_id
                 changed = True
 
-        names = [S.youth_group_name(gid) or gid for gid in (q.get("target_youth_groups") or [])]
+        names = [S.youth_group_display_label(gid) for gid in (q.get("target_youth_groups") or [])]
         if q.get("target_youth_group_names") != names:
             q["target_youth_group_names"] = names
             changed = True
@@ -460,7 +460,7 @@ def register_questionnaires_notifications_routes(app):
             "role_committees": body.get("role_committees"),
             "target_youth_group": target_group_single,
             "target_youth_groups": target_group_ids,
-            "target_youth_group_names": [S.youth_group_name(gid) or gid for gid in target_group_ids],
+            "target_youth_group_names": [S.youth_group_display_label(gid) for gid in target_group_ids],
             "role_is_acting": body.get("role_is_acting", False),
             "role": body.get("role"),
             "target_person_id": body.get("target_person_id"),
@@ -495,7 +495,7 @@ def register_questionnaires_notifications_routes(app):
                     q[field] = body[field]
             q["target_youth_groups"] = [S.youth_group_id(g, create=True) or g for g in (q.get("target_youth_groups") or []) if (S.youth_group_id(g, create=True) or g)]
             q["target_youth_group"] = S.youth_group_id(q.get("target_youth_group"), create=True) if q.get("target_youth_group") else None
-            q["target_youth_group_names"] = [S.youth_group_name(gid) or gid for gid in (q.get("target_youth_groups") or [])]
+            q["target_youth_group_names"] = [S.youth_group_display_label(gid) for gid in (q.get("target_youth_groups") or [])]
             q["updated_at"] = _now_str()
             _save_questionnaires(data)
 
