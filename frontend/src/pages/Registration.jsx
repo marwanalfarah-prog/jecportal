@@ -245,7 +245,7 @@ export default function Registration({ onComplete, onBack, loggedInUser, toast }
                 </Field>
 
                 <div style={{ background: '#fffbf0', border: '1px solid #fde68a', borderRadius: 10, padding: '12px 14px', marginTop: 8, marginBottom: 20, fontSize: '0.82rem', color: '#92400e' }}>
-                  <strong>ملاحظة:</strong> سيتم مراجعة طلبك من قِبَل الإدارة قبل تفعيل حسابك. ستتمكن من متابعة حالة طلبك بعد تسجيل الدخول.
+                  <strong>ملاحظة:</strong> سيتم مراجعة طلبك من قِبَل الفريق قبل تفعيل حسابك. ستتمكن من متابعة حالة طلبك بعد تسجيل الدخول.
                 </div>
 
                 <button

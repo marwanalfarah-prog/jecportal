@@ -263,7 +263,6 @@ body {
 .sidebar.collapsed .sidebar-logo-text,
 .sidebar.collapsed .nav-section-label,
 .sidebar.collapsed .nav-item-label,
-.sidebar.collapsed .sidebar-council-card,
 .sidebar.collapsed .sidebar-user-text,
 .sidebar.collapsed .sidebar-footer {
   display: none;

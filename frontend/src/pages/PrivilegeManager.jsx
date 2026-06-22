@@ -1,1429 +1,1405 @@
-import { useEffect, useState, useMemo, useCallback } from 'react'
-import {
-  Key, Shield, Users, ChevronDown, ChevronUp, Plus, Trash2,
-  Edit3, Search, Filter, CheckCircle2, XCircle, AlertCircle,
-  GitBranch, UserCheck, ShieldOff, Eye, RefreshCw, X,
-  Lock, Globe, FileText, Settings2, ClipboardCheck,
-} from 'lucide-react'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import { Search, Trash2, Plus, X, ChevronDown, ChevronUp, Shield, User, TrendingUp, CheckCircle, Users, GitBranch, UserCheck, FolderOpen } from 'lucide-react'
 import { api } from '../api.js'
 
-// ── Constants ────────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-const AGE_GROUPS = ['البراعم', 'الإعدادي', 'الثانوي', 'الجامعيّة', 'العاملة']
-
-const PRIVILEGE_LABELS = {
-  council_full:      'مجلس كامل (جميع الأعضاء)',
-  council_age_group: 'مجلس فئة عمرية',
+const PRIV_LABELS = {
+  profile_access:          'الوصول للملفات الشخصية',
+  promotion_access:        'صلاحية الترفيع',
+  yg_registration_approval:'الموافقة على تسجيل الشبيبة',
+  yg_file_access:          'الوصول لملف الفرقة',
 }
 
-const PRIVILEGE_OPTIONS = [
-  { value: 'council_full',      label: 'مجلس كامل (جميع الأعضاء)' },
-  { value: 'council_age_group', label: 'مجلس فئة عمرية محددة' },
-]
-
-const OVERRIDE_TYPE_LABELS = { grant: 'منح', revoke: 'سحب' }
-
-// ── Color helpers ────────────────────────────────────────────────────────────
-
-const clr = {
-  navy:       '#0f2744',
-  gold:       '#c9963c',
-  goldLight:  '#fef3c7',
-  green:      '#059669',
-  greenLight: 'rgba(5,150,105,0.1)',
-  red:        '#dc2626',
-  redLight:   'rgba(220,38,38,0.1)',
-  blue:       '#2563eb',
-  blueLight:  'rgba(37,99,235,0.1)',
-  gray:       '#6b7280',
-  grayLight:  '#f8fafc',
-  border:     '#e2e6ef',
-  white:      '#ffffff',
-  textDark:   '#1a2a3a',
-  textMuted:  '#6b7280',
+const PRIV_ICONS = {
+  profile_access:          UserCheck,
+  promotion_access:        TrendingUp,
+  yg_registration_approval:CheckCircle,
+  yg_file_access:          FolderOpen,
 }
 
-// ── Small helpers ─────────────────────────────────────────────────────────────
+const PRIV_COLORS = {
+  profile_access:          { bg: '#eef4ff', border: '#c5d8f8', text: '#1a56db' },
+  promotion_access:        { bg: '#f0fdf4', border: '#86efac', text: '#16a34a' },
+  yg_registration_approval:{ bg: '#fffbeb', border: '#fde68a', text: '#b45309' },
+  yg_file_access:          { bg: '#fdf4ff', border: '#e9d5ff', text: '#7c3aed' },
+}
 
-function PrivilegeBadge({ label, source, onRevoke, onDelete, small }) {
-  const isOverride   = source === 'override_grant'
-  const isRevoked    = source === 'override_revoke'
-  const isComputed   = source === 'computed'
+const ALL_PRIV_TYPES = ['profile_access', 'promotion_access', 'yg_registration_approval', 'yg_file_access']
 
-  const bg    = isRevoked ? clr.redLight   : isOverride ? clr.greenLight : clr.blueLight
-  const color = isRevoked ? clr.red        : isOverride ? clr.green      : clr.blue
-  const icon  = isRevoked ? <XCircle size={11}/>
-              : isOverride ? <CheckCircle2 size={11}/>
-              : <GitBranch size={11}/>
-  const tip   = isRevoked ? 'مسحوبة يدوياً'
-              : isOverride ? 'ممنوحة يدوياً'
-              : 'مكتسبة من المنصب'
+const GRANTEE_TYPE_LABELS = {
+  org_tree_position: 'موقع في الهيكل التنظيمي',
+  gen_sec_position:  'موقع في الأمانة العامة',
+  specific_person:   'شخص محدد',
+}
+
+const SELECTION_MODE_LABELS = {
+  all:       'جميع المواقع',
+  positions: 'مواقع محددة',
+  hull:      'هيكل (Hull) محدد',
+}
+
+const SCOPE_TYPE_LABELS = {
+  org_tree_descendants: 'وصول التابعين في الهيكل',
+  all:         'جميع الأعضاء',
+  youth_group: 'فرقة شبيبة محددة',
+  age_group:   'فئة عمرية محددة',
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function scopeLabel(scope, youthGroups) {
+  if (!scope) return '—'
+  if (scope.type === 'all') return 'جميع الأعضاء'
+
+  // Support legacy single-value and new array format
+  const ygIds = scope.youth_group_ids?.length ? scope.youth_group_ids : (scope.youth_group_id ? [scope.youth_group_id] : [])
+  const ygNames = ygIds.map(id => {
+    const yg = youthGroups.find(g => g.id === id)
+    return yg ? (yg.short_name || yg.name) : id
+  })
+  const ygStr = ygNames.join('، ') || '—'
+
+  if (scope.type === 'youth_group') return ygStr
+  if (scope.type === 'org_tree_descendants') return `${ygStr} - التابعون في الهيكل`
+
+  const ags = scope.age_groups?.length ? scope.age_groups : (scope.age_group ? [scope.age_group] : [])
+  return `${ygStr} — ${ags.join('، ') || '—'}`
+}
+
+function granteeLabel(grantee, youthGroups) {
+  if (!grantee) return '—'
+  const { type, youth_group_id, youth_group_ids, selection_mode, positions, hull_display, selected_hulls, person_name, person_id } = grantee
+  const yg = youthGroups.find(g => g.id === youth_group_id)
+  const ygName = yg ? (yg.short_name || yg.name) : youth_group_id
+
+  if (type === 'specific_person') return person_name || '—'
+
+  if (type === 'org_tree_descendants') {
+    const ids = youth_group_ids?.length ? youth_group_ids : (youth_group_id ? [youth_group_id] : [])
+    const names = ids.map(id => {
+      const group = youthGroups.find(g => g.id === id)
+      return group ? (group.short_name || group.name) : id
+    })
+    return `وصول التابعين في الهيكل - ${names.join('، ') || '-'}`
+  }
+
+  // hull_display is pre-computed on submission (comma-joined); selected_hulls is live UI state
+  const hullLabel = hull_display
+    || (selected_hulls?.length ? selected_hulls.map(h => h.hull_display || h.hull).join('، ') : 'هيكل محدد')
+
+  const modeStr =
+    selection_mode === 'all' ? 'جميع المواقع' :
+    selection_mode === 'positions' ? (positions?.join('، ') || 'مواقع محددة') :
+    selection_mode === 'hull' ? hullLabel : ''
+
+  if (type === 'gen_sec_position') return `الأمانة العامة — ${modeStr}`
+  return `${ygName || 'فرقة'} — ${modeStr}`
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—'
+  try {
+    return new Date(iso).toLocaleDateString('ar-JO', { year: 'numeric', month: 'short', day: 'numeric' })
+  } catch { return iso }
+}
+
+function newGrantee() {
+  return { _key: Math.random(), type: 'specific_person', person_id: null, person_name: '', youth_group_id: '', selection_mode: 'all', positions: [], selected_hulls: [] }
+}
+
+// Unique key for a hull instance (handles duplicate names)
+function hullInstanceKey(h) {
+  return h.instance_node_ids?.length ? h.instance_node_ids.join(',') : h.hull
+}
+
+// Display label for a hull instance (adds parent context when names collide)
+function hullInstanceLabel(h) {
+  return h.parent_info ? `${h.hull} — ${h.parent_info.display}` : h.hull
+}
+
+function uniqueHullMembers(members) {
+  const seen = new Set()
+  return (members || []).filter(m => {
+    const key = m?.person_id || `${m?.person_name || ''}|${m?.role || ''}`
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function hullSelectionPayload(h) {
+  return {
+    key: h.key || hullInstanceKey(h),
+    hull: h.hull,
+    instance_node_ids: h.instance_node_ids || [],
+    hull_display: h.hull_display || hullInstanceLabel(h),
+  }
+}
+
+function buildHullSelectionOptions(hulls = []) {
+  const byHull = new Map()
+  hulls.forEach(h => {
+    const key = h.hull || ''
+    if (!key) return
+    if (!byHull.has(key)) byHull.set(key, [])
+    byHull.get(key).push(h)
+  })
+
+  return Array.from(byHull.values()).map(group => {
+    if (group.length === 1) {
+      const h = group[0]
+      return {
+        ...hullSelectionPayload(h),
+        members: h.members || [],
+        head_count: h.parent_info ? 1 : 0,
+      }
+    }
+
+    const nodeIds = Array.from(new Set(
+      group.flatMap(h => h.instance_node_ids || [])
+    )).sort()
+
+    return {
+      key: nodeIds.length ? nodeIds.join(',') : group.map(hullInstanceKey).join('|'),
+      hull: group[0].hull,
+      instance_node_ids: nodeIds,
+      hull_display: group[0].hull,
+      members: uniqueHullMembers(group.flatMap(h => h.members || [])),
+      head_count: group.filter(h => h.parent_info).length || group.length,
+    }
+  })
+}
+
+// ── Multi-select header (select all / clear all / custom indicator) ───────────
+
+function MultiSelectHeader({ total, selectedCount, onSelectAll, onClearAll }) {
+  const allSel  = total > 0 && selectedCount === total
+  const noneSel = selectedCount === 0
+  const custom  = !allSel && !noneSel
+
+  const btnBase = { fontSize: '0.75rem', padding: '3px 10px', borderRadius: 20, cursor: 'pointer', fontFamily: 'var(--font-body)', fontWeight: 600, transition: '0.12s' }
 
   return (
-    <span
-      title={tip}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 4,
-        padding: small ? '2px 8px' : '3px 10px',
-        borderRadius: 20,
-        background: bg, color, fontSize: small ? '0.71rem' : '0.77rem',
-        fontWeight: 700, border: `1px solid ${color}33`,
-        textDecoration: isRevoked ? 'line-through' : 'none',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      {icon}
-      {label}
-      {(onRevoke || onDelete) && (
-        <button
-          onClick={e => { e.stopPropagation(); (onRevoke || onDelete)() }}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', color, opacity: 0.7 }}
-          title={onRevoke ? 'سحب الصلاحية' : 'حذف التجاوز'}
-        >
-          <X size={11}/>
-        </button>
+    <div style={{ display: 'flex', gap: 6, marginBottom: 7, alignItems: 'center' }}>
+      <button onClick={onSelectAll}
+        style={{ ...btnBase, border: `1px solid ${allSel ? '#0f2744' : '#e2e6ef'}`, background: allSel ? '#0f2744' : 'white', color: allSel ? 'white' : '#4a5568' }}>
+        اختر الكل
+      </button>
+      <button onClick={onClearAll}
+        style={{ ...btnBase, border: `1px solid ${noneSel ? '#e2e6ef' : '#e2e6ef'}`, background: 'white', color: noneSel ? '#9ba5bc' : '#6b7280' }}>
+        مسح الكل
+      </button>
+      <span style={{ fontSize: '0.75rem', color: custom ? '#b45309' : '#9ba5bc', fontWeight: custom ? 700 : 400, marginRight: 2 }}>
+        {custom ? `مخصص — ${selectedCount} / ${total}` : `${selectedCount} / ${total}`}
+      </span>
+    </div>
+  )
+}
+
+// ── Person search autocomplete ────────────────────────────────────────────────
+
+function PersonPicker({ value, onChange, placeholder = 'ابحث باسم الشخص…' }) {
+  const [query, setQuery] = useState(value?.person_name || '')
+  const [results, setResults] = useState([])
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const timerRef = useRef(null)
+  const wrapRef = useRef(null)
+
+  useEffect(() => {
+    if (value?.person_name) setQuery(value.person_name)
+  }, [value?.person_name])
+
+  useEffect(() => {
+    function handler(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const handleInput = (e) => {
+    const q = e.target.value
+    setQuery(q)
+    onChange({ person_id: null, person_name: q })
+    clearTimeout(timerRef.current)
+    if (q.length < 2) { setResults([]); setOpen(false); return }
+    timerRef.current = setTimeout(async () => {
+      setLoading(true)
+      try {
+        const res = await api.searchPrivilegePersons(q)
+        setResults(res.persons || [])
+        setOpen(true)
+      } catch { setResults([]) }
+      finally { setLoading(false) }
+    }, 300)
+  }
+
+  const select = (p) => {
+    setQuery(p.name)
+    onChange({ person_id: p.person_id, person_name: p.name })
+    setOpen(false)
+    setResults([])
+  }
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <div style={{ position: 'relative' }}>
+        <Search size={13} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: '#9ba5bc', pointerEvents: 'none' }} />
+        <input
+          value={query}
+          onChange={handleInput}
+          onFocus={() => results.length && setOpen(true)}
+          placeholder={placeholder}
+          style={{ width: '100%', padding: '8px 32px 8px 10px', border: '1.5px solid #e2e6ef', borderRadius: 8, fontFamily: 'var(--font-body)', fontSize: '0.87rem', direction: 'rtl', outline: 'none', boxSizing: 'border-box' }}
+        />
+        {loading && <div className="spinner" style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', width: 14, height: 14 }} />}
+      </div>
+      {open && results.length > 0 && (
+        <div style={{ position: 'absolute', top: '100%', right: 0, left: 0, background: 'white', border: '1.5px solid #e2e6ef', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', zIndex: 200, maxHeight: 220, overflowY: 'auto', marginTop: 4 }}>
+          {results.map(p => (
+            <button key={p.person_id} onClick={() => select(p)} style={{ width: '100%', padding: '9px 14px', textAlign: 'right', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: '0.87rem', borderBottom: '1px solid #f5f6fa', display: 'flex', flexDirection: 'column', gap: 2 }}
+              onMouseEnter={e => e.currentTarget.style.background = '#f7f9ff'}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+              <span style={{ fontWeight: 600, color: '#1a2a3a' }}>{p.name}</span>
+              {p.en_name && <span style={{ fontSize: '0.75rem', color: '#9ba5bc' }}>{p.en_name}</span>}
+            </button>
+          ))}
+        </div>
       )}
-    </span>
+    </div>
   )
 }
 
-function StatCard({ icon: Icon, value, label, color }) {
+// ── Grantee block ─────────────────────────────────────────────────────────────
+
+function GranteeBlock({ grantee, index, onUpdate, onRemove, youthGroups, positionsCache, onLoadPositions }) {
+  const { type, youth_group_id, selection_mode, positions, hull } = grantee
+  const posKey = type === 'gen_sec_position' ? 'GS' : youth_group_id
+  const posData = positionsCache[posKey] || null
+  const loadingPos = positionsCache[posKey + '__loading']
+
+  useEffect(() => {
+    if (type === 'gen_sec_position' && !positionsCache['GS'] && !positionsCache['GS__loading']) {
+      onLoadPositions('GS')
+    }
+  }, [type])
+
+  useEffect(() => {
+    if (type === 'org_tree_position' && youth_group_id && !positionsCache[youth_group_id] && !positionsCache[youth_group_id + '__loading']) {
+      onLoadPositions(youth_group_id)
+    }
+  }, [type, youth_group_id])
+
+  const update = (patch) => onUpdate(index, patch)
+
   return (
-    <div style={{
-      background: clr.white, borderRadius: 14, padding: '18px 22px',
-      border: `1px solid ${clr.border}`,
-      boxShadow: '0 2px 8px rgba(15,39,68,0.06)',
-      display: 'flex', alignItems: 'center', gap: 14, flex: 1, minWidth: 130,
-    }}>
-      <div style={{
-        width: 44, height: 44, borderRadius: 12,
-        background: `${color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-      }}>
-        <Icon size={20} color={color}/>
+    <div style={{ border: '1.5px solid #e2e6ef', borderRadius: 10, padding: '14px 16px', background: '#fafbfd', position: 'relative' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <span style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0f2744' }}>مجموعة {index + 1}</span>
+        <button onClick={onRemove} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 2, display: 'flex' }} title="حذف المجموعة"><X size={15} /></button>
       </div>
+
+      {/* Type selector */}
+      <div style={{ marginBottom: 12 }}>
+        <label style={labelStyle}>نوع المستفيد</label>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {Object.entries(GRANTEE_TYPE_LABELS).map(([val, lbl]) => (
+            <button key={val} onClick={() => update({ type: val, positions: [], selected_hulls: [], youth_group_id: '', person_id: null, person_name: '' })}
+              style={{ padding: '6px 12px', borderRadius: 20, border: `1.5px solid ${type === val ? '#0f2744' : '#e2e6ef'}`, background: type === val ? '#0f2744' : 'white', color: type === val ? 'white' : '#4a5568', fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'var(--font-body)', fontWeight: type === val ? 700 : 400 }}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* specific_person */}
+      {type === 'specific_person' && (
+        <div>
+          <label style={labelStyle}>الشخص</label>
+          <PersonPicker
+            value={{ person_id: grantee.person_id, person_name: grantee.person_name }}
+            onChange={({ person_id, person_name }) => update({ person_id, person_name })}
+          />
+        </div>
+      )}
+
+      {/* org_tree_position */}
+      {type === 'org_tree_position' && (
+        <div style={{ display: 'grid', gap: 10 }}>
+          <div>
+            <label style={labelStyle}>الفرقة</label>
+            <select value={youth_group_id} onChange={e => update({ youth_group_id: e.target.value, positions: [], selected_hulls: [] })} style={selectStyle}>
+              <option value="">-- اختر الفرقة --</option>
+              {youthGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+            </select>
+          </div>
+          {youth_group_id && <SelectionModeBlock grantee={grantee} posData={posData} loadingPos={loadingPos} update={update} />}
+        </div>
+      )}
+
+      {/* gen_sec_position */}
+      {type === 'gen_sec_position' && (
+        <SelectionModeBlock grantee={grantee} posData={posData} loadingPos={loadingPos} update={update} />
+      )}
+    </div>
+  )
+}
+
+function SelectionModeBlock({ grantee, posData, loadingPos, update }) {
+  const { selection_mode, positions, selected_hulls = [] } = grantee
+  const hullOptions = buildHullSelectionOptions(posData?.hulls || [])
+
+  const toggleHull = (h) => {
+    const payload = hullSelectionPayload(h)
+    const key = payload.key
+    const already = selected_hulls.find(sh => sh.key === key)
+    if (already) {
+      update({ selected_hulls: selected_hulls.filter(sh => sh.key !== key) })
+    } else {
+      update({ selected_hulls: [...selected_hulls, payload] })
+    }
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
       <div>
-        <div style={{ fontSize: '1.6rem', fontWeight: 900, color: clr.navy, lineHeight: 1 }}>{value}</div>
-        <div style={{ fontSize: '0.77rem', color: clr.textMuted, marginTop: 3 }}>{label}</div>
+        <label style={labelStyle}>نطاق الاختيار</label>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {Object.entries(SELECTION_MODE_LABELS).map(([val, lbl]) => (
+            <button key={val} onClick={() => update({ selection_mode: val, positions: [], selected_hulls: [] })}
+              style={{ padding: '6px 12px', borderRadius: 20, border: `1.5px solid ${selection_mode === val ? '#c9963c' : '#e2e6ef'}`, background: selection_mode === val ? '#fffbeb' : 'white', color: selection_mode === val ? '#b45309' : '#4a5568', fontSize: '0.8rem', cursor: 'pointer', fontFamily: 'var(--font-body)', fontWeight: selection_mode === val ? 700 : 400 }}>
+              {lbl}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {selection_mode === 'positions' && (
+        <div>
+          <label style={labelStyle}>المواقع</label>
+          {loadingPos ? <div className="spinner" style={{ width: 16, height: 16, margin: '4px 0' }} /> :
+            !posData ? <p style={{ fontSize: '0.8rem', color: '#9ba5bc', margin: 0 }}>لا توجد بيانات هيكل للفترة الحالية</p> :
+            posData.positions.length === 0 ? <p style={{ fontSize: '0.8rem', color: '#9ba5bc', margin: 0 }}>لا توجد مواقع</p> : <>
+              <MultiSelectHeader
+                total={posData.positions.length}
+                selectedCount={positions.length}
+                onSelectAll={() => update({ positions: posData.positions.map(p => p.role) })}
+                onClearAll={() => update({ positions: [] })}
+              />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto', border: '1px solid #e2e6ef', borderRadius: 8, padding: '8px 10px', background: 'white' }}>
+                {posData.positions.map(p => (
+                  <label key={p.role} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.85rem', color: '#1a2a3a' }}>
+                    <input type="checkbox" checked={positions.includes(p.role)} onChange={e => {
+                      const next = e.target.checked ? [...positions, p.role] : positions.filter(r => r !== p.role)
+                      update({ positions: next })
+                    }} style={{ width: 14, height: 14 }} />
+                    <span>{p.role}</span>
+                    <span style={{ fontSize: '0.75rem', color: '#9ba5bc', marginRight: 'auto' }}>{p.members?.length || 0} شخص</span>
+                  </label>
+                ))}
+              </div>
+            </>
+          }
+        </div>
+      )}
+
+      {selection_mode === 'hull' && (
+        <div>
+          <label style={labelStyle}>الهياكل (Hulls)</label>
+          {loadingPos ? <div className="spinner" style={{ width: 16, height: 16, margin: '4px 0' }} /> :
+            !posData ? <p style={{ fontSize: '0.8rem', color: '#9ba5bc', margin: 0 }}>لا توجد بيانات</p> :
+            hullOptions.length === 0 ? <p style={{ fontSize: '0.8rem', color: '#9ba5bc', margin: 0 }}>لا توجد هياكل</p> : <>
+              <MultiSelectHeader
+                total={hullOptions.length}
+                selectedCount={selected_hulls.length}
+                onSelectAll={() => update({ selected_hulls: hullOptions.map(hullSelectionPayload) })}
+                onClearAll={() => update({ selected_hulls: [] })}
+              />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 200, overflowY: 'auto', border: '1px solid #e2e6ef', borderRadius: 8, padding: '8px 10px', background: 'white' }}>
+                {hullOptions.map(h => {
+                  const key = h.key
+                  const label = h.hull_display || h.hull
+                  const countLabel = h.head_count > 1
+                    ? `${h.head_count} رؤساء، ${h.members?.length || 0} عضو`
+                    : `${h.members?.length || 0} عضو`
+                  const checked = selected_hulls.some(sh => sh.key === key)
+                  return (
+                    <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.85rem', color: '#1a2a3a' }}>
+                      <input type="checkbox" checked={checked} onChange={() => toggleHull(h)} style={{ width: 14, height: 14 }} />
+                      <span>{label}</span>
+                      <span style={{ fontSize: '0.75rem', color: '#9ba5bc', marginRight: 'auto' }}>{countLabel}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            </>
+          }
+        </div>
+      )}
+
+      {selection_mode === 'all' && posData && (
+        <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0 }}>
+          سيتم منح الصلاحية لجميع أصحاب المواقع ({posData.all_nodes?.length || 0} شخص حالياً)
+        </p>
+      )}
     </div>
   )
 }
 
-function SectionHeader({ title, subtitle }) {
+// ── Scope form ────────────────────────────────────────────────────────────────
+
+function ScopeForm({ privType, scope, onChange, youthGroups, ageGroups }) {
+  const scopeOptions =
+    privType === 'profile_access'
+      ? ['all', 'youth_group', 'age_group', 'org_tree_descendants']
+      : ['youth_group', 'age_group']
+
+  const youth_group_ids = scope.youth_group_ids || []
+  const age_groups = scope.age_groups || []
+  const scopeNeedsYouthGroups = ['youth_group', 'age_group', 'org_tree_descendants'].includes(scope.type)
+
+  const toggleYg = (id) => {
+    const next = youth_group_ids.includes(id) ? youth_group_ids.filter(x => x !== id) : [...youth_group_ids, id]
+    onChange({ ...scope, youth_group_ids: next })
+  }
+
+  const toggleAg = (ag) => {
+    const next = age_groups.includes(ag) ? age_groups.filter(x => x !== ag) : [...age_groups, ag]
+    onChange({ ...scope, age_groups: next })
+  }
+
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div style={{ fontWeight: 800, fontSize: '1rem', color: clr.navy }}>{title}</div>
-      {subtitle && <div style={{ fontSize: '0.78rem', color: clr.textMuted, marginTop: 3 }}>{subtitle}</div>}
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div>
+        <label style={labelStyle}>نطاق الوصول (ما الذي تتيحه الصلاحية؟)</label>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {scopeOptions.map(val => (
+            <button key={val} onClick={() => onChange({ type: val, youth_group_ids: scope.youth_group_ids || [], age_groups: val === 'age_group' ? (scope.age_groups || []) : [] })}
+              style={{ padding: '7px 14px', borderRadius: 20, border: `1.5px solid ${scope.type === val ? '#0f2744' : '#e2e6ef'}`, background: scope.type === val ? '#0f2744' : 'white', color: scope.type === val ? 'white' : '#4a5568', fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'var(--font-body)', fontWeight: scope.type === val ? 700 : 400 }}>
+              {SCOPE_TYPE_LABELS[val]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {scopeNeedsYouthGroups && (
+        <div>
+          <label style={labelStyle}>الفرق</label>
+          <MultiSelectHeader
+            total={youthGroups.length}
+            selectedCount={youth_group_ids.length}
+            onSelectAll={() => onChange({ ...scope, youth_group_ids: youthGroups.map(g => g.id) })}
+            onClearAll={() => onChange({ ...scope, youth_group_ids: [] })}
+          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 180, overflowY: 'auto', border: '1px solid #e2e6ef', borderRadius: 8, padding: '8px 10px', background: 'white' }}>
+            {youthGroups.map(g => (
+              <label key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.85rem', color: '#1a2a3a' }}>
+                <input type="checkbox" checked={youth_group_ids.includes(g.id)} onChange={() => toggleYg(g.id)} style={{ width: 14, height: 14 }} />
+                <span>{g.short_name || g.name}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {scope.type === 'org_tree_descendants' && (
+        <p style={{ fontSize: '0.8rem', color: '#6b7280', margin: 0 }}>
+          كل شخص في الهيكل الحالي للفرق المحددة يرى بيانات كل من تحته في الهيكل فقط، عبر جميع مسارات التبعية.
+        </p>
+      )}
+
+      {scope.type === 'age_group' && (
+        <div>
+          <label style={labelStyle}>الفئات العمرية</label>
+          <MultiSelectHeader
+            total={ageGroups.length}
+            selectedCount={age_groups.length}
+            onSelectAll={() => onChange({ ...scope, age_groups: [...ageGroups] })}
+            onClearAll={() => onChange({ ...scope, age_groups: [] })}
+          />
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '8px 10px', border: '1px solid #e2e6ef', borderRadius: 8, background: 'white' }}>
+            {ageGroups.map(ag => (
+              <label key={ag} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '0.85rem', padding: '4px 10px', borderRadius: 20, border: `1.5px solid ${age_groups.includes(ag) ? '#c9963c' : '#e2e6ef'}`, background: age_groups.includes(ag) ? '#fffbeb' : 'transparent' }}>
+                <input type="checkbox" checked={age_groups.includes(ag)} onChange={() => toggleAg(ag)} style={{ display: 'none' }} />
+                <span style={{ fontWeight: age_groups.includes(ag) ? 700 : 400, color: age_groups.includes(ag) ? '#b45309' : '#4a5568' }}>{ag}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-// ── Override Add/Edit Modal ───────────────────────────────────────────────────
+// ── Grant section ─────────────────────────────────────────────────────────────
 
-function OverrideModal({ users, groups, initialData, onSave, onClose }) {
-  const isEdit = !!initialData?.id
+function GrantSection({ youthGroups, ageGroups, toast, onCreated }) {
+  const [activePriv, setActivePriv] = useState('profile_access')
+  const [scope, setScope] = useState({ type: 'youth_group', youth_group_ids: [], age_groups: [] })
+  const [grantees, setGrantees] = useState([newGrantee()])
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [positionsCache, setPositionsCache] = useState({})
+  const hierarchyScope = activePriv === 'profile_access' && scope.type === 'org_tree_descendants'
 
-  const [type,      setType]      = useState(initialData?.type      || 'grant')
-  const [username,  setUsername]  = useState(initialData?.username  || '')
-  const [privilege, setPrivilege] = useState(initialData?.privilege || 'council_full')
-  const [groupId,   setGroupId]   = useState(initialData?.group_id  || '')
-  const [ageGroup,  setAgeGroup]  = useState(initialData?.age_group || '')
-  const [notes,     setNotes]     = useState(initialData?.notes     || '')
-  const [saving,    setSaving]    = useState(false)
-  const [error,     setError]     = useState('')
-  const [userSearch, setUserSearch] = useState('')
-
-  const filteredUsers = useMemo(() =>
-    users.filter(u => {
-      const q = userSearch.trim().toLowerCase()
-      if (!q) return true
-      return (u.display_name || '').toLowerCase().includes(q) ||
-             (u.username || '').toLowerCase().includes(q)
-    }), [users, userSearch])
-
-  const needsGroup    = privilege === 'council_full' || privilege === 'council_age_group'
-  const needsAgeGroup = privilege === 'council_age_group'
-
-  const handleSave = async () => {
-    if (!username) { setError('اختر مستخدماً'); return }
-    if (needsGroup && !groupId) { setError('اختر مجموعة الشبيبة'); return }
-    if (needsAgeGroup && !ageGroup) { setError('اختر الفئة العمرية'); return }
-    setSaving(true); setError('')
+  const loadPositions = useCallback(async (groupId) => {
+    if (!groupId) return
+    setPositionsCache(prev => ({ ...prev, [groupId + '__loading']: true }))
     try {
-      const selectedUser = users.find(u => u.username === username)
-      await onSave({
-        id: initialData?.id,
-        type, username,
-        display_name: selectedUser?.display_name || username,
-        privilege, group_id: needsGroup ? groupId : null,
-        age_group: needsAgeGroup ? ageGroup : null,
+      const data = await api.getPrivilegeOrgPositions(groupId)
+      setPositionsCache(prev => { const next = { ...prev }; delete next[groupId + '__loading']; next[groupId] = data; return next })
+    } catch {
+      setPositionsCache(prev => { const next = { ...prev }; delete next[groupId + '__loading']; return next })
+    }
+  }, [])
+
+  const updateGrantee = (i, patch) => {
+    setGrantees(prev => prev.map((g, idx) => idx === i ? { ...g, ...patch } : g))
+  }
+  const removeGrantee = (i) => {
+    setGrantees(prev => prev.filter((_, idx) => idx !== i))
+  }
+
+  const validate = () => {
+    if ((scope.type === 'youth_group' || scope.type === 'age_group' || scope.type === 'org_tree_descendants') && !(scope.youth_group_ids?.length > 0)) {
+      toast('يرجى اختيار فرقة واحدة على الأقل', 'error'); return false
+    }
+    if (scope.type === 'age_group' && !(scope.age_groups?.length > 0)) {
+      toast('يرجى اختيار فئة عمرية واحدة على الأقل', 'error'); return false
+    }
+    if (hierarchyScope) return true
+    if (grantees.length === 0) {
+      toast('يرجى إضافة مجموعة مستفيدين على الأقل', 'error'); return false
+    }
+    for (const g of grantees) {
+      if (g.type === 'specific_person' && !g.person_id) {
+        toast('يرجى اختيار شخص محدد في كل مجموعة', 'error'); return false
+      }
+      if (g.type === 'org_tree_position' && !g.youth_group_id) {
+        toast('يرجى اختيار الفرقة في كل مجموعة', 'error'); return false
+      }
+      if ((g.type === 'org_tree_position' || g.type === 'gen_sec_position') && g.selection_mode === 'positions' && g.positions.length === 0) {
+        toast('يرجى اختيار موقع واحد على الأقل', 'error'); return false
+      }
+      if ((g.type === 'org_tree_position' || g.type === 'gen_sec_position') && g.selection_mode === 'hull' && !(g.selected_hulls?.length > 0)) {
+        toast('يرجى اختيار هيكل واحد على الأقل', 'error'); return false
+      }
+    }
+    return true
+  }
+
+  const handleSubmit = async () => {
+    if (!validate()) return
+    setSaving(true)
+    try {
+      const grants = hierarchyScope ? [{
+        privilege_type: activePriv,
+        scope: { type: 'org_tree_descendants', youth_group_ids: scope.youth_group_ids || [], age_groups: [] },
+        grantee: { type: 'org_tree_descendants', youth_group_ids: scope.youth_group_ids || [] },
         notes,
-      })
-      onClose()
+      }] : grantees.map(g => ({
+        privilege_type: activePriv,
+        scope,
+        grantee: {
+          type: g.type,
+          ...(g.type === 'specific_person' ? { person_id: g.person_id, person_name: g.person_name } : {}),
+          ...(g.type === 'org_tree_position' ? { youth_group_id: g.youth_group_id } : {}),
+          ...((g.type === 'org_tree_position' || g.type === 'gen_sec_position') ? (() => {
+            const hulls = g.selected_hulls || []
+            // Count how many selected instances share each hull name
+            const counts = {}
+            hulls.forEach(h => { counts[h.hull] = (counts[h.hull] || 0) + 1 })
+            // Deduplicate by hull name for storage
+            const seen = new Set()
+            const uniqueHulls = hulls.filter(h => { if (seen.has(h.hull)) return false; seen.add(h.hull); return true })
+            return {
+              selection_mode: g.selection_mode,
+              positions: g.positions,
+              // hull field: unique names only
+              hull: uniqueHulls.map(h => h.hull).join('، '),
+              hull_nodes: hulls.flatMap(h => h.instance_node_ids || []),
+              // hull_display: if a name appears for multiple instances (same hull, multiple heads),
+              // show it once; otherwise show with disambiguation
+              hull_display: uniqueHulls.map(h => counts[h.hull] > 1 ? h.hull : (h.hull_display || h.hull)).join('، '),
+            }
+          })() : {}),
+        },
+        notes,
+      }))
+      await api.createPrivilegeGrants(grants)
+      toast('تم منح الصلاحية بنجاح', 'success')
+      setGrantees([newGrantee()])
+      setNotes('')
+      setScope({ type: 'youth_group', youth_group_ids: [], age_groups: [] })
+      onCreated()
     } catch (e) {
-      setError(e?.message || 'حدث خطأ أثناء الحفظ')
+      toast(e?.message || 'تعذّر منح الصلاحية', 'error')
     } finally {
       setSaving(false)
     }
   }
 
-  const labelStyle = { fontSize: '0.8rem', color: clr.textDark, fontWeight: 700, display: 'block', marginBottom: 6 }
-  const inputStyle = {
-    width: '100%', padding: '9px 12px', border: `1.5px solid ${clr.border}`,
-    borderRadius: 8, fontFamily: 'var(--font-body)', fontSize: '0.88rem',
-    direction: 'rtl', outline: 'none', color: clr.textDark,
-    boxSizing: 'border-box',
-  }
-  const selectStyle = { ...inputStyle, cursor: 'pointer', background: clr.white }
-
   return (
-    <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
-      onClick={e => e.target === e.currentTarget && onClose()}
-    >
-      <div style={{
-        background: clr.white, borderRadius: 18, width: '100%', maxWidth: 520,
-        maxHeight: '90vh', display: 'flex', flexDirection: 'column',
-        boxShadow: '0 24px 64px rgba(0,0,0,0.2)', direction: 'rtl', overflow: 'hidden',
-      }}>
-        {/* Header */}
-        <div style={{
-          padding: '18px 22px 14px', borderBottom: `1px solid ${clr.border}`,
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          background: `linear-gradient(135deg, ${clr.navy}, #1a3a5c)`,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(201,150,60,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Key size={18} color={clr.gold}/>
-            </div>
-            <div>
-              <div style={{ fontWeight: 800, color: clr.white, fontSize: '0.95rem' }}>
-                {isEdit ? 'تعديل تجاوز الصلاحية' : 'إضافة تجاوز صلاحية'}
-              </div>
-              <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.55)', marginTop: 1 }}>
-                منح أو سحب صلاحية من مستخدم
-              </div>
-            </div>
+    <div style={{ display: 'grid', gap: 20 }}>
+      {/* Privilege type sub-tabs */}
+      <div className="card">
+        <div className="card-header"><span className="card-title">نوع الصلاحية</span></div>
+        <div className="card-body">
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            {ALL_PRIV_TYPES.map(pt => {
+              const Icon = PRIV_ICONS[pt]
+              const c = PRIV_COLORS[pt]
+              const active = activePriv === pt
+              return (
+                <button key={pt} onClick={() => { setActivePriv(pt); setScope({ type: 'youth_group', youth_group_ids: [], age_groups: [] }) }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 10, border: `2px solid ${active ? c.text : '#e2e6ef'}`, background: active ? c.bg : 'white', color: active ? c.text : '#6b7280', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: '0.87rem', fontWeight: active ? 700 : 400, transition: '0.15s' }}>
+                  <Icon size={16} />
+                  {PRIV_LABELS[pt]}
+                </button>
+              )
+            })}
           </div>
-          <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', cursor: 'pointer', borderRadius: 8, padding: 6, color: 'rgba(255,255,255,0.7)', display: 'flex' }}>
-            <X size={16}/>
+        </div>
+      </div>
+
+      {/* Scope */}
+      <div className="card">
+        <div className="card-header"><span className="card-title">نطاق الوصول</span></div>
+        <div className="card-body">
+          <ScopeForm privType={activePriv} scope={scope} onChange={setScope} youthGroups={youthGroups} ageGroups={ageGroups} />
+        </div>
+      </div>
+
+      {/* Grantees */}
+      {hierarchyScope ? (
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">المستفيدون حسب الهيكل</span>
+          </div>
+          <div className="card-body">
+            <p style={{ fontSize: '0.85rem', color: '#4a5568', margin: 0 }}>
+              يتم تحديد المستفيدين من الهياكل التنظيمية المحددة، وكل شخص يحصل على صلاحية للتابعين تحته فقط. إذا كان الشخص تابعاً لأكثر من مسؤول، يحصل كل مسؤول أعلى منه على الصلاحية.
+            </p>
+          </div>
+        </div>
+      ) : (
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">مستفيدو الصلاحية</span>
+          <p style={{ fontSize: '0.8rem', color: '#9ba5bc', margin: 0 }}>أضف مجموعة أو أكثر من المستفيدين</p>
+        </div>
+        <div className="card-body" style={{ display: 'grid', gap: 12 }}>
+          {grantees.map((g, i) => (
+            <GranteeBlock
+              key={g._key}
+              grantee={g}
+              index={i}
+              onUpdate={updateGrantee}
+              onRemove={() => removeGrantee(i)}
+              youthGroups={youthGroups}
+              positionsCache={positionsCache}
+              onLoadPositions={loadPositions}
+            />
+          ))}
+          <button onClick={() => setGrantees(prev => [...prev, newGrantee()])}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', border: '1.5px dashed #c5d8f8', borderRadius: 8, background: '#f7faff', color: '#1a56db', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: '0.85rem', fontWeight: 600 }}>
+            <Plus size={15} /> إضافة مجموعة أخرى
           </button>
         </div>
+      </div>
+      )}
 
-        {/* Body */}
-        <div style={{ overflowY: 'auto', flex: 1, padding: '20px 22px', display: 'grid', gap: 16 }}>
-
-          {/* Type toggle */}
-          <div>
-            <label style={labelStyle}>نوع التجاوز</label>
-            <div style={{ display: 'flex', gap: 8 }}>
-              {['grant', 'revoke'].map(t => (
-                <button
-                  key={t}
-                  onClick={() => setType(t)}
-                  style={{
-                    flex: 1, padding: '9px 0', borderRadius: 8, fontFamily: 'var(--font-body)',
-                    fontWeight: 700, fontSize: '0.86rem', cursor: 'pointer',
-                    border: `2px solid ${type === t ? (t === 'grant' ? clr.green : clr.red) : clr.border}`,
-                    background: type === t ? (t === 'grant' ? clr.greenLight : clr.redLight) : clr.white,
-                    color: type === t ? (t === 'grant' ? clr.green : clr.red) : clr.textMuted,
-                    transition: '0.15s',
-                  }}
-                >
-                  {t === 'grant' ? '✅ منح الصلاحية' : '🚫 سحب الصلاحية'}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* User picker */}
-          {!isEdit && (
-            <div>
-              <label style={labelStyle}>المستخدم</label>
-              <div style={{ border: `1.5px solid ${clr.border}`, borderRadius: 10, overflow: 'hidden' }}>
-                <div style={{ padding: '8px 12px', borderBottom: `1px solid ${clr.border}`, position: 'relative' }}>
-                  <Search size={13} style={{ position: 'absolute', right: 22, top: '50%', transform: 'translateY(-50%)', color: clr.textMuted }}/>
-                  <input
-                    value={userSearch}
-                    onChange={e => setUserSearch(e.target.value)}
-                    placeholder="بحث عن مستخدم..."
-                    style={{ ...inputStyle, paddingRight: 34, border: 'none', padding: '0 28px 0 0', fontSize: '0.82rem' }}
-                  />
-                </div>
-                <div style={{ maxHeight: 180, overflowY: 'auto' }}>
-                  {filteredUsers.slice(0, 50).map(u => (
-                    <div
-                      key={u.username}
-                      onClick={() => setUsername(u.username)}
-                      style={{
-                        padding: '9px 14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
-                        background: username === u.username ? clr.blueLight : 'none',
-                        borderBottom: `1px solid ${clr.border}22`,
-                        transition: '0.1s',
-                      }}
-                      onMouseEnter={e => { if (username !== u.username) e.currentTarget.style.background = clr.grayLight }}
-                      onMouseLeave={e => { if (username !== u.username) e.currentTarget.style.background = 'none' }}
-                    >
-                      <div style={{ width: 28, height: 28, borderRadius: '50%', background: clr.blueLight, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <UserCheck size={13} color={clr.blue}/>
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, fontSize: '0.85rem', color: clr.textDark, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {u.display_name || u.username}
-                        </div>
-                        <div style={{ fontSize: '0.72rem', color: clr.textMuted }}>@{u.username}</div>
-                      </div>
-                      {username === u.username && <CheckCircle2 size={14} color={clr.blue}/>}
-                    </div>
-                  ))}
-                  {filteredUsers.length === 0 && <div style={{ padding: '20px', textAlign: 'center', color: clr.textMuted, fontSize: '0.82rem' }}>لا توجد نتائج</div>}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Privilege type */}
-          <div>
-            <label style={labelStyle}>نوع الصلاحية</label>
-            <select value={privilege} onChange={e => setPrivilege(e.target.value)} style={selectStyle}>
-              {PRIVILEGE_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Group */}
-          {needsGroup && (
-            <div>
-              <label style={labelStyle}>فرقة الشبيبة</label>
-              <select value={groupId} onChange={e => setGroupId(e.target.value)} style={selectStyle}>
-                <option value="">-- اختر فرقة --</option>
-                {groups.map(g => (
-                  <option key={g.value} value={g.value}>{g.label}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Age group */}
-          {needsAgeGroup && (
-            <div>
-              <label style={labelStyle}>الفئة العمرية</label>
-              <select value={ageGroup} onChange={e => setAgeGroup(e.target.value)} style={selectStyle}>
-                <option value="">-- اختر فئة عمرية --</option>
-                {AGE_GROUPS.map(ag => (
-                  <option key={ag} value={ag}>{ag}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Notes */}
+      {/* Notes + submit */}
+      <div className="card">
+        <div className="card-body" style={{ display: 'grid', gap: 12 }}>
           <div>
             <label style={labelStyle}>ملاحظات (اختياري)</label>
-            <textarea
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              rows={2}
-              placeholder="سبب التجاوز أو ملاحظة..."
-              style={{ ...inputStyle, resize: 'vertical', minHeight: 60 }}
-            />
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="سبب منح الصلاحية أو أي ملاحظات…"
+              style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #e2e6ef', borderRadius: 8, fontFamily: 'var(--font-body)', fontSize: '0.87rem', direction: 'rtl', resize: 'vertical', boxSizing: 'border-box', outline: 'none' }} />
           </div>
-
-          {error && (
-            <div style={{ background: clr.redLight, color: clr.red, borderRadius: 8, padding: '10px 14px', fontSize: '0.83rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <AlertCircle size={14}/>{error}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div style={{ padding: '14px 22px', borderTop: `1px solid ${clr.border}`, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={saving}>إلغاء</button>
-          <button
-            className="btn btn-gold btn-sm"
-            onClick={handleSave}
-            disabled={saving}
-            style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-          >
-            {saving ? <><div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }}/>جاري الحفظ</> : <><Key size={14}/>حفظ التجاوز</>}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ── Delete Confirmation Modal ─────────────────────────────────────────────────
-
-function DeleteConfirm({ message, onConfirm, onClose }) {
-  const [deleting, setDeleting] = useState(false)
-  return (
-    <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
-      onClick={e => e.target === e.currentTarget && onClose()}
-    >
-      <div style={{ background: clr.white, borderRadius: 14, width: '100%', maxWidth: 380, boxShadow: '0 24px 64px rgba(0,0,0,0.2)', direction: 'rtl', overflow: 'hidden' }}>
-        <div style={{ padding: '18px 20px', background: clr.redLight, borderBottom: `1px solid ${clr.red}33` }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <XCircle size={22} color={clr.red}/>
-            <div style={{ fontWeight: 800, color: clr.red }}>تأكيد الحذف</div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button onClick={handleSubmit} disabled={saving} className="btn btn-gold">
+              {saving ? 'جارٍ الحفظ…' : 'منح الصلاحية'}
+            </button>
           </div>
         </div>
-        <div style={{ padding: '18px 20px', fontSize: '0.87rem', color: clr.textDark }}>{message}</div>
-        <div style={{ padding: '12px 20px', borderTop: `1px solid ${clr.border}`, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button className="btn btn-ghost btn-sm" onClick={onClose} disabled={deleting}>إلغاء</button>
-          <button
-            className="btn btn-sm"
-            onClick={async () => { setDeleting(true); await onConfirm(); setDeleting(false); onClose() }}
-            disabled={deleting}
-            style={{ background: clr.red, color: clr.white, border: 'none', display: 'flex', alignItems: 'center', gap: 6 }}
-          >
-            {deleting ? 'جاري الحذف...' : <><Trash2 size={13}/>حذف</>}
-          </button>
-        </div>
       </div>
     </div>
   )
 }
 
-// ── Capabilities Panel ───────────────────────────────────────────────────────
+// ── List section ──────────────────────────────────────────────────────────────
 
-const CATEGORY_ICONS = {
-  'النظام':              Settings2,
-  'إدارة الأعضاء':      Users,
-  'الطلبات والموافقات': ClipboardCheck,
-  'المحتوى':            FileText,
-  'الوصول العام':        Globe,
-}
-
-const SOURCE_LABELS = {
-  role:    { label: 'الدور',   color: '#b45309', bg: '#fffbeb' },
-  council: { label: 'المنصب', color: '#2563eb', bg: '#eff6ff' },
-}
-
-const SCOPE_LABELS = {
-  full:    { label: 'كامل',   color: '#059669' },
-  partial: { label: 'جزئي',   color: '#d97706' },
-  own:     { label: 'خاص به', color: '#6b7280' },
-}
-
-function CapabilitiesPanel({ capabilities }) {
-  if (!capabilities || capabilities.length === 0) return null
-
-  const grouped = {}
-  for (const cap of capabilities) {
-    if (!grouped[cap.category]) grouped[cap.category] = []
-    grouped[cap.category].push(cap)
-  }
-
-  return (
-    <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${clr.border}` }}>
-      <div style={{ fontSize: '0.77rem', fontWeight: 800, color: clr.navy, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-        <Lock size={13} color={clr.navy}/>الصلاحيات الوظيفية التفصيلية
-        <span style={{ fontSize: '0.7rem', color: clr.textMuted, fontWeight: 400, marginRight: 4 }}>
-          — ما يستطيع هذا المستخدم فعله في النظام
-        </span>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(255px, 1fr))', gap: 10 }}>
-        {Object.entries(grouped).map(([category, caps]) => {
-          const Icon = CATEGORY_ICONS[category] || Globe
-          const grantedCount = caps.filter(c => c.granted).length
-          return (
-            <div key={category} style={{
-              background: clr.white, borderRadius: 10,
-              border: `1px solid ${clr.border}`, overflow: 'hidden',
-            }}>
-              <div style={{
-                padding: '8px 12px', background: '#f1f5f9',
-                borderBottom: `1px solid ${clr.border}`,
-                display: 'flex', alignItems: 'center', gap: 7,
-              }}>
-                <Icon size={13} color={clr.navy}/>
-                <span style={{ fontSize: '0.76rem', fontWeight: 800, color: clr.navy, flex: 1 }}>{category}</span>
-                <span style={{
-                  fontSize: '0.68rem', fontWeight: 700,
-                  background: grantedCount > 0 ? clr.greenLight : clr.grayLight,
-                  color: grantedCount > 0 ? clr.green : clr.textMuted,
-                  padding: '1px 7px', borderRadius: 20,
-                }}>
-                  {grantedCount}/{caps.length}
-                </span>
-              </div>
-              <div>
-                {caps.map((cap, ci) => {
-                  const srcInfo   = cap.source ? SOURCE_LABELS[cap.source]  : null
-                  const scopeInfo = cap.scope  ? SCOPE_LABELS[cap.scope]    : null
-                  return (
-                    <div
-                      key={cap.id}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 8,
-                        padding: '6px 12px',
-                        background: cap.granted ? 'none' : `${clr.grayLight}88`,
-                        borderBottom: ci < caps.length - 1 ? `1px solid ${clr.border}33` : 'none',
-                      }}
-                    >
-                      <div style={{ flexShrink: 0, width: 16, display: 'flex', justifyContent: 'center' }}>
-                        {cap.granted
-                          ? <CheckCircle2 size={13} color={clr.green}/>
-                          : <XCircle size={13} color="#d1d5db"/>
-                        }
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{
-                          fontSize: '0.76rem',
-                          color: cap.granted ? clr.textDark : '#9ca3af',
-                          fontWeight: cap.granted ? 600 : 400,
-                          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                        }}>
-                          {cap.label}
-                        </div>
-                        {cap.granted && cap.detail && (
-                          <div style={{ fontSize: '0.65rem', color: clr.textMuted, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {cap.detail}
-                          </div>
-                        )}
-                      </div>
-                      {cap.granted && srcInfo && (
-                        <span style={{ fontSize: '0.63rem', fontWeight: 700, padding: '1px 6px', borderRadius: 20, background: srcInfo.bg, color: srcInfo.color, whiteSpace: 'nowrap', flexShrink: 0, border: `1px solid ${srcInfo.color}30` }}>
-                          {srcInfo.label}
-                        </span>
-                      )}
-                      {cap.granted && scopeInfo && (
-                        <span style={{ fontSize: '0.61rem', fontWeight: 700, padding: '1px 6px', borderRadius: 20, background: `${scopeInfo.color}15`, color: scopeInfo.color, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                          {scopeInfo.label}
-                        </span>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// ── Tab: User Privileges ──────────────────────────────────────────────────────
-
-function UserPrivilegesTab({ matrix, groups, onRefresh, toast }) {
-  const [search,        setSearch]        = useState('')
-  const [filterGroup,   setFilterGroup]   = useState('')
-  const [filterPriv,    setFilterPriv]    = useState('')
-  const [filterRole,    setFilterRole]    = useState('')
-  const [expanded,      setExpanded]      = useState(new Set())
-  const [showAddModal,  setShowAddModal]  = useState(false)
-  const [addInitUser,   setAddInitUser]   = useState(null)
-  const [deleteTarget,  setDeleteTarget]  = useState(null)
-
-  const users = matrix?.users || []
-
-  const filtered = useMemo(() => {
-    return users.filter(u => {
-      const q = search.trim().toLowerCase()
-      if (q && !(u.display_name || '').toLowerCase().includes(q) && !(u.username || '').toLowerCase().includes(q)) return false
-      if (filterRole && u.role !== filterRole) return false
-      if (filterGroup) {
-        const hasGroup = u.effective_council && u.effective_council[filterGroup]
-        if (!hasGroup) return false
-      }
-      if (filterPriv === 'admin' && u.role !== 'admin') return false
-      if (filterPriv === 'council' && (!u.effective_council || Object.keys(u.effective_council).length === 0)) return false
-      if (filterPriv === 'override' && (!u.overrides || u.overrides.length === 0)) return false
-      if (filterPriv === 'none' && (u.role === 'admin' || (u.effective_council && Object.keys(u.effective_council).length > 0))) return false
-      return true
-    })
-  }, [users, search, filterGroup, filterPriv, filterRole])
-
-  const toggleExpand = (username) => {
-    setExpanded(prev => {
-      const next = new Set(prev)
-      next.has(username) ? next.delete(username) : next.add(username)
-      return next
-    })
-  }
-
-  const handleCreateOverride = async (data) => {
-    await api.createPrivilegeOverride(data)
-    toast('تم إضافة التجاوز بنجاح', 'success')
-    onRefresh()
-  }
-
-  const handleDeleteOverride = async (overrideId) => {
-    await api.deletePrivilegeOverride(overrideId)
-    toast('تم حذف التجاوز', 'success')
-    onRefresh()
-  }
-
-  const inputStyle = {
-    padding: '8px 12px', border: `1.5px solid ${clr.border}`, borderRadius: 8,
-    fontFamily: 'var(--font-body)', fontSize: '0.84rem', direction: 'rtl', outline: 'none',
-    color: clr.textDark, background: clr.white,
-  }
-  const selectStyle = { ...inputStyle, cursor: 'pointer', paddingLeft: 28 }
-
-  return (
-    <div>
-      {/* Filter bar */}
-      <div style={{
-        background: clr.white, borderRadius: 12, padding: '14px 16px',
-        border: `1px solid ${clr.border}`, marginBottom: 16,
-        display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center',
-      }}>
-        <div style={{ position: 'relative', flex: '1 1 200px', minWidth: 160 }}>
-          <Search size={13} style={{ position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)', color: clr.textMuted, pointerEvents: 'none' }}/>
-          <input
-            value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="بحث بالاسم أو المستخدم..."
-            style={{ ...inputStyle, width: '100%', paddingRight: 32, boxSizing: 'border-box' }}
-          />
-        </div>
-        <select value={filterRole} onChange={e => setFilterRole(e.target.value)} style={selectStyle}>
-          <option value="">جميع الأدوار</option>
-          <option value="admin">مدير</option>
-          <option value="member">عضو</option>
-        </select>
-        <select value={filterGroup} onChange={e => setFilterGroup(e.target.value)} style={selectStyle}>
-          <option value="">جميع المجموعات</option>
-          {groups.map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
-        </select>
-        <select value={filterPriv} onChange={e => setFilterPriv(e.target.value)} style={selectStyle}>
-          <option value="">جميع الصلاحيات</option>
-          <option value="admin">المديرون</option>
-          <option value="council">أعضاء المجلس</option>
-          <option value="override">يمتلكون تجاوزات</option>
-          <option value="none">بلا صلاحيات خاصة</option>
-        </select>
-        <button
-          className="btn btn-gold btn-sm"
-          onClick={() => { setAddInitUser(null); setShowAddModal(true) }}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
-        >
-          <Plus size={14}/>إضافة تجاوز
-        </button>
-      </div>
-
-      {/* Count */}
-      <div style={{ fontSize: '0.78rem', color: clr.textMuted, marginBottom: 10, paddingRight: 4 }}>
-        {filtered.length} من {users.length} مستخدم
-      </div>
-
-      {/* Table */}
-      <div style={{ background: clr.white, borderRadius: 14, border: `1px solid ${clr.border}`, overflow: 'hidden', boxShadow: '0 2px 8px rgba(15,39,68,0.05)' }}>
-        {/* Table header */}
-        <div style={{
-          display: 'grid', gridTemplateColumns: '2fr 1fr 3fr 70px 80px 52px',
-          padding: '11px 18px', background: '#f8f9fc',
-          borderBottom: `1px solid ${clr.border}`,
-          fontSize: '0.76rem', fontWeight: 800, color: clr.textMuted,
-          gap: 8,
-        }}>
-          <div>المستخدم</div>
-          <div>الدور</div>
-          <div>صلاحيات المجلس</div>
-          <div style={{ textAlign: 'center' }}>قدرات</div>
-          <div style={{ textAlign: 'center' }}>تجاوزات</div>
-          <div/>
-        </div>
-
-        {filtered.length === 0 && (
-          <div style={{ padding: '48px 24px', textAlign: 'center', color: clr.textMuted }}>
-            <Filter size={32} style={{ opacity: 0.3, display: 'block', margin: '0 auto 12px' }}/>
-            <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>لا توجد نتائج</div>
-          </div>
-        )}
-
-        {filtered.map((u, idx) => {
-          const isExp = expanded.has(u.username)
-          const isAdmin = u.role === 'admin'
-          const council = u.effective_council || {}
-          const computedCouncil = u.computed_council || {}
-          const overrides = u.overrides || []
-          const hasPrivs = isAdmin || Object.keys(council).length > 0
-
-          return (
-            <div key={u.username} style={{ borderBottom: idx < filtered.length - 1 ? `1px solid ${clr.border}` : 'none' }}>
-              {/* Main row */}
-              <div
-                style={{
-                  display: 'grid', gridTemplateColumns: '2fr 1fr 3fr 70px 80px 52px',
-                  padding: '13px 18px', gap: 8, alignItems: 'center',
-                  cursor: 'pointer', transition: '0.1s',
-                  background: isExp ? '#f8f9fc' : 'none',
-                }}
-                onClick={() => toggleExpand(u.username)}
-                onMouseEnter={e => { if (!isExp) e.currentTarget.style.background = '#fafbfd' }}
-                onMouseLeave={e => { if (!isExp) e.currentTarget.style.background = 'none' }}
-              >
-                {/* Name */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                  <div style={{
-                    width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
-                    background: isAdmin ? 'rgba(201,150,60,0.15)' : clr.blueLight,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    border: `1.5px solid ${isAdmin ? 'rgba(201,150,60,0.4)' : clr.border}`,
-                  }}>
-                    {isAdmin
-                      ? <Shield size={15} color={clr.gold}/>
-                      : <UserCheck size={15} color={clr.blue}/>
-                    }
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, color: clr.textDark, fontSize: '0.88rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {u.display_name || u.username}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: clr.textMuted }}>@{u.username}</div>
-                  </div>
-                </div>
-
-                {/* Role */}
-                <div>
-                  <span style={{
-                    fontSize: '0.74rem', fontWeight: 700, padding: '3px 10px', borderRadius: 20,
-                    background: isAdmin ? clr.goldLight : clr.grayLight,
-                    color: isAdmin ? '#92400e' : clr.textMuted,
-                    border: `1px solid ${isAdmin ? '#fde68a' : clr.border}`,
-                    whiteSpace: 'nowrap',
-                  }}>
-                    {isAdmin ? '👑 مدير' : '🙍 عضو'}
-                  </span>
-                </div>
-
-                {/* Privileges summary */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                  {isAdmin && (
-                    <PrivilegeBadge label="وصول المدير الكامل" source="computed" small/>
-                  )}
-                  {Object.entries(council).slice(0, 3).map(([gid, info]) => {
-                    const isFromOverride = overrides.some(
-                      o => o.privilege === 'council_full' && o.group_id === gid && o.type === 'grant'
-                    )
-                    const isComputed = !!computedCouncil[gid]
-                    const source = isFromOverride && !isComputed ? 'override_grant' : 'computed'
-                    const groupName = info.group_name && !api.isRawYouthGroupIdentifier(info.group_name)
-                      ? info.group_name
-                      : api.formatYouthGroupLabel(gid)
-                    return (
-                      <PrivilegeBadge
-                        key={gid}
-                        label={`${groupName}${info.full_group ? '' : ` · ${(info.age_groups || []).slice(0, 2).join('، ')}${(info.age_groups || []).length > 2 ? '...' : ''}`}`}
-                        source={source}
-                        small
-                      />
-                    )
-                  })}
-                  {Object.keys(council).length > 3 && (
-                    <span style={{ fontSize: '0.72rem', color: clr.textMuted, padding: '3px 8px' }}>
-                      +{Object.keys(council).length - 3} أخرى
-                    </span>
-                  )}
-                  {!hasPrivs && (
-                    <span style={{ fontSize: '0.75rem', color: clr.textMuted, fontStyle: 'italic' }}>لا توجد صلاحيات خاصة</span>
-                  )}
-                </div>
-
-                {/* Capabilities count */}
-                <div style={{ textAlign: 'center' }}>
-                  {(() => {
-                    const granted = (u.capabilities || []).filter(c => c.granted).length
-                    const total   = (u.capabilities || []).length
-                    return total > 0 ? (
-                      <span style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 3,
-                        background: clr.blueLight, color: clr.blue,
-                        fontSize: '0.74rem', fontWeight: 800,
-                        padding: '3px 9px', borderRadius: 20, border: `1px solid ${clr.blue}33`,
-                      }}>
-                        <Lock size={10}/>{granted}/{total}
-                      </span>
-                    ) : <span style={{ fontSize: '0.75rem', color: clr.textMuted }}>—</span>
-                  })()}
-                </div>
-
-                {/* Override count */}
-                <div style={{ textAlign: 'center' }}>
-                  {overrides.length > 0 ? (
-                    <span style={{
-                      display: 'inline-flex', alignItems: 'center', gap: 4,
-                      background: clr.greenLight, color: clr.green,
-                      fontSize: '0.76rem', fontWeight: 800,
-                      padding: '3px 10px', borderRadius: 20, border: `1px solid ${clr.green}33`,
-                    }}>
-                      <Key size={11}/>{overrides.length}
-                    </span>
-                  ) : (
-                    <span style={{ fontSize: '0.75rem', color: clr.textMuted }}>—</span>
-                  )}
-                </div>
-
-                {/* Expand arrow */}
-                <div style={{ display: 'flex', justifyContent: 'center', color: clr.textMuted }}>
-                  {isExp ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
-                </div>
-              </div>
-
-              {/* Expanded detail */}
-              {isExp && (
-                <div style={{ padding: '0 18px 18px', background: '#f8f9fc', borderTop: `1px solid ${clr.border}` }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, paddingTop: 14 }}>
-
-                    {/* Effective privileges */}
-                    <div>
-                      <div style={{ fontSize: '0.77rem', fontWeight: 800, color: clr.navy, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <CheckCircle2 size={13} color={clr.blue}/>الصلاحيات الفعّالة
-                      </div>
-                      {isAdmin && (
-                        <div style={{ marginBottom: 6 }}>
-                          <PrivilegeBadge label="مدير النظام — وصول كامل" source="computed"/>
-                        </div>
-                      )}
-                      {Object.entries(council).map(([gid, info]) => {
-                        const fromGrant = overrides.find(o => o.privilege === 'council_full' && o.group_id === gid && o.type === 'grant')
-                        const fromAgGrant = overrides.filter(o => o.privilege === 'council_age_group' && o.group_id === gid && o.type === 'grant')
-                        const isOverrideSource = !!fromGrant && !computedCouncil[gid]
-                        const groupName = info.group_name && !api.isRawYouthGroupIdentifier(info.group_name)
-                          ? info.group_name
-                          : api.formatYouthGroupLabel(gid)
-                        return (
-                          <div key={gid} style={{ marginBottom: 8, padding: '10px 12px', background: clr.white, borderRadius: 10, border: `1px solid ${clr.border}` }}>
-                            <div style={{ fontSize: '0.8rem', fontWeight: 800, color: clr.navy, marginBottom: 6 }}>
-                              {groupName}
-                            </div>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                              {info.full_group ? (
-                                <PrivilegeBadge label="جميع الأعضاء" source={isOverrideSource ? 'override_grant' : 'computed'} small/>
-                              ) : (
-                                (info.age_groups || []).map(ag => {
-                                  const fromAg = fromAgGrant.find(o => o.age_group === ag)
-                                  const agComputed = computedCouncil[gid]?.age_groups?.includes(ag)
-                                  return (
-                                    <PrivilegeBadge
-                                      key={ag} label={ag}
-                                      source={fromAg && !agComputed ? 'override_grant' : 'computed'}
-                                      small
-                                    />
-                                  )
-                                })
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
-                      {!isAdmin && Object.keys(council).length === 0 && (
-                        <div style={{ fontSize: '0.8rem', color: clr.textMuted, fontStyle: 'italic' }}>لا توجد صلاحيات مجلس</div>
-                      )}
-                    </div>
-
-                    {/* Overrides */}
-                    <div>
-                      <div style={{ fontSize: '0.77rem', fontWeight: 800, color: clr.navy, marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <Key size={13} color={clr.gold}/>التجاوزات اليدوية
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setAddInitUser(u); setShowAddModal(true) }}
-                          style={{ marginRight: 'auto', background: clr.navy, color: clr.white, border: 'none', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: '0.72rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}
-                        >
-                          <Plus size={11}/>إضافة
-                        </button>
-                      </div>
-                      {overrides.length === 0 && (
-                        <div style={{ fontSize: '0.8rem', color: clr.textMuted, fontStyle: 'italic' }}>لا توجد تجاوزات يدوية</div>
-                      )}
-                      {overrides.map(o => (
-                        <div key={o.id} style={{
-                          padding: '9px 12px', background: clr.white, borderRadius: 10,
-                          border: `1px solid ${o.type === 'grant' ? clr.green + '44' : clr.red + '44'}`,
-                          marginBottom: 7, display: 'flex', alignItems: 'flex-start', gap: 10,
-                        }}>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-                              <span style={{
-                                fontSize: '0.71rem', fontWeight: 800, padding: '1px 8px', borderRadius: 20,
-                                background: o.type === 'grant' ? clr.greenLight : clr.redLight,
-                                color: o.type === 'grant' ? clr.green : clr.red,
-                              }}>
-                                {o.type === 'grant' ? '✅ منح' : '🚫 سحب'}
-                              </span>
-                              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: clr.textDark }}>
-                                {PRIVILEGE_LABELS[o.privilege] || o.privilege}
-                              </span>
-                            </div>
-                            {o.group_name && (
-                              <div style={{ fontSize: '0.73rem', color: clr.textMuted, marginRight: 4 }}>
-                                {o.group_name}{o.age_group ? ` · ${o.age_group}` : ''}
-                              </div>
-                            )}
-                            {o.notes && <div style={{ fontSize: '0.72rem', color: clr.textMuted, fontStyle: 'italic', marginTop: 4 }}>{o.notes}</div>}
-                            <div style={{ fontSize: '0.7rem', color: clr.textMuted, marginTop: 3 }}>
-                              بواسطة: {o.created_by}
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => setDeleteTarget(o)}
-                            style={{ background: clr.redLight, color: clr.red, border: 'none', borderRadius: 6, padding: '5px 8px', cursor: 'pointer', display: 'flex', flexShrink: 0 }}
-                            title="حذف التجاوز"
-                          >
-                            <Trash2 size={13}/>
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Capabilities */}
-                  <CapabilitiesPanel capabilities={u.capabilities}/>
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Modals */}
-      {showAddModal && (
-        <OverrideModal
-          users={users}
-          groups={groups}
-          initialData={addInitUser ? { username: addInitUser.username } : null}
-          onSave={handleCreateOverride}
-          onClose={() => { setShowAddModal(false); setAddInitUser(null) }}
-        />
-      )}
-      {deleteTarget && (
-        <DeleteConfirm
-          message={`هل تريد حذف تجاوز "${PRIVILEGE_LABELS[deleteTarget.privilege] || deleteTarget.privilege}" من المستخدم @${deleteTarget.username}؟`}
-          onConfirm={() => handleDeleteOverride(deleteTarget.id)}
-          onClose={() => setDeleteTarget(null)}
-        />
-      )}
-    </div>
-  )
-}
-
-// ── Tab: Positions Matrix ────────────────────────────────────────────────────
-
-function PositionsTab({ positions }) {
-  const [search,      setSearch]      = useState('')
-  const [filterGroup, setFilterGroup] = useState('')
-
-  const filtered = useMemo(() => {
-    return (positions || []).filter(p => {
-      if (filterGroup && p.group_id !== filterGroup) return false
-      if (search.trim()) {
-        const q = search.trim().toLowerCase()
-        const matchGroup = (p.group_name || '').toLowerCase().includes(q)
-        const matchNode  = (p.nodes || []).some(n =>
-          (n.display_name || '').toLowerCase().includes(q) ||
-          (n.role_title   || '').toLowerCase().includes(q)
-        )
-        if (!matchGroup && !matchNode) return false
-      }
-      return true
-    })
-  }, [positions, search, filterGroup])
-
-  const allGroups = useMemo(() =>
-    (positions || []).map(p => ({
-      value: p.group_id,
-      label: p.group_name && !api.isRawYouthGroupIdentifier(p.group_name)
-        ? p.group_name
-        : api.formatYouthGroupLabel(p.group_id),
-    }))
-  , [positions])
-
-  const TIER_LABELS = {
-    general_manager:           'المسؤول العام',
-    spiritual_guide:           'المرشد الروحي',
-    spiritual_guide_assistant: 'مساعد المرشد الروحي',
-    reports_to_gm:             'مسؤول فئة',
-    council_head:              'مجلس فئة',
-    spiritual_guide_agegroup:  'مرشد روحي فئة',
-  }
-
-  return (
-    <div>
-      {/* Filters */}
-      <div style={{
-        background: clr.white, borderRadius: 12, padding: '14px 16px',
-        border: `1px solid ${clr.border}`, marginBottom: 16,
-        display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center',
-      }}>
-        <div style={{ position: 'relative', flex: '1 1 200px' }}>
-          <Search size={13} style={{ position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)', color: clr.textMuted, pointerEvents: 'none' }}/>
-          <input
-            value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="بحث بالاسم أو المنصب..."
-            style={{ padding: '8px 36px 8px 12px', border: `1.5px solid ${clr.border}`, borderRadius: 8, fontFamily: 'var(--font-body)', fontSize: '0.84rem', direction: 'rtl', outline: 'none', width: '100%', boxSizing: 'border-box' }}
-          />
-        </div>
-        <select
-          value={filterGroup}
-          onChange={e => setFilterGroup(e.target.value)}
-          style={{ padding: '8px 12px', border: `1.5px solid ${clr.border}`, borderRadius: 8, fontFamily: 'var(--font-body)', fontSize: '0.84rem', direction: 'rtl', outline: 'none', cursor: 'pointer', background: clr.white }}
-        >
-          <option value="">جميع المجموعات</option>
-          {allGroups.map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
-        </select>
-      </div>
-
-      {filtered.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '60px 24px', color: clr.textMuted }}>
-          <GitBranch size={36} style={{ opacity: 0.3, display: 'block', margin: '0 auto 12px' }}/>
-          <div style={{ fontWeight: 700 }}>لا توجد مناصب مرتبطة بصلاحيات</div>
-        </div>
-      )}
-
-      <div style={{ display: 'grid', gap: 14 }}>
-        {filtered.map(group => (
-          <div key={group.group_id} style={{ background: clr.white, borderRadius: 14, border: `1px solid ${clr.border}`, overflow: 'hidden', boxShadow: '0 2px 8px rgba(15,39,68,0.05)' }}>
-            {/* Group header */}
-            <div style={{
-              padding: '13px 18px', background: `linear-gradient(135deg, ${clr.navy}f0, #1a3a5c)`,
-              display: 'flex', alignItems: 'center', gap: 10,
-            }}>
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(201,150,60,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <GitBranch size={15} color={clr.gold}/>
-              </div>
-              <div>
-                <div style={{ fontWeight: 800, color: clr.white, fontSize: '0.92rem' }}>
-                  {group.group_name && !api.isRawYouthGroupIdentifier(group.group_name)
-                    ? group.group_name
-                    : api.formatYouthGroupLabel(group.group_id)}
-                </div>
-                <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.55)', marginTop: 1 }}>
-                  {(group.nodes || []).length} منصب يمنح صلاحيات
-                </div>
-              </div>
-            </div>
-
-            {/* Nodes */}
-            <div>
-              {(group.nodes || []).map((node, ni) => (
-                <div
-                  key={ni}
-                  style={{
-                    padding: '12px 18px', display: 'flex', alignItems: 'center', gap: 14,
-                    borderBottom: ni < group.nodes.length - 1 ? `1px solid ${clr.border}` : 'none',
-                  }}
-                >
-                  {/* Position avatar */}
-                  <div style={{
-                    width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-                    background: node.full_group ? 'rgba(201,150,60,0.12)' : clr.blueLight,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    border: `1.5px solid ${node.full_group ? 'rgba(201,150,60,0.4)' : clr.border}`,
-                  }}>
-                    {node.full_group
-                      ? <Shield size={16} color={clr.gold}/>
-                      : <UserCheck size={16} color={clr.blue}/>
-                    }
-                  </div>
-
-                  {/* Info */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.88rem', color: clr.textDark, marginBottom: 2 }}>
-                      {node.display_name || '(غير محدد)'}
-                    </div>
-                    <div style={{ fontSize: '0.76rem', color: clr.textMuted }}>
-                      {node.role_title}
-                    </div>
-                  </div>
-
-                  {/* Privileges */}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, justifyContent: 'flex-start' }}>
-                    {node.full_group ? (
-                      <PrivilegeBadge label="مجلس كامل" source="computed" small/>
-                    ) : (
-                      (node.age_groups || []).map(ag => (
-                        <PrivilegeBadge key={ag} label={ag} source="computed" small/>
-                      ))
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ── Tab: All Overrides ───────────────────────────────────────────────────────
-
-function OverridesTab({ overrides: rawOverrides, users, groups, onRefresh, toast }) {
-  const [search,       setSearch]       = useState('')
-  const [filterType,   setFilterType]   = useState('')
-  const [filterPriv,   setFilterPriv]   = useState('')
-  const [showAddModal, setShowAddModal] = useState(false)
-  const [editTarget,   setEditTarget]   = useState(null)
-  const [deleteTarget, setDeleteTarget] = useState(null)
-
-  const overrides = rawOverrides || []
-
-  const filtered = useMemo(() => {
-    return overrides.filter(o => {
-      if (filterType && o.type !== filterType) return false
-      if (filterPriv && o.privilege !== filterPriv) return false
-      if (search.trim()) {
-        const q = search.trim().toLowerCase()
-        return (
-          (o.username || '').toLowerCase().includes(q) ||
-          (o.display_name || '').toLowerCase().includes(q) ||
-          (o.group_name || '').toLowerCase().includes(q) ||
-          (o.notes || '').toLowerCase().includes(q)
-        )
-      }
-      return true
-    })
-  }, [overrides, search, filterType, filterPriv])
-
-  const handleCreate = async (data) => {
-    await api.createPrivilegeOverride(data)
-    toast('تم إضافة التجاوز', 'success')
-    onRefresh()
-  }
-
-  const handleEdit = async (data) => {
-    await api.updatePrivilegeOverride(data.id, data)
-    toast('تم تعديل التجاوز', 'success')
-    onRefresh()
-  }
-
-  const handleDelete = async (id) => {
-    await api.deletePrivilegeOverride(id)
-    toast('تم حذف التجاوز', 'success')
-    onRefresh()
-  }
-
-  return (
-    <div>
-      {/* Toolbar */}
-      <div style={{
-        background: clr.white, borderRadius: 12, padding: '14px 16px',
-        border: `1px solid ${clr.border}`, marginBottom: 16,
-        display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center',
-      }}>
-        <div style={{ position: 'relative', flex: '1 1 200px' }}>
-          <Search size={13} style={{ position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)', color: clr.textMuted, pointerEvents: 'none' }}/>
-          <input
-            value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="بحث..."
-            style={{ padding: '8px 36px 8px 12px', border: `1.5px solid ${clr.border}`, borderRadius: 8, fontFamily: 'var(--font-body)', fontSize: '0.84rem', direction: 'rtl', outline: 'none', width: '100%', boxSizing: 'border-box' }}
-          />
-        </div>
-        <select value={filterType} onChange={e => setFilterType(e.target.value)}
-          style={{ padding: '8px 12px', border: `1.5px solid ${clr.border}`, borderRadius: 8, fontFamily: 'var(--font-body)', fontSize: '0.84rem', direction: 'rtl', outline: 'none', cursor: 'pointer', background: clr.white }}>
-          <option value="">جميع الأنواع</option>
-          <option value="grant">منح</option>
-          <option value="revoke">سحب</option>
-        </select>
-        <select value={filterPriv} onChange={e => setFilterPriv(e.target.value)}
-          style={{ padding: '8px 12px', border: `1.5px solid ${clr.border}`, borderRadius: 8, fontFamily: 'var(--font-body)', fontSize: '0.84rem', direction: 'rtl', outline: 'none', cursor: 'pointer', background: clr.white }}>
-          <option value="">جميع الصلاحيات</option>
-          {PRIVILEGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-        <button
-          className="btn btn-gold btn-sm"
-          onClick={() => setShowAddModal(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}
-        >
-          <Plus size={14}/>إضافة تجاوز
-        </button>
-      </div>
-
-      <div style={{ fontSize: '0.78rem', color: clr.textMuted, marginBottom: 10, paddingRight: 4 }}>
-        {filtered.length} تجاوز
-      </div>
-
-      {filtered.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '60px 24px', color: clr.textMuted, background: clr.white, borderRadius: 14, border: `1px solid ${clr.border}` }}>
-          <Key size={36} style={{ opacity: 0.25, display: 'block', margin: '0 auto 12px' }}/>
-          <div style={{ fontWeight: 700 }}>لا توجد تجاوزات</div>
-          <div style={{ fontSize: '0.82rem', marginTop: 6 }}>أضف تجاوزاً لمنح أو سحب صلاحية من مستخدم</div>
-        </div>
-      )}
-
-      <div style={{ display: 'grid', gap: 10 }}>
-        {filtered.map(o => (
-          <div key={o.id} style={{
-            background: clr.white, borderRadius: 12,
-            border: `1px solid ${o.type === 'grant' ? clr.green + '55' : clr.red + '55'}`,
-            padding: '14px 18px', display: 'flex', alignItems: 'flex-start', gap: 14,
-            boxShadow: '0 1px 4px rgba(15,39,68,0.05)',
-          }}>
-            {/* Type icon */}
-            <div style={{
-              width: 40, height: 40, borderRadius: 10, flexShrink: 0,
-              background: o.type === 'grant' ? clr.greenLight : clr.redLight,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              border: `1.5px solid ${o.type === 'grant' ? clr.green + '44' : clr.red + '44'}`,
-            }}>
-              {o.type === 'grant'
-                ? <CheckCircle2 size={18} color={clr.green}/>
-                : <ShieldOff size={18} color={clr.red}/>
-              }
-            </div>
-
-            {/* Details */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                <span style={{
-                  fontSize: '0.72rem', fontWeight: 800, padding: '2px 9px', borderRadius: 20,
-                  background: o.type === 'grant' ? clr.greenLight : clr.redLight,
-                  color: o.type === 'grant' ? clr.green : clr.red,
-                  border: `1px solid ${o.type === 'grant' ? clr.green + '44' : clr.red + '44'}`,
-                }}>
-                  {OVERRIDE_TYPE_LABELS[o.type] || o.type}
-                </span>
-                <span style={{ fontWeight: 800, fontSize: '0.88rem', color: clr.textDark }}>
-                  {PRIVILEGE_LABELS[o.privilege] || o.privilege}
-                </span>
-                {o.group_name && (
-                  <span style={{ fontSize: '0.78rem', color: clr.textMuted }}>
-                    — {o.group_name}{o.age_group ? ` (${o.age_group})` : ''}
-                  </span>
-                )}
-              </div>
-              <div style={{ fontSize: '0.8rem', color: clr.navy, fontWeight: 700, marginBottom: 3 }}>
-                {o.display_name || o.username}
-                <span style={{ fontWeight: 400, color: clr.textMuted, marginRight: 6 }}>@{o.username}</span>
-              </div>
-              {o.notes && (
-                <div style={{ fontSize: '0.75rem', color: clr.textMuted, fontStyle: 'italic', marginBottom: 3 }}>{o.notes}</div>
-              )}
-              <div style={{ fontSize: '0.7rem', color: clr.textMuted }}>
-                أُضيف بواسطة {o.created_by} · {o.created_at ? new Date(o.created_at).toLocaleDateString('ar-SA') : ''}
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-              <button
-                onClick={() => setEditTarget(o)}
-                style={{ background: clr.grayLight, border: `1px solid ${clr.border}`, color: clr.textMuted, borderRadius: 7, padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.78rem', fontFamily: 'var(--font-body)' }}
-                title="تعديل"
-              >
-                <Edit3 size={13}/>
-              </button>
-              <button
-                onClick={() => setDeleteTarget(o)}
-                style={{ background: clr.redLight, border: `1px solid ${clr.red}33`, color: clr.red, borderRadius: 7, padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.78rem', fontFamily: 'var(--font-body)' }}
-                title="حذف"
-              >
-                <Trash2 size={13}/>
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {showAddModal && (
-        <OverrideModal users={users} groups={groups} initialData={null} onSave={handleCreate} onClose={() => setShowAddModal(false)}/>
-      )}
-      {editTarget && (
-        <OverrideModal users={users} groups={groups} initialData={editTarget} onSave={handleEdit} onClose={() => setEditTarget(null)}/>
-      )}
-      {deleteTarget && (
-        <DeleteConfirm
-          message={`هل تريد حذف تجاوز "${PRIVILEGE_LABELS[deleteTarget.privilege] || deleteTarget.privilege}" من المستخدم @${deleteTarget.username}؟`}
-          onConfirm={() => handleDelete(deleteTarget.id)}
-          onClose={() => setDeleteTarget(null)}
-        />
-      )}
-    </div>
-  )
-}
-
-// ── Main Page ─────────────────────────────────────────────────────────────────
-
-export default function PrivilegeManager({ toast }) {
-  const [matrix,    setMatrix]    = useState(null)
-  const [positions, setPositions] = useState(null)
-  const [groups,    setGroups]    = useState([])
-  const [tab,       setTab]       = useState('users')
-  const [loading,   setLoading]   = useState(true)
-  const [error,     setError]     = useState('')
+function ListSection({ youthGroups, toast, refreshKey }) {
+  const [typeFilter, setTypeFilter] = useState('')
+  const [grants, setGrants] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [revoking, setRevoking] = useState(null)
 
   const load = useCallback(async () => {
-    setLoading(true); setError('')
+    setLoading(true)
     try {
-      const [matRes, posRes, filRes] = await Promise.all([
-        api.getPrivilegeMatrix(),
-        api.getPrivilegePositions(),
-        api.filters(),
-      ])
-      setMatrix(matRes)
-      setPositions(posRes.positions || [])
-      const gList = (filRes?.youth_group || []).map(yg => ({
-        value: String(yg?.value || ''),
-        label: api.formatYouthGroupLabel(yg?.label || yg?.value || ''),
-      })).filter(g => g.value)
-      setGroups(gList)
-    } catch (e) {
-      setError(e?.message || 'تعذّر تحميل بيانات الصلاحيات')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+      const res = await api.listPrivilegeGrants(typeFilter || undefined)
+      setGrants(res.grants || [])
+    } catch { setGrants([]) }
+    finally { setLoading(false) }
+  }, [typeFilter, refreshKey])
 
   useEffect(() => { load() }, [load])
 
-  // Computed stats
-  const users = matrix?.users || []
-  const statsAdmins    = users.filter(u => u.role === 'admin').length
-  const statsCouncil   = users.filter(u => u.role !== 'admin' && u.effective_council && Object.keys(u.effective_council).length > 0).length
-  const statsOverrides = users.reduce((acc, u) => acc + (u.overrides?.length || 0), 0)
-  const allOverrides   = users.flatMap(u => u.overrides || [])
-
-  const TABS = [
-    { id: 'users',     label: 'صلاحيات الأعضاء',     icon: Users },
-    { id: 'positions', label: 'المناصب والصلاحيات',   icon: GitBranch },
-    { id: 'overrides', label: 'التجاوزات اليدوية',    icon: Key },
-  ]
-
-  if (loading) {
-    return (
-      <div style={{ padding: 32, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 320, gap: 16 }}>
-        <div className="spinner" style={{ width: 40, height: 40, borderWidth: 4 }}/>
-        <div style={{ color: clr.textMuted, fontSize: '0.88rem' }}>جارٍ تحميل بيانات الصلاحيات...</div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div style={{ padding: 32 }}>
-        <div style={{ background: clr.redLight, color: clr.red, borderRadius: 12, padding: '20px 24px', display: 'flex', gap: 12, alignItems: 'flex-start', maxWidth: 500 }}>
-          <AlertCircle size={22} style={{ flexShrink: 0, marginTop: 2 }}/>
-          <div>
-            <div style={{ fontWeight: 800, marginBottom: 6 }}>تعذّر التحميل</div>
-            <div style={{ fontSize: '0.85rem' }}>{error}</div>
-            <button className="btn btn-sm" onClick={load} style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 6, background: clr.red, color: clr.white, border: 'none' }}>
-              <RefreshCw size={13}/>إعادة المحاولة
-            </button>
-          </div>
-        </div>
-      </div>
-    )
+  const revoke = async (id) => {
+    if (!window.confirm('هل تريد إلغاء هذه الصلاحية؟')) return
+    setRevoking(id)
+    try {
+      await api.deletePrivilegeGrant(id)
+      toast('تم إلغاء الصلاحية', 'success')
+      load()
+    } catch (e) {
+      toast(e?.message || 'تعذّر إلغاء الصلاحية', 'error')
+    } finally { setRevoking(null) }
   }
 
   return (
-    <div style={{ padding: '24px 28px', direction: 'rtl', maxWidth: 1100, margin: '0 auto' }}>
-
-      {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
-            <div style={{ width: 44, height: 44, borderRadius: 12, background: `linear-gradient(135deg, ${clr.navy}, #1a3a5c)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Key size={22} color={clr.gold}/>
-            </div>
-            <div>
-              <h1 style={{ margin: 0, fontSize: '1.35rem', fontWeight: 900, color: clr.navy }}>
-                مدير صلاحيات المناصب
-              </h1>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: clr.textMuted, marginTop: 2 }}>
-                عرض وإدارة الصلاحيات المكتسبة من المناصب والتجاوزات اليدوية
-              </p>
-            </div>
-          </div>
-        </div>
-        <button
-          className="btn btn-ghost btn-sm"
-          onClick={load}
-          style={{ display: 'flex', alignItems: 'center', gap: 6 }}
-        >
-          <RefreshCw size={14}/>تحديث
-        </button>
-      </div>
-
-      {/* Stats */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
-        <StatCard icon={Users}        value={users.length}   label="إجمالي المستخدمين" color={clr.blue}/>
-        <StatCard icon={Shield}       value={statsAdmins}    label="مديرو النظام"        color={clr.gold}/>
-        <StatCard icon={UserCheck}    value={statsCouncil}   label="أعضاء المجلس"       color={clr.green}/>
-        <StatCard icon={Key}          value={statsOverrides} label="تجاوزات يدوية"       color={clr.red}/>
-      </div>
-
-      {/* Legend */}
-      <div style={{
-        background: clr.white, borderRadius: 10, padding: '10px 16px',
-        border: `1px solid ${clr.border}`, marginBottom: 20,
-        display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'center',
-      }}>
-        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: clr.textMuted }}>مفتاح الألوان:</span>
-        {[
-          { color: clr.blue,  label: 'مكتسبة من المنصب', icon: <GitBranch size={11}/> },
-          { color: clr.green, label: 'ممنوحة يدوياً',     icon: <CheckCircle2 size={11}/> },
-          { color: clr.red,   label: 'مسحوبة يدوياً',    icon: <XCircle size={11}/> },
-        ].map(({ color, label, icon }) => (
-          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 20, background: `${color}18`, color, fontSize: '0.72rem', fontWeight: 700, border: `1px solid ${color}33` }}>
-              {icon}{label}
-            </span>
-          </div>
+    <div style={{ display: 'grid', gap: 16 }}>
+      {/* Filter */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {[['', 'الكل'], ...ALL_PRIV_TYPES.map(t => [t, PRIV_LABELS[t]])].map(([val, lbl]) => (
+          <button key={val} onClick={() => setTypeFilter(val)}
+            style={{ padding: '6px 14px', borderRadius: 20, border: `1.5px solid ${typeFilter === val ? '#0f2744' : '#e2e6ef'}`, background: typeFilter === val ? '#0f2744' : 'white', color: typeFilter === val ? 'white' : '#6b7280', fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'var(--font-body)', fontWeight: typeFilter === val ? 700 : 400 }}>
+            {lbl}
+          </button>
         ))}
       </div>
 
-      {/* Tabs */}
-      <div style={{
-        display: 'flex', gap: 4, marginBottom: 20,
-        background: clr.white, borderRadius: 12, padding: 5,
-        border: `1px solid ${clr.border}`, width: 'fit-content',
-      }}>
-        {TABS.map(t => {
-          const isActive = tab === t.id
-          return (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 7,
-                padding: '8px 16px', borderRadius: 8,
-                border: 'none', cursor: 'pointer', fontFamily: 'var(--font-body)',
-                fontWeight: isActive ? 800 : 600, fontSize: '0.84rem',
-                background: isActive ? clr.navy : 'none',
-                color: isActive ? clr.white : clr.textMuted,
-                transition: '0.15s',
-              }}
-              onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = clr.grayLight }}
-              onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'none' }}
-            >
-              <t.icon size={15}/>
-              {t.label}
-              {t.id === 'overrides' && statsOverrides > 0 && (
-                <span style={{ background: clr.gold, color: clr.white, fontSize: '0.68rem', fontWeight: 900, padding: '1px 7px', borderRadius: 20, marginRight: 2 }}>
-                  {statsOverrides}
-                </span>
-              )}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '40px 0' }}><div className="spinner" /></div>
+      ) : grants.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ba5bc' }}>
+          <Shield size={40} style={{ opacity: 0.3, marginBottom: 12 }} />
+          <p style={{ margin: 0 }}>لا توجد صلاحيات ممنوحة</p>
+        </div>
+      ) : (
+        <div className="card">
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.87rem' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #e2e6ef', background: '#f7f9ff' }}>
+                  {['نوع الصلاحية', 'نطاق الوصول', 'المستفيد', 'تاريخ المنح', 'الملاحظات', ''].map(h => (
+                    <th key={h} style={{ padding: '10px 14px', textAlign: 'right', color: '#4a5568', fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {grants.map(g => {
+                  const c = PRIV_COLORS[g.privilege_type] || PRIV_COLORS.profile_access
+                  const Icon = PRIV_ICONS[g.privilege_type] || Shield
+                  return (
+                    <tr key={g.id} style={{ borderBottom: '1px solid #f0f2f7' }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#f7f9ff'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                      <td style={{ padding: '10px 14px' }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 20, background: c.bg, border: `1px solid ${c.border}`, color: c.text, fontSize: '0.78rem', fontWeight: 700 }}>
+                          <Icon size={12} /> {PRIV_LABELS[g.privilege_type] || g.privilege_type}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px 14px', color: '#1a2a3a', fontWeight: 600 }}>{scopeLabel(g.scope, youthGroups)}</td>
+                      <td style={{ padding: '10px 14px', color: '#4a5568' }}>{granteeLabel(g.grantee, youthGroups)}</td>
+                      <td style={{ padding: '10px 14px', color: '#9ba5bc', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{fmtDate(g.granted_at)}</td>
+                      <td style={{ padding: '10px 14px', color: '#6b7280', fontSize: '0.8rem', maxWidth: 200 }}>{g.notes || '—'}</td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <button onClick={() => revoke(g.id)} disabled={revoking === g.id}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 6, fontSize: '0.8rem', fontFamily: 'var(--font-body)' }}
+                          onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
+                          onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                          {revoking === g.id ? <div className="spinner" style={{ width: 13, height: 13 }} /> : <Trash2 size={13} />}
+                          إلغاء
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Search section ────────────────────────────────────────────────────────────
+
+function SearchSection({ youthGroups }) {
+  const [mode, setMode] = useState('resolve') // 'resolve' | 'who_can_access'
+  const [personSearch, setPersonSearch] = useState('')
+  const [personResults, setPersonResults] = useState([])
+  const [personSearchOpen, setPersonSearchOpen] = useState(false)
+  const [selectedPerson, setSelectedPerson] = useState(null)
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const timerRef = useRef(null)
+  const wrapRef = useRef(null)
+
+  useEffect(() => {
+    function handler(e) { if (wrapRef.current && !wrapRef.current.contains(e.target)) setPersonSearchOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const handleSearchInput = (e) => {
+    const q = e.target.value
+    setPersonSearch(q)
+    setSelectedPerson(null)
+    setData(null)
+    clearTimeout(timerRef.current)
+    if (q.length < 2) { setPersonResults([]); setPersonSearchOpen(false); return }
+    timerRef.current = setTimeout(async () => {
+      try {
+        const res = await api.searchPrivilegePersons(q)
+        setPersonResults(res.persons || [])
+        setPersonSearchOpen(true)
+      } catch { setPersonResults([]) }
+    }, 300)
+  }
+
+  const selectPerson = async (p) => {
+    setPersonSearch(p.name)
+    setSelectedPerson(p)
+    setPersonSearchOpen(false)
+    setPersonResults([])
+    setLoading(true)
+    try {
+      if (mode === 'resolve') {
+        const res = await api.resolvePersonPrivileges(p.person_id)
+        setData(res)
+      } else {
+        const res = await api.whoCanAccessPerson(p.person_id)
+        setData(res)
+      }
+    } catch { setData(null) }
+    finally { setLoading(false) }
+  }
+
+  useEffect(() => {
+    if (selectedPerson) { selectPerson(selectedPerson) }
+  }, [mode])
+
+  return (
+    <div style={{ display: 'grid', gap: 16 }}>
+      {/* Mode selector */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <button onClick={() => { setMode('resolve'); setData(null) }}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', borderRadius: 10, border: `2px solid ${mode === 'resolve' ? '#0f2744' : '#e2e6ef'}`, background: mode === 'resolve' ? '#0f2744' : 'white', color: mode === 'resolve' ? 'white' : '#6b7280', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: '0.87rem', fontWeight: mode === 'resolve' ? 700 : 400 }}>
+          <Shield size={15} /> ما صلاحيات هذا الشخص؟
+        </button>
+        <button onClick={() => { setMode('who_can_access'); setData(null) }}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 16px', borderRadius: 10, border: `2px solid ${mode === 'who_can_access' ? '#0f2744' : '#e2e6ef'}`, background: mode === 'who_can_access' ? '#0f2744' : 'white', color: mode === 'who_can_access' ? 'white' : '#6b7280', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: '0.87rem', fontWeight: mode === 'who_can_access' ? 700 : 400 }}>
+          <Users size={15} /> من يمكنه الوصول لبيانات شخص؟
+        </button>
+      </div>
+
+      {/* Person search */}
+      <div className="card">
+        <div className="card-body">
+          <label style={labelStyle}>
+            {mode === 'resolve' ? 'الشخص (من يملك الصلاحيات؟)' : 'الشخص (من يمكن الوصول لبياناته؟)'}
+          </label>
+          <div ref={wrapRef} style={{ position: 'relative' }}>
+            <div style={{ position: 'relative' }}>
+              <Search size={14} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', color: '#9ba5bc', pointerEvents: 'none' }} />
+              <input value={personSearch} onChange={handleSearchInput} placeholder="ابحث باسم الشخص…"
+                style={{ width: '100%', padding: '10px 34px 10px 12px', border: '1.5px solid #e2e6ef', borderRadius: 8, fontFamily: 'var(--font-body)', fontSize: '0.9rem', direction: 'rtl', outline: 'none', boxSizing: 'border-box' }} />
+            </div>
+            {personSearchOpen && personResults.length > 0 && (
+              <div style={{ position: 'absolute', top: '100%', right: 0, left: 0, background: 'white', border: '1.5px solid #e2e6ef', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.1)', zIndex: 200, maxHeight: 220, overflowY: 'auto', marginTop: 4 }}>
+                {personResults.map(p => (
+                  <button key={p.person_id} onClick={() => selectPerson(p)}
+                    style={{ width: '100%', padding: '10px 14px', textAlign: 'right', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: '0.87rem', borderBottom: '1px solid #f5f6fa', display: 'flex', flexDirection: 'column', gap: 2 }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f7f9ff'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                    <span style={{ fontWeight: 600, color: '#1a2a3a' }}>{p.name}</span>
+                    {p.en_name && <span style={{ fontSize: '0.75rem', color: '#9ba5bc' }}>{p.en_name}</span>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Results */}
+      {loading && <div style={{ textAlign: 'center', padding: 32 }}><div className="spinner" /></div>}
+
+      {!loading && data && mode === 'resolve' && (
+        <ResolveResults data={data} youthGroups={youthGroups} />
+      )}
+
+      {!loading && data && mode === 'who_can_access' && (
+        <WhoCanAccessResults data={data} youthGroups={youthGroups} />
+      )}
+    </div>
+  )
+}
+
+function ResolveResults({ data, youthGroups }) {
+  const { grants = [], person_name } = data
+  return (
+    <div className="card">
+      <div className="card-header">
+        <span className="card-title">صلاحيات {person_name || 'الشخص'}</span>
+      </div>
+      <div className="card-body">
+        {grants.length === 0 ? (
+          <p style={{ color: '#9ba5bc', margin: 0 }}>لا توجد صلاحيات ممنوحة لهذا الشخص</p>
+        ) : (
+          <div style={{ display: 'grid', gap: 10 }}>
+            {grants.map(g => {
+              const c = PRIV_COLORS[g.privilege_type] || PRIV_COLORS.profile_access
+              const Icon = PRIV_ICONS[g.privilege_type] || Shield
+              return (
+                <div key={g.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 14px', border: `1.5px solid ${c.border}`, borderRadius: 10, background: c.bg }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: `1px solid ${c.border}` }}>
+                    <Icon size={15} color={c.text} />
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, color: c.text, fontSize: '0.87rem', marginBottom: 4 }}>{PRIV_LABELS[g.privilege_type]}</div>
+                    <div style={{ fontSize: '0.82rem', color: '#4a5568' }}>النطاق: {scopeLabel(g.scope, youthGroups)}</div>
+                    {g.notes && <div style={{ fontSize: '0.78rem', color: '#9ba5bc', marginTop: 4 }}>{g.notes}</div>}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: '#9ba5bc', flexShrink: 0 }}>{fmtDate(g.granted_at)}</div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function WhoCanAccessResults({ data, youthGroups }) {
+  const { accessors = [], person_name, covering_grants = [] } = data
+  return (
+    <div style={{ display: 'grid', gap: 16 }}>
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">من يمكنه الوصول لبيانات {person_name || 'الشخص'}</span>
+        </div>
+        <div className="card-body">
+          {accessors.length === 0 ? (
+            <p style={{ color: '#9ba5bc', margin: 0 }}>لا أحد لديه صلاحية وصول لبيانات هذا الشخص</p>
+          ) : (
+            <div style={{ display: 'grid', gap: 8 }}>
+              {accessors.map(a => (
+                <div key={a.person_id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', border: '1.5px solid #e2e6ef', borderRadius: 10, background: '#f7f9ff' }}>
+                  <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#eef4ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, border: '1.5px solid #c5d8f8' }}>
+                    <User size={14} color="#1a56db" />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.87rem', color: '#1a2a3a' }}>{a.person_name || '—'}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#9ba5bc' }}>
+                      عبر {a.via_grants?.length || 0} صلاحية
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      {covering_grants.length > 0 && (
+        <div className="card">
+          <div className="card-header"><span className="card-title">الصلاحيات المانحة للوصول</span></div>
+          <div className="card-body">
+            <div style={{ display: 'grid', gap: 8 }}>
+              {covering_grants.map(g => {
+                const c = PRIV_COLORS[g.privilege_type] || PRIV_COLORS.profile_access
+                return (
+                  <div key={g.id} style={{ padding: '8px 12px', border: `1px solid ${c.border}`, borderRadius: 8, background: c.bg, fontSize: '0.82rem', color: c.text }}>
+                    {granteeLabel(g.grantee, youthGroups)} ← {scopeLabel(g.scope, youthGroups)}
+                    {g.notes && <span style={{ color: '#9ba5bc', marginRight: 8 }}>({g.notes})</span>}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── YG File section ───────────────────────────────────────────────────────────
+
+function YGFileSection({ youthGroups, ageGroups, toast, onCreated }) {
+  const [subTab, setSubTab] = useState('grant') // 'grant' | 'list'
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  const handleCreated = () => {
+    setRefreshKey(r => r + 1)
+    onCreated()
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 20 }}>
+      {/* Sub-tabs */}
+      <div style={{ display: 'flex', gap: 8 }}>
+        {[['grant', 'منح صلاحية', Plus], ['list', 'الصلاحيات الممنوحة', Shield]].map(([id, label, Icon]) => (
+          <button key={id} onClick={() => setSubTab(id)}
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '8px 16px', borderRadius: 8, border: `1.5px solid ${subTab === id ? '#7c3aed' : '#e2e6ef'}`, background: subTab === id ? '#fdf4ff' : 'white', color: subTab === id ? '#7c3aed' : '#6b7280', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: '0.87rem', fontWeight: subTab === id ? 700 : 400 }}>
+            <Icon size={14} /> {label}
+          </button>
+        ))}
+      </div>
+
+      {subTab === 'grant' && (
+        <YGFileGrantForm youthGroups={youthGroups} ageGroups={ageGroups} toast={toast} onCreated={handleCreated} />
+      )}
+      {subTab === 'list' && (
+        <YGFileList youthGroups={youthGroups} toast={toast} refreshKey={refreshKey} />
+      )}
+    </div>
+  )
+}
+
+function YGFileGrantForm({ youthGroups, ageGroups, toast, onCreated }) {
+  const [scope, setScope] = useState({ type: 'youth_group', youth_group_ids: [], age_groups: [] })
+  const [grantees, setGrantees] = useState([newGrantee()])
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [positionsCache, setPositionsCache] = useState({})
+
+  const loadPositions = useCallback(async (groupId) => {
+    if (!groupId) return
+    setPositionsCache(prev => ({ ...prev, [groupId + '__loading']: true }))
+    try {
+      const data = await api.getPrivilegeOrgPositions(groupId)
+      setPositionsCache(prev => { const next = { ...prev }; delete next[groupId + '__loading']; next[groupId] = data; return next })
+    } catch {
+      setPositionsCache(prev => { const next = { ...prev }; delete next[groupId + '__loading']; return next })
+    }
+  }, [])
+
+  const updateGrantee = (i, patch) => setGrantees(prev => prev.map((g, idx) => idx === i ? { ...g, ...patch } : g))
+  const removeGrantee = (i) => setGrantees(prev => prev.filter((_, idx) => idx !== i))
+
+  const validate = () => {
+    if (!(scope.youth_group_ids?.length > 0)) {
+      toast('يرجى اختيار فرقة واحدة على الأقل', 'error'); return false
+    }
+    if (grantees.length === 0) {
+      toast('يرجى إضافة مجموعة مستفيدين على الأقل', 'error'); return false
+    }
+    for (const g of grantees) {
+      if (g.type === 'specific_person' && !g.person_id) {
+        toast('يرجى اختيار شخص محدد في كل مجموعة', 'error'); return false
+      }
+      if (g.type === 'org_tree_position' && !g.youth_group_id) {
+        toast('يرجى اختيار الفرقة في كل مجموعة', 'error'); return false
+      }
+      if ((g.type === 'org_tree_position' || g.type === 'gen_sec_position') && g.selection_mode === 'positions' && g.positions.length === 0) {
+        toast('يرجى اختيار موقع واحد على الأقل', 'error'); return false
+      }
+      if ((g.type === 'org_tree_position' || g.type === 'gen_sec_position') && g.selection_mode === 'hull' && !(g.selected_hulls?.length > 0)) {
+        toast('يرجى اختيار هيكل واحد على الأقل', 'error'); return false
+      }
+    }
+    return true
+  }
+
+  const handleSubmit = async () => {
+    if (!validate()) return
+    setSaving(true)
+    try {
+      const grants = grantees.map(g => ({
+        privilege_type: 'yg_file_access',
+        scope,
+        grantee: {
+          type: g.type,
+          ...(g.type === 'specific_person' ? { person_id: g.person_id, person_name: g.person_name } : {}),
+          ...(g.type === 'org_tree_position' ? { youth_group_id: g.youth_group_id } : {}),
+          ...((g.type === 'org_tree_position' || g.type === 'gen_sec_position') ? (() => {
+            const hulls = g.selected_hulls || []
+            const counts = {}
+            hulls.forEach(h => { counts[h.hull] = (counts[h.hull] || 0) + 1 })
+            const seen = new Set()
+            const uniqueHulls = hulls.filter(h => { if (seen.has(h.hull)) return false; seen.add(h.hull); return true })
+            return {
+              selection_mode: g.selection_mode,
+              positions: g.positions,
+              hull: uniqueHulls.map(h => h.hull).join('، '),
+              hull_nodes: hulls.flatMap(h => h.instance_node_ids || []),
+              hull_display: uniqueHulls.map(h => counts[h.hull] > 1 ? h.hull : (h.hull_display || h.hull)).join('، '),
+            }
+          })() : {}),
+        },
+        notes,
+      }))
+      await api.createPrivilegeGrants(grants)
+      toast('تم منح الصلاحية بنجاح', 'success')
+      setGrantees([newGrantee()])
+      setNotes('')
+      setScope({ type: 'youth_group', youth_group_ids: [], age_groups: [] })
+      onCreated()
+    } catch (e) {
+      toast(e?.message || 'تعذّر منح الصلاحية', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 20 }}>
+      {/* Scope */}
+      <div className="card">
+        <div className="card-header"><span className="card-title">الفرقة (نطاق الوصول)</span></div>
+        <div className="card-body">
+          <label style={labelStyle}>الفرق</label>
+          <MultiSelectHeader
+            total={youthGroups.length}
+            selectedCount={scope.youth_group_ids.length}
+            onSelectAll={() => setScope(s => ({ ...s, youth_group_ids: youthGroups.map(g => g.id) }))}
+            onClearAll={() => setScope(s => ({ ...s, youth_group_ids: [] }))}
+          />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 180, overflowY: 'auto', border: '1px solid #e2e6ef', borderRadius: 8, padding: '8px 10px', background: 'white' }}>
+            {youthGroups.map(g => (
+              <label key={g.id} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.85rem', color: '#1a2a3a' }}>
+                <input type="checkbox" checked={scope.youth_group_ids.includes(g.id)}
+                  onChange={() => {
+                    const next = scope.youth_group_ids.includes(g.id)
+                      ? scope.youth_group_ids.filter(x => x !== g.id)
+                      : [...scope.youth_group_ids, g.id]
+                    setScope(s => ({ ...s, youth_group_ids: next }))
+                  }} style={{ width: 14, height: 14 }} />
+                <span>{g.short_name || g.name}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Grantees */}
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">مستفيدو الصلاحية</span>
+          <p style={{ fontSize: '0.8rem', color: '#9ba5bc', margin: 0 }}>أضف مجموعة أو أكثر من المستفيدين</p>
+        </div>
+        <div className="card-body" style={{ display: 'grid', gap: 12 }}>
+          {grantees.map((g, i) => (
+            <GranteeBlock
+              key={g._key}
+              grantee={g}
+              index={i}
+              onUpdate={updateGrantee}
+              onRemove={() => removeGrantee(i)}
+              youthGroups={youthGroups}
+              positionsCache={positionsCache}
+              onLoadPositions={loadPositions}
+            />
+          ))}
+          <button onClick={() => setGrantees(prev => [...prev, newGrantee()])}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px', border: '1.5px dashed #e9d5ff', borderRadius: 8, background: '#fdf4ff', color: '#7c3aed', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: '0.85rem', fontWeight: 600 }}>
+            <Plus size={15} /> إضافة مجموعة أخرى
+          </button>
+        </div>
+      </div>
+
+      {/* Notes + submit */}
+      <div className="card">
+        <div className="card-body" style={{ display: 'grid', gap: 12 }}>
+          <div>
+            <label style={labelStyle}>ملاحظات (اختياري)</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="سبب منح الصلاحية أو أي ملاحظات…"
+              style={{ width: '100%', padding: '9px 12px', border: '1.5px solid #e2e6ef', borderRadius: 8, fontFamily: 'var(--font-body)', fontSize: '0.87rem', direction: 'rtl', resize: 'vertical', boxSizing: 'border-box', outline: 'none' }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button onClick={handleSubmit} disabled={saving}
+              style={{ padding: '9px 20px', borderRadius: 8, border: 'none', background: '#7c3aed', color: 'white', cursor: saving ? 'not-allowed' : 'pointer', fontFamily: 'var(--font-body)', fontSize: '0.9rem', fontWeight: 700, opacity: saving ? 0.7 : 1 }}>
+              {saving ? 'جارٍ الحفظ…' : 'منح الصلاحية'}
             </button>
-          )
-        })}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function YGFileList({ youthGroups, toast, refreshKey }) {
+  const [grants, setGrants] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [revoking, setRevoking] = useState(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await api.listPrivilegeGrants('yg_file_access')
+      setGrants(res.grants || [])
+    } catch { setGrants([]) }
+    finally { setLoading(false) }
+  }, [refreshKey])
+
+  useEffect(() => { load() }, [load])
+
+  const revoke = async (id) => {
+    if (!window.confirm('هل تريد إلغاء هذه الصلاحية؟')) return
+    setRevoking(id)
+    try {
+      await api.deletePrivilegeGrant(id)
+      toast('تم إلغاء الصلاحية', 'success')
+      load()
+    } catch (e) {
+      toast(e?.message || 'تعذّر إلغاء الصلاحية', 'error')
+    } finally { setRevoking(null) }
+  }
+
+  const c = PRIV_COLORS.yg_file_access
+
+  if (loading) return <div style={{ textAlign: 'center', padding: '40px 0' }}><div className="spinner" /></div>
+
+  if (grants.length === 0) return (
+    <div style={{ textAlign: 'center', padding: '48px 0', color: '#9ba5bc' }}>
+      <FolderOpen size={40} style={{ opacity: 0.3, marginBottom: 12 }} />
+      <p style={{ margin: 0 }}>لا توجد صلاحيات ممنوحة لملف الفرقة</p>
+    </div>
+  )
+
+  return (
+    <div className="card">
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.87rem' }}>
+          <thead>
+            <tr style={{ borderBottom: '2px solid #e2e6ef', background: '#fdf4ff' }}>
+              {['نطاق الوصول', 'المستفيد', 'تاريخ المنح', 'الملاحظات', ''].map(h => (
+                <th key={h} style={{ padding: '10px 14px', textAlign: 'right', color: '#4a5568', fontWeight: 700, whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {grants.map(g => (
+              <tr key={g.id} style={{ borderBottom: '1px solid #f0f2f7' }}
+                onMouseEnter={e => e.currentTarget.style.background = '#fdf4ff'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                <td style={{ padding: '10px 14px', color: '#1a2a3a', fontWeight: 600 }}>{scopeLabel(g.scope, youthGroups)}</td>
+                <td style={{ padding: '10px 14px', color: '#4a5568' }}>{granteeLabel(g.grantee, youthGroups)}</td>
+                <td style={{ padding: '10px 14px', color: '#9ba5bc', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>{fmtDate(g.granted_at)}</td>
+                <td style={{ padding: '10px 14px', color: '#6b7280', fontSize: '0.8rem', maxWidth: 200 }}>{g.notes || '—'}</td>
+                <td style={{ padding: '10px 14px' }}>
+                  <button onClick={() => revoke(g.id)} disabled={revoking === g.id}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', display: 'flex', alignItems: 'center', gap: 4, padding: '4px 8px', borderRadius: 6, fontSize: '0.8rem', fontFamily: 'var(--font-body)' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                    {revoking === g.id ? <div className="spinner" style={{ width: 13, height: 13 }} /> : <Trash2 size={13} />}
+                    إلغاء
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+// ── Shared styles ─────────────────────────────────────────────────────────────
+
+const labelStyle = {
+  display: 'block',
+  fontSize: '0.8rem',
+  color: '#4a5568',
+  fontWeight: 700,
+  marginBottom: 6,
+}
+
+const selectStyle = {
+  width: '100%',
+  padding: '8px 12px',
+  border: '1.5px solid #e2e6ef',
+  borderRadius: 8,
+  fontFamily: 'var(--font-body)',
+  fontSize: '0.87rem',
+  direction: 'rtl',
+  outline: 'none',
+  background: 'white',
+  boxSizing: 'border-box',
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+export default function PrivilegeManager({ toast }) {
+  const [mainTab, setMainTab] = useState('grant') // 'grant' | 'list' | 'search' | 'yg_file'
+  const [youthGroups, setYouthGroups] = useState([])
+  const [ageGroups, setAgeGroups] = useState([])
+  const [listRefresh, setListRefresh] = useState(0)
+
+  useEffect(() => {
+    api.getPrivilegeYouthGroups().then(r => setYouthGroups(r.youth_groups || [])).catch(() => {})
+    api.getPrivilegeAgeGroups().then(r => setAgeGroups(r.age_groups || [])).catch(() => {})
+  }, [])
+
+  const TABS = [
+    { id: 'grant',   label: 'منح صلاحية',         icon: Plus },
+    { id: 'list',    label: 'الصلاحيات الممنوحة',  icon: Shield },
+    { id: 'search',  label: 'البحث',               icon: Search },
+    { id: 'yg_file', label: 'ملف الفرقة',          icon: FolderOpen },
+  ]
+
+  return (
+    <div style={{ direction: 'rtl', padding: '0 0 40px' }}>
+      {/* Page header */}
+      <div style={{ padding: '20px 24px 0', marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'rgba(201,150,60,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid rgba(201,150,60,0.3)' }}>
+            <Shield size={20} color="#c9963c" />
+          </div>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0f2744' }}>إدارة الصلاحيات</h2>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: '#9ba5bc' }}>منح وإدارة صلاحيات الوصول للأعضاء</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Main tabs */}
+      <div style={{ display: 'flex', gap: 4, padding: '0 24px', marginBottom: 24, borderBottom: '2px solid #e2e6ef' }}>
+        {TABS.map(({ id, label, icon: Icon }) => (
+          <button key={id} onClick={() => setMainTab(id)}
+            style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '10px 18px', border: 'none', background: 'none', cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: '0.9rem', fontWeight: mainTab === id ? 800 : 500, color: mainTab === id ? '#0f2744' : '#9ba5bc', borderBottom: `2.5px solid ${mainTab === id ? '#c9963c' : 'transparent'}`, marginBottom: -2, transition: '0.15s' }}>
+            <Icon size={15} /> {label}
+          </button>
+        ))}
       </div>
 
       {/* Tab content */}
-      {tab === 'users' && (
-        <UserPrivilegesTab
-          matrix={matrix}
-          groups={groups}
-          onRefresh={load}
-          toast={toast}
-        />
-      )}
-      {tab === 'positions' && (
-        <PositionsTab positions={positions}/>
-      )}
-      {tab === 'overrides' && (
-        <OverridesTab
-          overrides={allOverrides}
-          users={users}
-          groups={groups}
-          onRefresh={load}
-          toast={toast}
-        />
-      )}
+      <div style={{ padding: '0 24px' }}>
+        {mainTab === 'grant' && (
+          <GrantSection
+            youthGroups={youthGroups}
+            ageGroups={ageGroups}
+            toast={toast}
+            onCreated={() => setListRefresh(r => r + 1)}
+          />
+        )}
+        {mainTab === 'list' && (
+          <ListSection
+            youthGroups={youthGroups}
+            toast={toast}
+            refreshKey={listRefresh}
+          />
+        )}
+        {mainTab === 'search' && (
+          <SearchSection youthGroups={youthGroups} />
+        )}
+        {mainTab === 'yg_file' && (
+          <YGFileSection
+            youthGroups={youthGroups}
+            ageGroups={ageGroups}
+            toast={toast}
+            onCreated={() => setListRefresh(r => r + 1)}
+          />
+        )}
+      </div>
     </div>
   )
 }

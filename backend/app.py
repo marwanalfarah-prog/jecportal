@@ -1,4 +1,5 @@
 import os
+import threading
 
 from flask import Flask, jsonify, send_from_directory
 from flask_cors import CORS
@@ -6,7 +7,7 @@ from flask_cors import CORS
 from core import state as S
 from core.routes_auth import register_auth_routes
 from core.routes_org_tree import register_org_tree_routes
-from core.routes_people import register_person_routes
+from core.routes_people import register_person_routes, _compute_filters_payload
 from core.routes_promotions import register_promotions_routes
 from core.routes_questionnaires_notifications import register_questionnaires_notifications_routes
 from core.routes_config import register_config_routes
@@ -26,6 +27,29 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 CORS(app, supports_credentials=True, origins=["http://localhost:5173", "http://127.0.0.1:5173"])
 
 S.init_state()
+
+def _warm_members_index_cache():
+    try:
+        _, cached_version, data_version = S.members_index_cache_state()
+        if cached_version != data_version:
+            payload = S.build_members_index()
+            S.set_members_index_cache(payload, data_version)
+    except Exception:
+        pass
+
+
+def _warm_filters_cache():
+    try:
+        _, cached_version, data_version = S.filters_cache_state()
+        if cached_version != data_version:
+            payload = _compute_filters_payload()
+            S.set_filters_cache(payload, data_version)
+    except Exception:
+        pass
+
+
+threading.Thread(target=_warm_members_index_cache, daemon=True).start()
+threading.Thread(target=_warm_filters_cache, daemon=True).start()
 
 register_person_routes(app)
 register_org_tree_routes(app)

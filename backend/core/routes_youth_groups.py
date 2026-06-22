@@ -25,6 +25,19 @@ YOUTH_GROUP_SOCIAL_MEDIA_ID_PREFIX = "YGSM"
 YOUTH_GROUP_SOCIAL_MEDIA_ID_WIDTH = 6
 
 YOUTH_AGE_GROUPS_REQUIRE_SCHOOL = {'البراعم', 'الإعدادي', 'الثانوي'}
+YOUTH_AGE_GROUPS_SCHOOL = {'البراعم', 'البراعم الكبرى', 'البراعم الصغرى', 'الإعدادي', 'الثانوي'}
+YOUTH_AGE_GROUPS_HIGHER_EDU = {'الجامعيّة', 'العاملة'}
+SCHOOL_STATUS_STUDYING = 'على مقاعد الدراسة'
+
+
+def _bool_field(val) -> bool:
+    if not val:
+        return False
+    if isinstance(val, bool):
+        return val
+    if isinstance(val, (int, float)):
+        return bool(val)
+    return str(val).strip().lower() in ('true', '1', 'yes', 'نعم')
 
 
 def _normalize_text(value) -> str | None:
@@ -899,7 +912,7 @@ def _registered_member_rows(group_id: str) -> list[dict]:
         person = person_map.get(pid_key, {})
         full_name = " ".join(
             str(person.get(k) or "").strip()
-            for k in ("ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name")
+            for k in ("title", "ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name")
             if str(person.get(k) or "").strip()
         ).strip()
         if not full_name:
@@ -1004,6 +1017,93 @@ def _schools_by_person_key(person_type: str) -> dict[str, list[str]]:
     return out
 
 
+def _pids_with_data(person_type: str, sheet: str, value_col: str) -> set[str]:
+    if person_type == "registered":
+        df = S._sheet_for_registered(sheet)
+    else:
+        df = S._scd_filter_active(S.unreg_store.get(sheet, pd.DataFrame()))
+    if df.empty or "person_id" not in df.columns:
+        return set()
+    out = set()
+    for row in df.replace({pd.NA: None}).to_dict(orient="records"):
+        pid = _pid_key(row.get("person_id"))
+        if pid and _normalize_text(str(row.get(value_col) or "")):
+            out.add(pid)
+    return out
+
+
+def _pids_with_valid_address(person_type: str) -> set[str]:
+    if person_type == "registered":
+        df = S._sheet_for_registered("addresses")
+    else:
+        df = S._scd_filter_active(S.unreg_store.get("addresses", pd.DataFrame()))
+    if df.empty or "person_id" not in df.columns:
+        return set()
+    out = set()
+    for row in df.replace({pd.NA: None}).to_dict(orient="records"):
+        pid = _pid_key(row.get("person_id"))
+        if (pid and _normalize_text(str(row.get("country") or ""))
+                and _normalize_text(str(row.get("governorate") or ""))):
+            out.add(pid)
+    return out
+
+
+def _pids_with_higher_edu(person_type: str) -> set[str]:
+    if person_type == "registered":
+        df = S._sheet_for_registered("higher_education")
+    else:
+        df = S._scd_filter_active(S.unreg_store.get("higher_education", pd.DataFrame()))
+    if df.empty or "person_id" not in df.columns:
+        return set()
+    out = set()
+    for row in df.replace({pd.NA: None}).to_dict(orient="records"):
+        pid = _pid_key(row.get("person_id"))
+        if pid and pid not in out:
+            if (_normalize_text(str(row.get("university_college") or ""))
+                    and _normalize_text(str(row.get("major") or ""))
+                    and _normalize_text(str(row.get("degree") or ""))):
+                out.add(pid)
+    return out
+
+
+def _pids_with_job(person_type: str) -> set[str]:
+    if person_type == "registered":
+        df = S._sheet_for_registered("jobs")
+    else:
+        df = S._scd_filter_active(S.unreg_store.get("jobs", pd.DataFrame()))
+    if df.empty or "person_id" not in df.columns:
+        return set()
+    out = set()
+    for row in df.replace({pd.NA: None}).to_dict(orient="records"):
+        pid = _pid_key(row.get("person_id"))
+        if pid and pid not in out:
+            if (_normalize_text(str(row.get("company") or ""))
+                    and _normalize_text(str(row.get("job_title") or ""))):
+                out.add(pid)
+    return out
+
+
+def _pids_with_school_grade(person_type: str) -> set[str]:
+    if person_type == "registered":
+        schools_df = S._sheet_for_registered("schools")
+        grades_df = S._sheet_for_registered("school_grades")
+    else:
+        schools_df = S._scd_filter_active(S.unreg_store.get("schools", pd.DataFrame()))
+        grades_df = S._scd_filter_active(S.unreg_store.get("school_grades", pd.DataFrame()))
+    if schools_df.empty or "person_id" not in schools_df.columns:
+        return set()
+    if grades_df.empty or "school_record_id" not in grades_df.columns:
+        return set()
+    grade_rids = set(grades_df["school_record_id"].dropna().astype(str).tolist())
+    out = set()
+    for row in schools_df.replace({pd.NA: None}).to_dict(orient="records"):
+        pid = _pid_key(row.get("person_id"))
+        rid = str(row.get("school_record_id") or "").strip()
+        if pid and rid and rid in grade_rids:
+            out.add(pid)
+    return out
+
+
 def _person_rows_by_key(person_type: str) -> dict[str, dict]:
     if person_type == "registered":
         persons_df = S._registered_persons_df().copy()
@@ -1021,10 +1121,10 @@ def _person_rows_by_key(person_type: str) -> dict[str, dict]:
     return out
 
 
-def _member_problem_issues(member: dict, person_row: dict | None, schools: list[str]) -> list[str]:
+def _member_problem_issues(member: dict, person_row: dict | None, profile_data: dict) -> list[str]:
     issues = []
-
     person = person_row or {}
+
     missing_name_parts = [
         label
         for key, label in (
@@ -1038,9 +1138,44 @@ def _member_problem_issues(member: dict, person_row: dict | None, schools: list[
     if missing_name_parts:
         issues.append(f"أجزاء الاسم ناقصة: {', '.join(missing_name_parts)}")
 
+    if not _normalize_text(str(person.get("gender") or "")):
+        issues.append("الجنس مفقود")
+
+    dob_missing = [lbl for field, lbl in [("birth_year", "السنة"), ("birth_month", "الشهر"), ("birth_day", "اليوم")] if not person.get(field)]
+    if dob_missing:
+        issues.append(f"تاريخ الميلاد ناقص ({', '.join(dob_missing)})")
+
+    if not _normalize_text(str(person.get("marital_status") or "")):
+        issues.append("الحالة الاجتماعية مفقودة")
+
+    if not profile_data.get("has_nationality"):
+        issues.append("الجنسية مفقودة")
+
+    if not profile_data.get("has_phone"):
+        issues.append("رقم الهاتف مفقود")
+
+    if not profile_data.get("has_address"):
+        issues.append("العنوان مفقود")
+
+    if not _normalize_text(str(member.get("youth_join_year") or "")):
+        issues.append("سنة الانتساب مفقودة")
+
     age_group = _normalize_text(member.get("age_group"))
-    if age_group in YOUTH_AGE_GROUPS_REQUIRE_SCHOOL and len(schools) == 0:
-        issues.append(f"المدرسة مفقودة لفئة {age_group}")
+    if age_group in YOUTH_AGE_GROUPS_SCHOOL:
+        school_graduated = _normalize_text(str(person.get("school_graduated") or ""))
+        if not school_graduated:
+            issues.append("الحالة الدراسية مفقودة")
+        elif school_graduated == SCHOOL_STATUS_STUDYING and not profile_data.get("has_school_with_grade"):
+            issues.append("المدرسة أو الصف الدراسي مفقود")
+
+    if not profile_data.get("has_hobby"):
+        issues.append("الهوايات والمهارات مفقودة")
+
+    if age_group in YOUTH_AGE_GROUPS_HIGHER_EDU:
+        if not _bool_field(person.get("no_higher_education")) and not profile_data.get("has_higher_edu"):
+            issues.append("التعليم الجامعي مفقود")
+        if not _bool_field(person.get("not_employed")) and not profile_data.get("has_job"):
+            issues.append("معلومات العمل مفقودة")
 
     return issues
 
@@ -1096,8 +1231,25 @@ def register_youth_group_routes(app):
 
         reg_person_by_key = _person_rows_by_key("registered")
         unreg_person_by_key = _person_rows_by_key("unregistered")
-        reg_schools_by_key = _schools_by_person_key("registered")
-        unreg_schools_by_key = _schools_by_person_key("unregistered")
+
+        reg_profile = {
+            "nationalities": _pids_with_data("registered", "nationality", "nationality"),
+            "phones":        _pids_with_data("registered", "mobile_numbers", "mobile_number"),
+            "addresses":     _pids_with_valid_address("registered"),
+            "hobbies":       _pids_with_data("registered", "hobbies_skills", "hobby_skill"),
+            "higher_edu":    _pids_with_higher_edu("registered"),
+            "jobs":          _pids_with_job("registered"),
+            "school_grades": _pids_with_school_grade("registered"),
+        }
+        unreg_profile = {
+            "nationalities": _pids_with_data("unregistered", "nationality", "nationality"),
+            "phones":        _pids_with_data("unregistered", "mobile_numbers", "mobile_number"),
+            "addresses":     _pids_with_valid_address("unregistered"),
+            "hobbies":       _pids_with_data("unregistered", "hobbies_skills", "hobby_skill"),
+            "higher_edu":    _pids_with_higher_edu("unregistered"),
+            "jobs":          _pids_with_job("unregistered"),
+            "school_grades": _pids_with_school_grade("unregistered"),
+        }
 
         problematic_members = []
         for member in all_members:
@@ -1105,14 +1257,22 @@ def register_youth_group_routes(app):
             if not pid:
                 continue
             person_type = member.get("person_type")
+            lookup = reg_profile if person_type == "registered" else unreg_profile
             if person_type == "registered":
                 person_row = reg_person_by_key.get(pid)
-                schools = reg_schools_by_key.get(pid, [])
             else:
                 person_row = unreg_person_by_key.get(pid)
-                schools = unreg_schools_by_key.get(pid, [])
+            profile_data = {
+                "has_nationality":      pid in lookup["nationalities"],
+                "has_phone":            pid in lookup["phones"],
+                "has_address":          pid in lookup["addresses"],
+                "has_hobby":            pid in lookup["hobbies"],
+                "has_higher_edu":       pid in lookup["higher_edu"],
+                "has_job":              pid in lookup["jobs"],
+                "has_school_with_grade": pid in lookup["school_grades"],
+            }
 
-            issues = _member_problem_issues(member, person_row, schools)
+            issues = _member_problem_issues(member, person_row, profile_data)
             if not issues:
                 continue
 

@@ -9,8 +9,6 @@ import pandas as pd
 from flask import jsonify, request, session
 
 from core import state as S
-from core.routes_org_tree import _extract_node_identity, _filter_tree_data_for_user, _load_index, _load_tree_data
-import core.privilege_store as PS
 
 
 auth_lock = threading.Lock()
@@ -44,7 +42,7 @@ def _hash_pw(pw: str) -> str:
 def _compose_person_full_name(row) -> str:
     """Build a full person name from all available name components."""
     parts = []
-    for key in ("ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name"):
+    for key in ("title", "ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name"):
         value = row.get(key, "") if hasattr(row, "get") else ""
         if pd.notna(value):
             text = str(value).strip()
@@ -403,227 +401,6 @@ def _get_person_memberships(person_type: str, pid) -> tuple[list[str], list[str]
         return ([], [])
 
 
-AGE_GROUPS_PY = ['البراعم', 'الإعدادي', 'الثانوي', 'الجامعيّة', 'العاملة']
-ACTING_PREFIX_PY = 'قائم بأعمال '
-
-
-def _classify_role_py(role: str) -> dict | None:
-    if not role:
-        return None
-
-    if role.startswith(ACTING_PREFIX_PY):
-        role = role[len(ACTING_PREFIX_PY):]
-
-    if role == 'المسؤول العام':
-        return {'tier': 'general_manager', 'full_group': True}
-    if role == 'المرشد الروحي':
-        return {'tier': 'spiritual_guide', 'full_group': True}
-    if role == 'مساعد المرشد الروحي':
-        return {'tier': 'spiritual_guide_assistant', 'full_group': True}
-    if role == 'نائب المسؤول العام':
-        return {'tier': 'reports_to_gm', 'full_group': True}
-
-    import re as _re
-    if _re.search(r'^مرشد روحي (فئة|فئتيّ|فئات)', role):
-        return {'tier': 'spiritual_guide_agegroup', 'age_groups': [g for g in AGE_GROUPS_PY if g in role]}
-
-    if _re.search(r'^مجلس (فئة|فئتيّ|فئات)', role):
-        return {'tier': 'council_head', 'age_groups': [g for g in AGE_GROUPS_PY if g in role]}
-
-    if _re.search(r'^مسؤول (فئة|فئتيّ|فئات)', role):
-        return {'tier': 'reports_to_gm', 'council_head': True, 'age_groups': [g for g in AGE_GROUPS_PY if g in role]}
-
-    return None
-
-
-def _get_council_access(person_type: str, pid, youth_groups: list) -> dict:
-    access = {}
-    pid_str = str(pid)
-
-    for group_id in youth_groups:
-        try:
-            periods = _load_index(group_id)
-            if not periods:
-                continue
-
-            active = next((p for p in periods if not p.get('to_date')), None)
-            if not active:
-                active = sorted(periods, key=lambda p: p.get('from_date') or '', reverse=True)[0]
-
-            tree = _load_tree_data(group_id, active['id'])
-
-            for node in tree.get('nodes', []):
-                matched = False
-                node_pid, node_unregistered = _extract_node_identity(node)
-                if person_type == 'registered':
-                    if not node_unregistered and node_pid is not None and str(node_pid) == pid_str:
-                        matched = True
-                elif person_type == 'unregistered':
-                    if node_unregistered and node_pid is not None and str(node_pid) == pid_str:
-                        matched = True
-
-                if not matched:
-                    continue
-
-                classified = _classify_role_py(node.get('role', ''))
-                if not classified:
-                    continue
-
-                if group_id not in access:
-                    access[group_id] = {'full_group': False, 'age_groups': set()}
-
-                if classified.get('full_group'):
-                    access[group_id]['full_group'] = True
-                else:
-                    ags = classified.get('age_groups', [])
-                    if ags:
-                        access[group_id]['age_groups'].update(ags)
-
-        except Exception as e:
-            print(f'Warning: council access scan failed for {group_id}: {e}')
-            continue
-
-    result = {}
-    for group_id, info in access.items():
-        group_name = S.youth_group_display_label(group_id)
-        if info['full_group']:
-            result[group_id] = {'full_group': True, 'age_groups': AGE_GROUPS_PY, 'group_name': group_name}
-        elif info['age_groups']:
-            result[group_id] = {
-                'full_group': False,
-                'age_groups': sorted(list(info['age_groups']), key=lambda x: AGE_GROUPS_PY.index(x) if x in AGE_GROUPS_PY else 99),
-                'group_name': group_name,
-            }
-    return result
-
-
-def _get_council_accessible_persons(council_access: dict) -> list:
-    """
-    Return every {person_id, person_type} the user can view through their council access.
-    Respects age-group specificity: full_group → all members, age_group list → only those ages.
-    This is the authoritative list for frontend profile-link visibility.
-    """
-    accessible: dict[tuple, dict] = {}
-
-    pyg_reg   = S._scd_filter_active(S.store.get("person_youth_group", pd.DataFrame()))
-    pyg_unreg = S._scd_filter_active(S.unreg_store.get("person_youth_group", pd.DataFrame()))
-
-    for group_id, info in council_access.items():
-        is_full      = bool(info.get("full_group"))
-        allowed_ages = set(info.get("age_groups") or []) if not is_full else None
-
-        for pyg, ptype in [(pyg_reg, "registered"), (pyg_unreg, "unregistered")]:
-            if pyg.empty or "person_id" not in pyg.columns or S.YOUTH_GROUP_ID_COL not in pyg.columns:
-                continue
-            mask = pyg[S.YOUTH_GROUP_ID_COL].astype(str).str.strip() == group_id
-            if not is_full and allowed_ages and "age_group" in pyg.columns:
-                mask = mask & pyg["age_group"].isin(allowed_ages)
-            for pid_str in pyg[mask]["person_id"].dropna().astype(str):
-                pid_str = pid_str.strip()
-                if pid_str:
-                    key = (pid_str, ptype)
-                    if key not in accessible:
-                        accessible[key] = {"person_id": pid_str, "person_type": ptype}
-
-    return list(accessible.values())
-
-
-def _get_org_tree_descendants(person_type: str, pid, youth_groups: list) -> list:
-    """
-    Find every person who sits below person_id in any of their org trees.
-
-    The tree is stored as a flat node list + edge list (from → to means parent → child).
-    We BFS from every node the current person occupies, following edges downward,
-    and collect all person identities we encounter.
-
-    Returns a list of {"person_id": str, "person_type": "registered"|"unregistered"}.
-    """
-    if pid is None or not person_type:
-        return []
-
-    pid_str = str(pid)
-    seen: dict[tuple, dict] = {}  # (pid_str, ptype) → record, for deduplication
-
-    for group_id in youth_groups:
-        try:
-            periods = _load_index(group_id)
-            if not periods:
-                continue
-            active = next((p for p in periods if not p.get("to_date")), None)
-            if not active:
-                active = sorted(periods, key=lambda p: p.get("from_date") or "", reverse=True)[0]
-
-            tree = _filter_tree_data_for_user(
-                _load_tree_data(group_id, active["id"]),
-                {"role": "member"},
-            )
-            nodes = tree.get("nodes", [])
-            edges = tree.get("edges", [])
-            if not nodes:
-                continue
-
-            # node_id → node object
-            node_map: dict[str, dict] = {}
-            for n in nodes:
-                nid = n.get("id")
-                if nid:
-                    node_map[nid] = n
-
-            # parent_node_id → [child_node_ids]  (edges go from parent to child)
-            children_of: dict[str, list] = {}
-            for e in edges:
-                src = e.get("from")
-                dst = e.get("to")
-                if src and dst:
-                    children_of.setdefault(src, []).append(dst)
-
-            # Find every node this person occupies
-            my_node_ids: list[str] = []
-            for n in nodes:
-                node_pid, node_unreg = _extract_node_identity(n)
-                if node_pid is None:
-                    continue
-                match = (
-                    (person_type == "registered"   and not node_unreg and str(node_pid) == pid_str) or
-                    (person_type == "unregistered" and     node_unreg and str(node_pid) == pid_str)
-                )
-                if match and n.get("id"):
-                    my_node_ids.append(n["id"])
-
-            if not my_node_ids:
-                continue
-
-            # BFS downward through the edge graph
-            visited: set[str] = set()
-            queue: list[str] = []
-            for nid in my_node_ids:
-                queue.extend(children_of.get(nid, []))
-
-            while queue:
-                nid = queue.pop(0)
-                if nid in visited:
-                    continue
-                visited.add(nid)
-                queue.extend(children_of.get(nid, []))
-
-                node = node_map.get(nid)
-                if not node:
-                    continue
-                desc_pid, desc_unreg = _extract_node_identity(node)
-                if desc_pid is None:
-                    continue
-                desc_type = "unregistered" if desc_unreg else "registered"
-                key = (str(desc_pid), desc_type)
-                if key not in seen:
-                    seen[key] = {"person_id": str(desc_pid), "person_type": desc_type}
-
-        except Exception as e:
-            print(f"Warning: org-tree descendant scan failed for {group_id}: {e}")
-            continue
-
-    return list(seen.values())
-
-
 def _current_user():
     uid = session.get("user_id")
     if not uid:
@@ -671,42 +448,26 @@ def register_auth_routes(app):
             }), 403
 
         account_status = user.get("account_status") or "active"
-        if account_status == "rejected_admin":
+        if account_status in ("rejected_admin", "rejected_yg"):
             reason = user.get("rejection_reason") or ""
-            msg = "تم رفض طلب تسجيلك من قِبَل الإدارة."
-            if reason:
-                msg += f" السبب: {reason}"
-            return jsonify({"error": msg, "account_status": account_status}), 403
-        if account_status == "rejected_all_yg":
-            reason = user.get("rejection_reason") or ""
-            msg = "تم رفض طلب انضمامك إلى جميع فرق الشبيبة المطلوبة."
+            if account_status == "rejected_yg":
+                msg = "تم رفض عضويتك في جميع فرق الشبيبة المطلوبة."
+            else:
+                msg = "تم رفض طلب تسجيلك من قِبَل الفريق."
             if reason:
                 msg += f" السبب: {reason}"
             return jsonify({"error": msg, "account_status": account_status}), 403
 
         session["user_id"] = user["username"]
         safe = {k: v for k, v in user.items() if k != "password_hash"}
-        is_pending = account_status in ("pending", "pending_yg")
+        is_pending = account_status == "pending"
         safe["is_pending"] = is_pending
 
         if _has_person_link(user):
             youth_groups = _get_person_youth_groups_any(user["person_type"], user["person_id"])
             safe["youth_groups"] = youth_groups
-            if not is_pending:
-                computed = _get_council_access(user["person_type"], user["person_id"], youth_groups)
-                council  = PS.apply_overrides(username, computed)
-                safe["council_access"] = council
-                safe["org_tree_descendants"]      = _get_org_tree_descendants(user["person_type"], user["person_id"], youth_groups)
-                safe["council_accessible_persons"] = _get_council_accessible_persons(council)
-            else:
-                safe["council_access"] = {}
-                safe["org_tree_descendants"] = []
-                safe["council_accessible_persons"] = []
         else:
             safe["youth_groups"] = []
-            safe["council_access"] = {}
-            safe["org_tree_descendants"] = []
-            safe["council_accessible_persons"] = []
         return jsonify({"ok": True, "user": safe})
 
     @app.post("/api/auth/logout")
@@ -721,26 +482,13 @@ def register_auth_routes(app):
             return jsonify({"user": None})
         account_status = u.get("account_status") or "active"
         safe = {k: v for k, v in u.items() if k != "password_hash"}
-        is_pending = account_status in ("pending", "pending_yg")
+        is_pending = account_status == "pending"
         safe["is_pending"] = is_pending
         if _has_person_link(u):
             youth_groups = _get_person_youth_groups_any(u["person_type"], u["person_id"])
             safe["youth_groups"] = youth_groups
-            if not is_pending:
-                computed = _get_council_access(u["person_type"], u["person_id"], youth_groups)
-                council  = PS.apply_overrides(u["username"], computed)
-                safe["council_access"] = council
-                safe["org_tree_descendants"]      = _get_org_tree_descendants(u["person_type"], u["person_id"], youth_groups)
-                safe["council_accessible_persons"] = _get_council_accessible_persons(council)
-            else:
-                safe["council_access"] = {}
-                safe["org_tree_descendants"] = []
-                safe["council_accessible_persons"] = []
         else:
             safe["youth_groups"] = []
-            safe["council_access"] = {}
-            safe["org_tree_descendants"] = []
-            safe["council_accessible_persons"] = []
         return jsonify({"user": safe})
 
     @app.get("/api/auth/users")
@@ -755,11 +503,8 @@ def register_auth_routes(app):
             if _has_person_link(u):
                 youth_groups = _get_person_youth_groups(u["person_type"], u["person_id"])
                 safe["youth_groups"] = youth_groups
-                computed = _get_council_access(u["person_type"], u["person_id"], youth_groups)
-                safe["council_access"] = PS.apply_overrides(u["username"], computed)
             else:
                 safe["youth_groups"] = []
-                safe["council_access"] = {}
             users.append(safe)
         return jsonify({"users": users})
 
@@ -923,43 +668,6 @@ def register_auth_routes(app):
             _save_auth(data)
         return jsonify({"ok": True})
 
-    @app.get("/api/auth/council-members")
-    def council_members():
-        u = _current_user()
-        if not u:
-            return jsonify({"error": "unauthorized"}), 401
-
-        youth_groups = _get_person_youth_groups(u["person_type"], u["person_id"])
-        council_access = _get_council_access(u["person_type"], u["person_id"], youth_groups)
-
-        if not council_access:
-            return jsonify({"members": []})
-
-        pyg = S._sheet_for_registered("person_youth_group")
-        accessible_pids = set()
-
-        for group_id, info in council_access.items():
-            age_groups = info.get("age_groups", [])
-            if info.get("full_group"):
-                mask = pyg[S.YOUTH_GROUP_ID_COL] == group_id
-            else:
-                mask = (pyg[S.YOUTH_GROUP_ID_COL] == group_id) & (pyg["age_group"].isin(age_groups))
-            pids = pyg[mask]["person_id"].dropna().unique().tolist()
-            accessible_pids.update(str(int(p)) for p in pids)
-
-        unreg_pyg = S._scd_filter_active(S.unreg_store.get("person_youth_group", pd.DataFrame()))
-        if not unreg_pyg.empty and "person_id" in unreg_pyg.columns:
-            for group_id, info in council_access.items():
-                age_groups = info.get("age_groups", [])
-                if info.get("full_group"):
-                    mask = unreg_pyg[S.YOUTH_GROUP_ID_COL] == group_id
-                else:
-                    mask = (unreg_pyg[S.YOUTH_GROUP_ID_COL] == group_id) & (unreg_pyg["age_group"].isin(age_groups))
-                uids = unreg_pyg[mask]["person_id"].dropna().astype(str).unique().tolist()
-                accessible_pids.update(f"unreg:{uid}" for uid in uids)
-
-        return jsonify({"members": list(accessible_pids), "council_access": council_access})
-
     @app.post("/api/auth/generate-all")
     def auth_generate_all():
         err = _require_admin()
@@ -1091,8 +799,5 @@ exports = {
     "_deactivate_auth_users_for_person": _deactivate_auth_users_for_person,
     "_get_person_name": _get_person_name,
     "_get_person_youth_groups": _get_person_youth_groups,
-    "_get_council_access": _get_council_access,
     "_has_person_link": _has_person_link,
-    "_get_council_accessible_persons": _get_council_accessible_persons,
-    "_get_org_tree_descendants": _get_org_tree_descendants,
 }

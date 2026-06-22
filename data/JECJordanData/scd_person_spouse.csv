@@ -1,0 +1,13 @@
+﻿person_id,spouse_person_id,scd_active_from,scd_active_to,scd_currently_active_flag,scd_changed_by_user
+965,1272,2026-06-20 20:08:02,,True,admin
+1272,965,2026-06-20 20:08:02,,True,admin
+3191,3192,2026-06-20 20:09:27,,True,admin
+3192,3191,2026-06-20 20:09:27,,True,admin
+3068,1850,2026-06-20 20:11:02,,True,admin
+1850,3068,2026-06-20 20:11:02,,True,admin
+1253,1281,2026-06-20 20:12:18,,True,admin
+1281,1253,2026-06-20 20:12:18,,True,admin
+57,1280,2026-06-20 20:17:11,,True,admin
+1280,57,2026-06-20 20:17:11,,True,admin
+1397,1390,2026-06-20 21:13:39,,True,admin
+1390,1397,2026-06-20 21:13:39,,True,admin

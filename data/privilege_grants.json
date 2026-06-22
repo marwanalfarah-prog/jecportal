@@ -1,0 +1,1629 @@
+[
+  {
+    "id": "562f33a1-03ed-4f3d-a20b-f90968f9092b",
+    "privilege_type": "profile_access",
+    "scope": {
+      "type": "all",
+      "youth_group_ids": [],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "gen_sec_position",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "الأمانة العامة",
+      "hull_nodes": [
+        "OTND00000496",
+        "OTND00000497",
+        "OTND00000498",
+        "OTND00000499",
+        "OTND00000500",
+        "OTND00000501",
+        "OTND00000502",
+        "OTND00000503",
+        "OTND00000504",
+        "OTND00000505",
+        "OTND00000506",
+        "OTND00000547"
+      ],
+      "hull_display": "الأمانة العامة"
+    },
+    "notes": "",
+    "granted_at": "2026-06-16T12:53:56.089835+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "0fd9621a-6fdf-45ef-bb0f-78e91a81e31e",
+    "privilege_type": "profile_access",
+    "scope": {
+      "type": "all",
+      "youth_group_ids": [],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "gen_sec_position",
+      "selection_mode": "positions",
+      "positions": [
+        "مدير مكتب الأمانة"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-16T12:53:56.089835+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "785ab41e-73ff-427b-8b75-dd79703a8d79",
+    "privilege_type": "profile_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG027",
+        "YG029",
+        "YG026",
+        "YG020"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "gen_sec_position",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "لجنة تطوير شبيبات الجنوب",
+      "hull_nodes": [
+        "OTND00000501",
+        "OTND00000517",
+        "OTND00000518",
+        "OTND00000519"
+      ],
+      "hull_display": "لجنة تطوير شبيبات الجنوب"
+    },
+    "notes": "",
+    "granted_at": "2026-06-16T13:00:30.522812+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "8ac6091b-4bdc-4432-8193-1b65b5ad4ecd",
+    "privilege_type": "profile_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG009",
+        "YG002",
+        "YG012",
+        "YG007",
+        "YG018",
+        "YG025"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "gen_sec_position",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "لجنة تطوير شبيبات الشمال",
+      "hull_nodes": [
+        "OTND00000498",
+        "OTND00000524",
+        "OTND00000525",
+        "OTND00000526",
+        "OTND00000527"
+      ],
+      "hull_display": "لجنة تطوير شبيبات الشمال"
+    },
+    "notes": "",
+    "granted_at": "2026-06-16T13:01:35.923623+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "356069a5-470a-4bcf-ad18-f08768441534",
+    "privilege_type": "profile_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG006",
+        "YG001",
+        "YG017",
+        "YG015",
+        "YG005",
+        "YG022",
+        "YG014",
+        "YG019",
+        "YG013",
+        "YG021"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "gen_sec_position",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "لجنة تطوير شبيبات الوسط",
+      "hull_nodes": [
+        "OTND00000500",
+        "OTND00000512",
+        "OTND00000513",
+        "OTND00000514",
+        "OTND00000515",
+        "OTND00000516"
+      ],
+      "hull_display": "لجنة تطوير شبيبات الوسط"
+    },
+    "notes": "",
+    "granted_at": "2026-06-16T13:02:23.769604+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "49ac925d-75e4-465a-8b56-46321512314d",
+    "privilege_type": "profile_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG016",
+        "YG008",
+        "YG003",
+        "YG030",
+        "YG023",
+        "YG011",
+        "YG028",
+        "YG010",
+        "YG004",
+        "YG024"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "gen_sec_position",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "لجنة تطوير شبيبات الوسط",
+      "hull_nodes": [
+        "OTND00000499",
+        "OTND00000507",
+        "OTND00000508",
+        "OTND00000509",
+        "OTND00000510",
+        "OTND00000511"
+      ],
+      "hull_display": "لجنة تطوير شبيبات الوسط"
+    },
+    "notes": "",
+    "granted_at": "2026-06-16T13:02:55.041635+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "e8e32dec-8f2a-4dd9-9f84-c6364189c436",
+    "privilege_type": "profile_access",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG022"
+      ],
+      "age_groups": [
+        "الجامعيّة",
+        "العاملة"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG022",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "مجلس فئتيّ الجامعيّة والعاملة",
+      "hull_nodes": [
+        "OTND00000431",
+        "OTND00000436",
+        "OTND00000437",
+        "OTND00000438",
+        "OTND00000454"
+      ],
+      "hull_display": "مجلس فئتيّ الجامعيّة والعاملة"
+    },
+    "notes": "",
+    "granted_at": "2026-06-16T13:04:59.964952+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "27b515ee-def5-4073-b0a8-280fe62112e9",
+    "privilege_type": "profile_access",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG022"
+      ],
+      "age_groups": [
+        "الثانوي"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG022",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "مجلس فئة الثانوي",
+      "hull_nodes": [
+        "OTND00000439",
+        "OTND00000440",
+        "OTND00000441",
+        "OTND00000455",
+        "OTND00000456"
+      ],
+      "hull_display": "مجلس فئة الثانوي"
+    },
+    "notes": "",
+    "granted_at": "2026-06-16T13:05:22.149422+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "7664586d-54af-4e65-ba03-1cf46b41156b",
+    "privilege_type": "profile_access",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG022"
+      ],
+      "age_groups": [
+        "الإعدادي"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG022",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "مجلس فئة الإعدادي",
+      "hull_nodes": [
+        "OTND00000432",
+        "OTND00000442",
+        "OTND00000443",
+        "OTND00000444",
+        "OTND00000445"
+      ],
+      "hull_display": "مجلس فئة الإعدادي"
+    },
+    "notes": "",
+    "granted_at": "2026-06-16T13:05:35.298240+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "fae4c409-7b15-4fa5-9409-7005ed88449e",
+    "privilege_type": "profile_access",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG022"
+      ],
+      "age_groups": [
+        "البراعم"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG022",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "مجلس فئة البراعم",
+      "hull_nodes": [
+        "OTND00000433",
+        "OTND00000434",
+        "OTND00000446",
+        "OTND00000447",
+        "OTND00000448",
+        "OTND00000449"
+      ],
+      "hull_display": "مجلس فئة البراعم"
+    },
+    "notes": "",
+    "granted_at": "2026-06-16T13:05:49.756873+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "aeaf7ff9-8a85-477a-90a1-806ce00d5f9f",
+    "privilege_type": "promotion_access",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG022"
+      ],
+      "age_groups": [
+        "البراعم"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG022",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "مجلس فئة البراعم",
+      "hull_nodes": [
+        "OTND00000433",
+        "OTND00000434",
+        "OTND00000446",
+        "OTND00000447",
+        "OTND00000448",
+        "OTND00000449"
+      ],
+      "hull_display": "مجلس فئة البراعم"
+    },
+    "notes": "",
+    "granted_at": "2026-06-16T13:07:38.387323+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "bb9b3010-9aa4-4847-abf5-fed3225b65c7",
+    "privilege_type": "promotion_access",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG022"
+      ],
+      "age_groups": [
+        "الإعدادي"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG022",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "مجلس فئة الإعدادي",
+      "hull_nodes": [
+        "OTND00000432",
+        "OTND00000442",
+        "OTND00000443",
+        "OTND00000444",
+        "OTND00000445"
+      ],
+      "hull_display": "مجلس فئة الإعدادي"
+    },
+    "notes": "",
+    "granted_at": "2026-06-16T13:07:55.392860+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "eee1ef6a-1c8b-4460-ad2d-24ef0da83b2b",
+    "privilege_type": "promotion_access",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG022"
+      ],
+      "age_groups": [
+        "الثانوي"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG022",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "مجلس فئة الثانوي",
+      "hull_nodes": [
+        "OTND00000439",
+        "OTND00000440",
+        "OTND00000441",
+        "OTND00000455",
+        "OTND00000456"
+      ],
+      "hull_display": "مجلس فئة الثانوي"
+    },
+    "notes": "",
+    "granted_at": "2026-06-16T13:08:09.507097+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "d429456e-aaca-4dc7-b340-d77e2cd6c711",
+    "privilege_type": "promotion_access",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG022"
+      ],
+      "age_groups": [
+        "الجامعيّة",
+        "العاملة"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG022",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "مجلس فئتيّ الجامعيّة والعاملة",
+      "hull_nodes": [
+        "OTND00000431",
+        "OTND00000436",
+        "OTND00000437",
+        "OTND00000438",
+        "OTND00000454"
+      ],
+      "hull_display": "مجلس فئتيّ الجامعيّة والعاملة"
+    },
+    "notes": "",
+    "granted_at": "2026-06-16T13:08:29.574851+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "a10d9636-de58-4f1c-9ad9-056bf53786f0",
+    "privilege_type": "profile_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG022"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG022",
+      "selection_mode": "positions",
+      "positions": [
+        "المرشد الروحي",
+        "المسؤول العام"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T07:52:23.534438+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "c99e6285-93c0-4a3e-8596-11032fe4fa7e",
+    "privilege_type": "promotion_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG022"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG022",
+      "selection_mode": "positions",
+      "positions": [
+        "المرشد الروحي",
+        "المسؤول العام"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T07:54:57.856428+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "7773c1c9-c71e-4175-9afd-f1615e63e279",
+    "privilege_type": "yg_registration_approval",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG022"
+      ],
+      "age_groups": [
+        "البراعم"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG022",
+      "selection_mode": "positions",
+      "positions": [
+        "مسؤول فئة البراعم"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T07:59:21.342728+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "1a4d2495-4d98-4f29-9992-e019f20cb00c",
+    "privilege_type": "yg_registration_approval",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG022"
+      ],
+      "age_groups": [
+        "الإعدادي"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG022",
+      "selection_mode": "positions",
+      "positions": [
+        "مسؤول فئة الإعدادي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T07:59:42.346791+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "dfeaf074-2be6-438e-a493-0859a9151340",
+    "privilege_type": "yg_registration_approval",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG022"
+      ],
+      "age_groups": [
+        "الثانوي"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG022",
+      "selection_mode": "positions",
+      "positions": [
+        "مسؤول فئة الثانوي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T08:00:15.539553+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "0276370b-80a0-4b8e-9ac3-09fcc97f8b10",
+    "privilege_type": "yg_registration_approval",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG022"
+      ],
+      "age_groups": [
+        "الجامعيّة",
+        "العاملة"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG022",
+      "selection_mode": "positions",
+      "positions": [
+        "مسؤول فئتيّ الجامعيّة والعاملة"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T08:00:45.264761+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "c42511b7-3f11-41f6-babb-270dcc86406b",
+    "privilege_type": "yg_registration_approval",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG022"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG022",
+      "selection_mode": "positions",
+      "positions": [
+        "المرشد الروحي",
+        "المسؤول العام"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T08:01:02.667268+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "b7ea988a-93f1-493d-b924-9a2c6c08fffc",
+    "privilege_type": "profile_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG012"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG012",
+      "selection_mode": "positions",
+      "positions": [
+        "المرشد الروحي",
+        "المسؤول العام"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T09:25:52.634933+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "7f6e83de-4a49-43fa-8076-1bb1b60350fd",
+    "privilege_type": "profile_access",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG012"
+      ],
+      "age_groups": [
+        "البراعم"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG012",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "مجلس فئة البراعم",
+      "hull_nodes": [
+        "OTND00000147",
+        "OTND00000148",
+        "OTND00000149",
+        "OTND00000150",
+        "OTND00000151",
+        "OTND00000152"
+      ],
+      "hull_display": "مجلس فئة البراعم"
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T09:27:20.390834+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "0965a53f-ca8b-49fd-b040-dc7d3936ee5a",
+    "privilege_type": "profile_access",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG012"
+      ],
+      "age_groups": [
+        "الإعدادي"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG012",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "مجلس فئة الإعدادي",
+      "hull_nodes": [
+        "OTND00000145",
+        "OTND00000146"
+      ],
+      "hull_display": "مجلس فئة الإعدادي"
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T09:27:37.569505+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "2329d741-727b-421f-9658-a9276047f541",
+    "privilege_type": "profile_access",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG012"
+      ],
+      "age_groups": [
+        "الثانوي"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG012",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "مجلس فئة الثانوي",
+      "hull_nodes": [
+        "OTND00000142",
+        "OTND00000143",
+        "OTND00000144"
+      ],
+      "hull_display": "مجلس فئة الثانوي"
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T09:27:56.212210+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "1768535a-e461-4bea-b06a-f7d31ff95f43",
+    "privilege_type": "profile_access",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG012"
+      ],
+      "age_groups": [
+        "الجامعيّة",
+        "العاملة"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG012",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "مجلس فئتيّ الجامعيّة والعاملة",
+      "hull_nodes": [
+        "OTND00000141"
+      ],
+      "hull_display": "مجلس فئتيّ الجامعيّة والعاملة"
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T09:28:17.893217+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "f72e0aec-2488-4366-ac8c-2429f6c1b563",
+    "privilege_type": "promotion_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG012"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG012",
+      "selection_mode": "positions",
+      "positions": [
+        "المسؤول العام",
+        "المرشد الروحي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T09:28:51.306522+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "46af094b-05bd-4f9c-b22b-ab7fe73fbc0b",
+    "privilege_type": "promotion_access",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG012"
+      ],
+      "age_groups": [
+        "البراعم"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG012",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "مجلس فئة البراعم",
+      "hull_nodes": [
+        "OTND00000147",
+        "OTND00000148",
+        "OTND00000149",
+        "OTND00000150",
+        "OTND00000151",
+        "OTND00000152"
+      ],
+      "hull_display": "مجلس فئة البراعم"
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T09:29:11.672024+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "e590cd25-1b77-482f-99fb-f3d3132c5c9d",
+    "privilege_type": "promotion_access",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG012"
+      ],
+      "age_groups": [
+        "الإعدادي"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG012",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "مجلس فئة الإعدادي",
+      "hull_nodes": [
+        "OTND00000145",
+        "OTND00000146"
+      ],
+      "hull_display": "مجلس فئة الإعدادي"
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T09:29:30.799223+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "6778ae4f-d68d-4d1e-bc55-4e574795e484",
+    "privilege_type": "promotion_access",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG012"
+      ],
+      "age_groups": [
+        "الثانوي"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG012",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "مجلس فئة الثانوي",
+      "hull_nodes": [
+        "OTND00000142",
+        "OTND00000143",
+        "OTND00000144"
+      ],
+      "hull_display": "مجلس فئة الثانوي"
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T09:29:55.696622+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "44489c15-c966-4ea0-9c48-62f452a53835",
+    "privilege_type": "promotion_access",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG012"
+      ],
+      "age_groups": [
+        "الجامعيّة",
+        "العاملة"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG012",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "مجلس فئتيّ الجامعيّة والعاملة",
+      "hull_nodes": [
+        "OTND00000141"
+      ],
+      "hull_display": "مجلس فئتيّ الجامعيّة والعاملة"
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T09:30:10.712021+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "3eebf594-6406-4103-8d70-672313005c77",
+    "privilege_type": "yg_registration_approval",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG012"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG012",
+      "selection_mode": "positions",
+      "positions": [
+        "المسؤول العام",
+        "المرشد الروحي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T09:30:48.131739+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "21b5375f-0e76-4833-95ea-9594454500b9",
+    "privilege_type": "yg_registration_approval",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG012"
+      ],
+      "age_groups": [
+        "البراعم"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG012",
+      "selection_mode": "positions",
+      "positions": [
+        "مسؤول فئة البراعم الكبرى",
+        "مسؤول فئة البراعم الصغرى"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T09:31:13.845008+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "2decfd64-233c-448b-95b5-fca57e6ef3ee",
+    "privilege_type": "yg_registration_approval",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG012"
+      ],
+      "age_groups": [
+        "الإعدادي"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG012",
+      "selection_mode": "positions",
+      "positions": [
+        "مسؤول فئة الإعدادي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T09:31:28.836778+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "4930961e-c3eb-4b69-8f2b-3c644345d02f",
+    "privilege_type": "yg_registration_approval",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG012"
+      ],
+      "age_groups": [
+        "الثانوي"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG012",
+      "selection_mode": "positions",
+      "positions": [
+        "مسؤول فئة الثانوي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T09:31:46.902968+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "9473edf6-ed39-4b40-ba47-aeb5acadcbf0",
+    "privilege_type": "yg_registration_approval",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG012"
+      ],
+      "age_groups": [
+        "الجامعيّة",
+        "العاملة"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG012",
+      "selection_mode": "positions",
+      "positions": [
+        "مسؤول فئتيّ الجامعيّة والعاملة"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T09:32:59.268758+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "f6c82321-5f73-4d30-8cc7-11c8f67f1d5d",
+    "privilege_type": "profile_access",
+    "scope": {
+      "type": "org_tree_descendants",
+      "youth_group_ids": [
+        "YG027",
+        "YG009",
+        "YG006",
+        "YG002",
+        "YG001",
+        "YG016",
+        "YG008",
+        "YG003",
+        "YG017",
+        "YG015",
+        "YG026",
+        "YG005",
+        "YG029",
+        "YG022",
+        "YG020",
+        "YG014",
+        "YG030",
+        "YG012",
+        "YG019",
+        "YG025",
+        "YG023",
+        "YG011",
+        "YG028",
+        "YG013",
+        "YG007",
+        "YG018",
+        "YG010",
+        "YG004",
+        "YG021",
+        "YG024"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_descendants",
+      "youth_group_ids": [
+        "YG027",
+        "YG009",
+        "YG006",
+        "YG002",
+        "YG001",
+        "YG016",
+        "YG008",
+        "YG003",
+        "YG017",
+        "YG015",
+        "YG026",
+        "YG005",
+        "YG029",
+        "YG022",
+        "YG020",
+        "YG014",
+        "YG030",
+        "YG012",
+        "YG019",
+        "YG025",
+        "YG023",
+        "YG011",
+        "YG028",
+        "YG013",
+        "YG007",
+        "YG018",
+        "YG010",
+        "YG004",
+        "YG021",
+        "YG024"
+      ]
+    },
+    "notes": "وصول التابعين في الهيكل لجميع فرق الشبيبة.",
+    "granted_at": "2026-06-20T00:00:00+03:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "cdfae2a4-4dcf-4ce4-90df-998a9248ac6f",
+    "privilege_type": "yg_file_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG002"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG002",
+      "selection_mode": "positions",
+      "positions": [
+        "المسؤول العام",
+        "المرشد الروحي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T00:00:00+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "2873dd69-e5d3-4f58-b946-c8d5e9412929",
+    "privilege_type": "yg_file_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG003"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG003",
+      "selection_mode": "positions",
+      "positions": [
+        "المسؤول العام",
+        "المرشد الروحي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T00:00:00+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "8c8adc04-63e0-45a2-8a74-1ca87c2ae395",
+    "privilege_type": "yg_file_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG004"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG004",
+      "selection_mode": "positions",
+      "positions": [
+        "المسؤول العام",
+        "المرشد الروحي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T00:00:00+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "f7f10407-22bb-4c50-a11e-6295aa26b832",
+    "privilege_type": "yg_file_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG005"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG005",
+      "selection_mode": "positions",
+      "positions": [
+        "المسؤول العام",
+        "المرشد الروحي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T00:00:00+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "d1bfd2e7-2aed-43f2-b5d5-2f9a8bfd5670",
+    "privilege_type": "yg_file_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG006"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG006",
+      "selection_mode": "positions",
+      "positions": [
+        "المسؤول العام",
+        "المرشد الروحي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T00:00:00+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "3c70a27b-e4ce-4100-bc03-821b6caaa59c",
+    "privilege_type": "yg_file_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG007"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG007",
+      "selection_mode": "positions",
+      "positions": [
+        "المسؤول العام",
+        "المرشد الروحي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T00:00:00+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "7d22a34c-7f38-4f5a-9ab6-85000a520086",
+    "privilege_type": "yg_file_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG009"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG009",
+      "selection_mode": "positions",
+      "positions": [
+        "المسؤول العام",
+        "المرشد الروحي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T00:00:00+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "72c09efb-1903-4e42-9dbf-b7406dbebe18",
+    "privilege_type": "yg_file_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG010"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG010",
+      "selection_mode": "positions",
+      "positions": [
+        "المسؤول العام",
+        "المرشد الروحي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T00:00:00+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "902edd23-4676-41ce-88c7-6c5a2e5ee291",
+    "privilege_type": "yg_file_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG011"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG011",
+      "selection_mode": "positions",
+      "positions": [
+        "المسؤول العام",
+        "المرشد الروحي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T00:00:00+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "049aebfa-4a00-4ea6-b0d1-4bb1152f5f0e",
+    "privilege_type": "yg_file_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG012"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG012",
+      "selection_mode": "positions",
+      "positions": [
+        "المسؤول العام",
+        "المرشد الروحي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T00:00:00+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "01aabd95-7023-4312-b161-be85f6448367",
+    "privilege_type": "yg_file_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG014"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG014",
+      "selection_mode": "positions",
+      "positions": [
+        "المسؤول العام",
+        "المرشد الروحي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T00:00:00+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "d347aabd-e736-4250-ae26-e30aa4a14b75",
+    "privilege_type": "yg_file_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG015"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG015",
+      "selection_mode": "positions",
+      "positions": [
+        "المسؤول العام",
+        "المرشد الروحي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T00:00:00+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "98d8655b-52f0-4a6d-9ece-152c33fdd8a6",
+    "privilege_type": "yg_file_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG016"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG016",
+      "selection_mode": "positions",
+      "positions": [
+        "المسؤول العام",
+        "المرشد الروحي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T00:00:00+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "21cb1465-2331-4349-beb6-2b8874232607",
+    "privilege_type": "yg_file_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG019"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG019",
+      "selection_mode": "positions",
+      "positions": [
+        "المسؤول العام",
+        "المرشد الروحي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T00:00:00+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "9f9349e8-b0c8-4140-82b4-175f9785d3fd",
+    "privilege_type": "yg_file_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG021"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG021",
+      "selection_mode": "positions",
+      "positions": [
+        "المسؤول العام",
+        "المرشد الروحي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T00:00:00+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "d90a0653-e391-40d6-898e-d75f0d0b757b",
+    "privilege_type": "yg_file_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG022"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG022",
+      "selection_mode": "positions",
+      "positions": [
+        "المسؤول العام",
+        "المرشد الروحي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T00:00:00+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "2563830f-61ed-4c73-9b39-ad54b1613cd0",
+    "privilege_type": "yg_file_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG023"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG023",
+      "selection_mode": "positions",
+      "positions": [
+        "المسؤول العام",
+        "المرشد الروحي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T00:00:00+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "d4ec485d-14f0-4649-a394-4685ced21452",
+    "privilege_type": "yg_file_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG028"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG028",
+      "selection_mode": "positions",
+      "positions": [
+        "المسؤول العام",
+        "المرشد الروحي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T00:00:00+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "ebdec8ed-6b68-49c7-8e66-3d1a96186b90",
+    "privilege_type": "yg_file_access",
+    "scope": {
+      "type": "youth_group",
+      "youth_group_ids": [
+        "YG030"
+      ],
+      "age_groups": []
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG030",
+      "selection_mode": "positions",
+      "positions": [
+        "المسؤول العام",
+        "المرشد الروحي"
+      ],
+      "hull": "",
+      "hull_nodes": [],
+      "hull_display": ""
+    },
+    "notes": "",
+    "granted_at": "2026-06-20T00:00:00+00:00",
+    "granted_by": "admin"
+  }
+]

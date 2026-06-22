@@ -8,6 +8,7 @@ from flask import jsonify, request, session
 from core import state as S
 from core.routes_auth import (
     _current_user,
+    _get_person_name_any,
     _hash_pw,
     _load_auth,
     _save_auth,
@@ -22,6 +23,25 @@ from core.routes_people import (
 
 _reg_lock = threading.Lock()
 _REGISTRATION_FORBIDDEN_AGE_GROUPS = {"مرشد روحيّ", "مرشد روحي"}
+
+
+def _resolve_approver_name(changed_by_value):
+    """Resolve a stored changed_by value (person_id or username) to a display name."""
+    if not changed_by_value:
+        return None
+    val = str(changed_by_value).strip()
+    if val.lstrip("-").isdigit():
+        name = _get_person_name_any(val)
+        if name and name != val:
+            return name
+    try:
+        auth_data = _load_auth()
+        for user in auth_data.get("users", []):
+            if str(user.get("username") or "") == val:
+                return user.get("display_name") or val
+    except Exception:
+        pass
+    return val
 
 
 def _send_notification(for_person_id, notif_type: str, payload: dict):
@@ -77,65 +97,14 @@ def _registration_payload_restriction_errors(body: dict) -> list[str]:
     return errors
 
 
-def _get_yg_approvers(youth_group_id: str, age_group: str | None = None) -> list[dict]:
-    """Return list of {person_id, person_type, role, username} for who can approve this YG membership."""
-    from core.routes_org_tree import _load_index, _load_tree_data, _extract_node_identity
-    from core.routes_auth import _classify_role_py, AGE_GROUPS_PY
+def _build_registration_pipeline(person_id: int, viewer_person_id: str = None) -> dict:
+    """Build the full approval pipeline status for a person.
 
-    approvers = []
-    try:
-        periods = _load_index(youth_group_id)
-        if not periods:
-            return []
-        active = next((p for p in periods if not p.get("to_date")), None)
-        if not active:
-            active = sorted(periods, key=lambda p: p.get("from_date") or "", reverse=True)[0]
-        tree = _load_tree_data(youth_group_id, active["id"])
+    viewer_person_id: if set, each YG membership gets can_yg_approve=True when this person
+    is a designated yg_registration_approval grantee for that membership.
+    """
+    from core.routes_privileges import get_yg_registration_approval_grantees
 
-        auth_data = _load_auth()
-        pid_to_user: dict[str, dict] = {}
-        for u in auth_data["users"]:
-            pid = u.get("person_id")
-            if pid is not None:
-                pid_to_user[str(pid)] = u
-
-        for node in tree.get("nodes", []):
-            role = node.get("role", "")
-            classified = _classify_role_py(role)
-            if not classified:
-                continue
-
-            has_access = False
-            if classified.get("full_group"):
-                has_access = True
-            elif age_group and age_group in classified.get("age_groups", []):
-                has_access = True
-            elif not age_group and classified.get("age_groups"):
-                has_access = True
-
-            if not has_access:
-                continue
-
-            node_pid, node_unreg = _extract_node_identity(node)
-            if node_pid is None:
-                continue
-            pid_str = str(node_pid)
-            user = pid_to_user.get(pid_str)
-            if user:
-                approvers.append({
-                    "person_id": node_pid,
-                    "person_type": "unregistered" if node_unreg else "registered",
-                    "role": role,
-                    "username": user.get("username"),
-                    "youth_group_id": youth_group_id,
-                })
-    except Exception as e:
-        print(f"Warning: _get_yg_approvers({youth_group_id}): {e}")
-    return approvers
-
-
-def _build_registration_pipeline(person_id: int) -> dict:
-    """Build the full approval pipeline status for a person."""
     all_persons = S._scd_filter_active(S.store.get("persons", pd.DataFrame()))
     person_row = {}
     if not all_persons.empty and "person_id" in all_persons.columns:
@@ -144,12 +113,12 @@ def _build_registration_pipeline(person_id: int) -> dict:
             person_row = match.iloc[0].replace({np.nan: None}).to_dict()
 
     admin_status = str(person_row.get(S.ADMIN_APPROVAL_STATUS_COL) or "pending").strip()
-    admin_by = person_row.get(S.ADMIN_APPROVAL_BY_COL)
+    admin_by = _resolve_approver_name(person_row.get(S.ADMIN_APPROVAL_BY_COL))
     admin_date = person_row.get(S.ADMIN_APPROVAL_DATE_COL)
     admin_notes = person_row.get(S.ADMIN_APPROVAL_NOTES_COL)
 
     display_name_parts = []
-    for key in ("ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name"):
+    for key in ("title", "ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name"):
         v = person_row.get(key)
         if v and str(v).strip() not in ("", "nan", "None"):
             display_name_parts.append(str(v).strip())
@@ -164,13 +133,20 @@ def _build_registration_pipeline(person_id: int) -> dict:
             yg_id = str(r.get(S.YOUTH_GROUP_ID_COL) or "")
             age_group = str(r.get("age_group") or "")
             yg_status = str(r.get(S.YG_APPROVAL_STATUS_COL) or "pending").strip()
-            yg_by = r.get(S.YG_APPROVED_BY_COL)
+            yg_by = _resolve_approver_name(r.get(S.YG_APPROVED_BY_COL))
             yg_date = r.get(S.YG_APPROVAL_DATE_COL)
             yg_notes = r.get(S.YG_APPROVAL_NOTES_COL)
 
-            approvers = []
-            if admin_status == "approved":
-                approvers = _get_yg_approvers(yg_id, age_group or None)
+            # Enrich with who needs to give second approval
+            awaiting_approvers = []
+            can_yg_approve = False
+            if yg_status == S.APPROVAL_STATUS_AWAITING_YG:
+                awaiting_approvers = get_yg_registration_approval_grantees(yg_id, age_group)
+                if viewer_person_id:
+                    can_yg_approve = any(
+                        str(a["person_id"]) == str(viewer_person_id)
+                        for a in awaiting_approvers
+                    )
 
             yg_memberships.append({
                 "record_id": str(r.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL) or ""),
@@ -178,13 +154,11 @@ def _build_registration_pipeline(person_id: int) -> dict:
                 "youth_group_name": S.youth_group_display_label(yg_id),
                 "age_group": age_group,
                 "yg_approval_status": yg_status,
-                "yg_approved_by": yg_by,
+                "yg_approved_by": yg_by or None,
                 "yg_approval_date": str(yg_date) if yg_date else None,
                 "yg_approval_notes": yg_notes,
-                "approvers": [
-                    {"role": a["role"], "youth_group_id": a["youth_group_id"]}
-                    for a in approvers
-                ],
+                "awaiting_approvers": awaiting_approvers,
+                "can_yg_approve": can_yg_approve,
             })
 
     return {
@@ -332,7 +306,7 @@ def register_registration_routes(app):
 
         display_name_parts = [
             str(p.get(k) or "").strip()
-            for k in ("ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name")
+            for k in ("title", "ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name")
             if p.get(k) and str(p.get(k)).strip() not in ("", "nan", "None")
         ]
         display_name = " ".join(display_name_parts) or username
@@ -355,7 +329,6 @@ def register_registration_routes(app):
             for r in yg_rows_raw
             if isinstance(r, dict) and r.get(S.YOUTH_GROUP_ID_COL)
         ]
-        safe_user["council_access"] = {}
 
         if not submitter:
             session["user_id"] = username

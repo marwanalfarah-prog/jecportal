@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import ReactDOM from 'react-dom'
-import { CheckCheck, Check, MessageSquare, FileText, X, Bell, Mail, Trash2, UserPlus, ShieldCheck, Users } from 'lucide-react'
+import { CheckCheck, Check, MessageSquare, FileText, X, Bell, Mail, Trash2, UserPlus, ShieldCheck } from 'lucide-react'
 import { api } from './api.js'
 
 export default function NotificationBell({ onOpenQuestionnaire }) {
@@ -111,24 +111,6 @@ export default function NotificationBell({ onOpenQuestionnaire }) {
           iconBg: '#fef2f2', iconBorder: '#fca5a5',
           icon: <ShieldCheck size={18} color="#991b1b" />,
           text: n.message || `تم رفض طلب تسجيلك`,
-        }
-      case 'registration_pending_yg':
-        return {
-          iconBg: '#fffbeb', iconBorder: '#fde68a',
-          icon: <Users size={18} color="#92400e" />,
-          text: n.message || `طلب انضمام بانتظار موافقتك`,
-        }
-      case 'registration_yg_approved':
-        return {
-          iconBg: '#f0fdf4', iconBorder: '#86efac',
-          icon: <Users size={18} color="#166534" />,
-          text: n.message || `تمت الموافقة على عضويتك في الشبيبة`,
-        }
-      case 'registration_yg_rejected':
-        return {
-          iconBg: '#fef2f2', iconBorder: '#fca5a5',
-          icon: <Users size={18} color="#991b1b" />,
-          text: n.message || `تم رفض طلب انضمامك إلى الشبيبة`,
         }
       default:
         return {

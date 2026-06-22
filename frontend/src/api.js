@@ -89,14 +89,30 @@ function buildArchiveMembershipBody(youthGroupId) {
   return { youth_group_id: youthGroupId }
 }
 
+const SESSION_CHECK_PATHS = new Set(['/auth/me', '/auth/logout'])
+
+let _controller = new AbortController()
+
 async function req(path, opts = {}) {
-  const res = await fetch(BASE + path, {
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include',
-    ...opts,
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
-  })
-  if (!res.ok) await throwResponseError(res)
+  let res
+  try {
+    res = await fetch(BASE + path, {
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      ...opts,
+      signal: _controller.signal,
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    })
+  } catch (err) {
+    if (err?.name === 'AbortError') return null
+    throw err
+  }
+  if (!res.ok) {
+    if (res.status === 401 && !SESSION_CHECK_PATHS.has(path)) {
+      window.dispatchEvent(new CustomEvent('api:session-expired'))
+    }
+    await throwResponseError(res)
+  }
   return readResponsePayload(res)
 }
 
@@ -108,7 +124,11 @@ export const api = {
   generalSecretariatLabel: GENERAL_SECRETARIAT_LABEL,
 
   // ── Auth ──────────────────────────────────────────────────────────────────
-  logout:       ()             => req('/auth/logout', { method: 'POST' }),
+  logout: () => {
+    _controller.abort()
+    _controller = new AbortController()
+    return req('/auth/logout', { method: 'POST' })
+  },
   me:           ()             => req('/auth/me'),
   listUsers:    ()             => req('/auth/users'),
   listUsersBasic: ()           => req('/auth/users/basic'),
@@ -117,7 +137,6 @@ export const api = {
   updateUser:   (username, body) => req(`/auth/users/${encodeURIComponent(username)}`, { method: 'PUT', body }),
   deleteUser:   (username)     => req(`/auth/users/${encodeURIComponent(username)}`, { method: 'DELETE' }),
   generateAll:  ()             => req('/auth/generate-all', { method: 'POST' }),
-  councilMembers: ()           => req('/auth/council-members'),
 
   // ── Promotions ────────────────────────────────────────────────────────────
   listPromotions:   ()         => req('/promotions'),
@@ -142,6 +161,10 @@ export const api = {
   addPerson:       (body)       => req('/person', { method: 'POST', body }),
   resolveGoogleMapsLocation: (url) => req('/location/resolve-google-maps', { method: 'POST', body: { url } }),
   deletePerson:    (id)         => req(`/person/${id}`, { method: 'DELETE' }),
+  getSpouse:       (id)         => req(`/persons/${id}/spouse`),
+  setSpouse:       (id, spouseId) => req(`/persons/${id}/spouse`, { method: 'POST', body: { spouse_person_id: spouseId } }),
+  removeSpouse:    (id)         => req(`/persons/${id}/spouse`, { method: 'DELETE' }),
+  getSpouseCandidates: (gender) => req(`/persons/spouse-candidates?gender=${encodeURIComponent(gender)}`),
   archivePerson:   (id, youthGroupId)         => req(`/person/${id}/archive`, { method: 'PATCH', body: buildArchiveMembershipBody(youthGroupId) }),
   unarchivePerson: (id, youthGroupId)         => req(`/person/${id}/unarchive`, { method: 'PATCH', body: buildArchiveMembershipBody(youthGroupId) }),
 
@@ -330,19 +353,25 @@ export const api = {
   checkUsername: (username) => req(`/registration/check-username?username=${encodeURIComponent(username)}`),
   myRegistrationStatus: () => req('/registration/my-status'),
 
-  // ── Privileges ──────────────────────────────────────────────────────────────
-  getPrivilegeMatrix:    ()             => req('/privileges/matrix'),
-  getPrivilegePositions: ()             => req('/privileges/positions'),
-  listPrivilegeOverrides: ()            => req('/privileges/overrides'),
-  createPrivilegeOverride: (body)       => req('/privileges/overrides', { method: 'POST', body }),
-  updatePrivilegeOverride: (id, body)   => req(`/privileges/overrides/${encodeURIComponent(id)}`, { method: 'PUT', body }),
-  deletePrivilegeOverride: (id)         => req(`/privileges/overrides/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-
   // ── Requests ────────────────────────────────────────────────────────────────
   getRequests: () => req('/requests'),
   getRequestsHistory: () => req('/requests/history'),
   adminApproveRequest: (personId, notes) => req(`/requests/${personId}/admin-approve`, { method: 'POST', body: { notes: notes || '' } }),
   adminRejectRequest: (personId, reason) => req(`/requests/${personId}/admin-reject`, { method: 'POST', body: { reason: reason || '' } }),
-  ygApproveRequest: (recordId, notes) => req(`/requests/yg-approve/${encodeURIComponent(recordId)}`, { method: 'POST', body: { notes: notes || '' } }),
-  ygRejectRequest: (recordId, reason) => req(`/requests/yg-reject/${encodeURIComponent(recordId)}`, { method: 'POST', body: { reason: reason || '' } }),
+  ygApproveRequest: (recordId, notes) => req(`/requests/yg/${recordId}/approve`, { method: 'POST', body: { notes: notes || '' } }),
+  ygRejectRequest: (recordId, reason) => req(`/requests/yg/${recordId}/reject`, { method: 'POST', body: { reason: reason || '' } }),
+
+  // ── Privileges ───────────────────────────────────────────────────────────────
+  getPrivilegeTypes:     ()             => req('/privileges/types'),
+  getPrivilegeAgeGroups: ()             => req('/privileges/age-groups'),
+  getPrivilegeYouthGroups: ()           => req('/privileges/youth-groups'),
+  getPrivilegeOrgPositions: (groupId)   => req(`/privileges/org-positions/${encodeURIComponent(groupId)}`),
+  searchPrivilegePersons: (q)           => req(`/privileges/persons/search?q=${encodeURIComponent(q)}`),
+  listPrivilegeGrants:   (type)         => req(`/privileges/grants${type ? `?type=${encodeURIComponent(type)}` : ''}`),
+  createPrivilegeGrants: (grants)       => req('/privileges/grants', { method: 'POST', body: { grants } }),
+  deletePrivilegeGrant:  (id)           => req(`/privileges/grants/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  resolvePersonPrivileges: (personId)   => req(`/privileges/resolve?person_id=${encodeURIComponent(personId)}`),
+  whoCanAccessPerson:    (personId)     => req(`/privileges/who-can-access?person_id=${encodeURIComponent(personId)}`),
+  getMyAccess:           ()             => req('/privileges/my-access'),
+  getAccessibleMembers:  ()             => req('/privileges/accessible-members'),
 }

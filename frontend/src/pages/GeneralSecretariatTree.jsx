@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { api } from '../api.js'
 import { ErrorState } from '../pageStates.jsx'
+import { formatArabicBasePersonName, formatArabicPersonName, getArabicPersonNameParts } from '../personName.js'
 
 // ── Arabic normalization ───────────────────────────────────────────────────────
 function normalizeWord(w) {
@@ -1395,18 +1396,18 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
     const qWords = normalizeArabic(q).split(/\s+/).filter(Boolean)
     const qWordGroups = expandQueryWords(qWords, nameAliasLookup)
     const regResults = allPersons.filter(p => {
-      const parts = [p.ar_first_name, p.ar_second_name, p.ar_third_name, p.ar_last_name].filter(Boolean).map(normalizeArabic)
+      const parts = getArabicPersonNameParts(p, { normalizer: normalizeArabic })
       return nameMatchesQuery(parts, qWordGroups)
     }).slice(0, 6).map(p => ({ ...p, _source: 'registered' }))
     const unregResults = (allUnregistered || []).filter(u => {
-      const parts = [u.ar_first_name, u.ar_second_name, u.ar_third_name, u.ar_last_name].filter(Boolean).map(normalizeArabic)
+      const parts = getArabicPersonNameParts(u, { normalizer: normalizeArabic })
       return nameMatchesQuery(parts, qWordGroups)
     }).slice(0, 4).map(u => ({ ...u, _source: 'unregistered' }))
     setRes([...regResults, ...unregResults])
   }
 
   const pickPerson = (p) => {
-    const base = [p.ar_first_name, p.ar_second_name, p.ar_third_name, p.ar_last_name].filter(Boolean).join(' ')
+    const base = formatArabicBasePersonName(p)
     const pickedTitle = String(p.title || '').trim()
     const nextPersonType = pickedTitle ? 'مكرّس' : 'علماني'
     const nextLaqab = pickedTitle
@@ -1419,7 +1420,7 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
   }
 
   const pickUnregistered = (u) => {
-    const base = [u.ar_first_name, u.ar_second_name, u.ar_third_name, u.ar_last_name].filter(Boolean).join(' ')
+    const base = formatArabicBasePersonName(u)
     const uLaqab = u.title || ''
     const uType = uLaqab ? 'مكرّس' : 'علماني'
     setBaseName(base); setPersonType(uType); setLaqab(uLaqab)
@@ -1480,7 +1481,7 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
           <div style={{ flex:1 }}>
             <div style={{ fontSize:'0.9rem', fontWeight:700, color:'var(--gray-800)', marginBottom:3 }}>{node.name||'بدون اسم'}</div>
             {node.role && <div style={{ fontSize:'0.8rem', color:'var(--gold)', marginBottom:3 }}>{node.role}</div>}
-            {node.unregistered ? <div style={{ display:'flex', alignItems:'center', gap:5, background:'#fef3cd', borderRadius:6, padding:'4px 8px', fontSize:'0.73rem', color:'#b45309', width:'fit-content' }}><AlertCircle size={12}/> غير مسجّل</div> : node.personId && <div style={{ fontSize:'0.73rem', color:'var(--gray-400)' }}>#{node.personId}</div>}
+            {node.unregistered && <div style={{ display:'flex', alignItems:'center', gap:5, background:'#fef3cd', borderRadius:6, padding:'4px 8px', fontSize:'0.73rem', color:'#b45309', width:'fit-content' }}><AlertCircle size={12}/> غير مسجّل</div>}
           </div>
         </div>
         <style>{`.photo-hover-ov:hover{opacity:1!important}`}</style>
@@ -1568,7 +1569,7 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
             <div style={{ border:'1px solid var(--gray-200)', borderRadius:'var(--radius-md)', marginTop:4, maxHeight:220, overflowY:'auto', background:'white', boxShadow:'var(--shadow-md)' }}>
               {results.map((p) => {
                 const isUnreg = p._source === 'unregistered'
-                const name = [p.ar_first_name, p.ar_second_name, p.ar_third_name, p.ar_last_name].filter(Boolean).join(' ') || 'بدون اسم'
+                const name = formatArabicPersonName(p, { fallback: 'بدون اسم' })
                 const photo = p._photo || null
                 return (
                   <div key={isUnreg ? `u-${p.person_id}` : p.person_id}
@@ -1596,7 +1597,7 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
             setBaseName(newBase)
             const norm = normalizeArabic(newBase.trim())
             const existing = norm ? (allUnregistered||[]).find(u => {
-              const uBase = [u.ar_first_name, u.ar_second_name, u.ar_third_name, u.ar_last_name].filter(Boolean).join(' ')
+              const uBase = formatArabicBasePersonName(u)
               return normalizeArabic(uBase.trim()) === norm
             }) : null
             if (existing) {
@@ -2172,7 +2173,7 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
       const norm = normalizeArabic(rawName)
       if (!norm) return
       const match = latestUnreg.find(u => {
-        const uBase = [u.ar_first_name, u.ar_second_name, u.ar_third_name, u.ar_last_name].filter(Boolean).join(' ')
+        const uBase = formatArabicBasePersonName(u)
         return normalizeArabic(uBase.trim()) === norm
       })
       if (match) autoLinked[n.id] = String(match.person_id)

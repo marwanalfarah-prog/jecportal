@@ -229,8 +229,7 @@ export default function UserManagement({ toast }) {
 
       const roleNorm = normalizeArabic(u.role || '')
       const personTypeNorm = normalizeArabic(u.person_type || '')
-      const personIdNorm = normalizeArabic(String(u.person_id ?? ''))
-      return roleNorm.includes(q) || personTypeNorm.includes(q) || personIdNorm.includes(q)
+      return roleNorm.includes(q) || personTypeNorm.includes(q)
     })
   }, [users, deferredSearch, nameAliasLookup])
 
@@ -449,7 +448,7 @@ export default function UserManagement({ toast }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.87rem' }}>
             <thead>
               <tr style={{ background: '#f8f9fb', borderBottom: '1px solid #e2e6ef' }}>
-                {['اسم المستخدم','الاسم الكامل','الدور','نوع العضو','معرّف الشخص',''].map(h => (
+                {['اسم المستخدم','الاسم الكامل','الدور','نوع العضو',''].map(h => (
                   <th key={h} style={{ padding: '10px 14px', textAlign: 'right', fontWeight: 700, color: '#4a5568', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -473,9 +472,6 @@ export default function UserManagement({ toast }) {
                     {!u.person_missing && u.person_type === 'registered'   && <Badge color="navy">مسجّل</Badge>}
                     {!u.person_missing && u.person_type === 'unregistered' && <Badge color="gray">غير مسجّل</Badge>}
                     {!u.person_missing && !u.person_type                   && <span style={{ color: '#9ba5bc' }}>—</span>}
-                  </td>
-                  <td style={{ padding: '10px 14px', fontFamily: 'monospace', fontSize: '0.82rem', color: '#6b778f' }}>
-                    {u.person_id ?? '—'}
                   </td>
                   <td style={{ padding: '10px 14px' }}>
                     <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>

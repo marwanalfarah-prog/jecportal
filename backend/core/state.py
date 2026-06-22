@@ -1,5 +1,7 @@
 import json
 
+import math
+
 import os
 
 import re
@@ -49,6 +51,8 @@ SHEETS = [
     "higher_education", "jobs", "responsibilities",
 
     "person_youth_group", "person_youth_group_age_history", "hobbies_skills", "person_health_conditions", "person_special_notes", "addresses", "person_titles", "person_school_system_sectors", "parishes", "churches", "youth_groups", "youth_group_social_media", "youth_group_social_media_ages", "youth_group_special_logos",
+
+    "person_spouse",
 
     "lkp_nationality_iso_codes", "institution_logos", "lkp_person_titles", "mottos", "motto_youth_groups",
 
@@ -282,6 +286,26 @@ NO_HIGHER_EDUCATION_COL = "no_higher_education"
 
 NOT_EMPLOYED_COL = "not_employed"
 
+MARITAL_STATUS_COL = "marital_status"
+
+MARITAL_STATUS_SINGLE = "أعزب"
+
+MARITAL_STATUS_ENGAGED = "خاطب"
+
+MARITAL_STATUS_MARRIED = "متزوج"
+
+MARITAL_STATUS_VALUES = {MARITAL_STATUS_SINGLE, MARITAL_STATUS_ENGAGED, MARITAL_STATUS_MARRIED}
+
+SPOUSE_IS_MEMBER_COL = "spouse_is_member"
+
+PERSON_SPOUSE_SHEET = "person_spouse"
+
+PERSON_SPOUSE_COLUMNS = ["person_id", "spouse_person_id"]
+
+SPOUSE_ELIGIBLE_AGE_GROUPS = {"الجامعيّة", "العاملة"}
+
+YOUNG_MARITAL_AGE_GROUPS = {"البراعم", "الإعدادي", "الثانوي", "مرشد روحيّ"}
+
 
 
 HEALTH_TYPE_LABELS = {
@@ -291,6 +315,8 @@ HEALTH_TYPE_LABELS = {
     'allergy': 'حساسية',
 
     'surgery': 'عملية جراحية',
+
+    'blood_type': 'فصيلة الدم',
 
 }
 
@@ -410,6 +436,10 @@ _unreg_index_cache = None
 
 _unreg_index_cache_version = -1
 
+_filters_cache = None
+
+_filters_cache_version = -1
+
 
 
 YOUTH_GROUP_ID_COL = "youth_group_id"
@@ -491,6 +521,8 @@ APPROVAL_STATUS_PENDING = "pending"
 APPROVAL_STATUS_APPROVED = "approved"
 
 APPROVAL_STATUS_REJECTED = "rejected"
+
+APPROVAL_STATUS_AWAITING_YG = "awaiting_yg"
 
 PERSON_ADDRESS_PROJECTION_COLUMNS = (
     "lat",
@@ -983,7 +1015,7 @@ def _scd_replace_rows_by_key(
 
 def invalidate_enriched_cache():
 
-    global _data_version, _enriched_cache, _enriched_cache_version, _members_index_cache, _members_index_cache_version, _unreg_index_cache, _unreg_index_cache_version
+    global _data_version, _enriched_cache, _enriched_cache_version, _members_index_cache, _members_index_cache_version, _unreg_index_cache, _unreg_index_cache_version, _filters_cache, _filters_cache_version
 
     _data_version += 1
 
@@ -998,6 +1030,10 @@ def invalidate_enriched_cache():
     _unreg_index_cache = None
 
     _unreg_index_cache_version = -1
+
+    _filters_cache = None
+
+    _filters_cache_version = -1
 
 
 
@@ -1035,9 +1071,23 @@ def set_members_index_cache(payload, version):
 
     global _members_index_cache, _members_index_cache_version
 
-    _members_index_cache = payload
+    _members_index_cache = json_safe(payload)
 
     _members_index_cache_version = version
+
+
+def filters_cache_state():
+
+    return _filters_cache, _filters_cache_version, _data_version
+
+
+def set_filters_cache(payload, version):
+
+    global _filters_cache, _filters_cache_version
+
+    _filters_cache = payload
+
+    _filters_cache_version = version
 
 
 
@@ -8265,7 +8315,33 @@ def df_to_json(df: pd.DataFrame):
 
             df[col] = df[col].dt.strftime('%Y-%m-%d').where(df[col].notna(), None)
 
-    return df.replace({np.nan: None}).to_dict(orient="records")
+    return json_safe(df.replace({np.nan: None}).to_dict(orient="records"))
+
+
+def json_safe(value):
+    """Return a JSON-valid copy with pandas/numpy missing values converted to None."""
+    if isinstance(value, dict):
+        return {key: json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [json_safe(item) for item in value]
+    if isinstance(value, tuple):
+        return [json_safe(item) for item in value]
+    if isinstance(value, set):
+        return [json_safe(item) for item in sorted(value, key=str)]
+    if isinstance(value, np.ndarray):
+        return [json_safe(item) for item in value.tolist()]
+    if value is None or value is pd.NA or value is pd.NaT:
+        return None
+    if isinstance(value, np.generic):
+        value = value.item()
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    return value
 
 
 
@@ -8273,7 +8349,7 @@ def df_to_json(df: pd.DataFrame):
 
 def person_name(row):
 
-    parts = [row.get("ar_first_name"), row.get("ar_second_name"), row.get("ar_third_name"), row.get("ar_last_name")]
+    parts = [row.get("title"), row.get("ar_first_name"), row.get("ar_second_name"), row.get("ar_third_name"), row.get("ar_last_name")]
 
     return " ".join(p for p in parts if p)
 
@@ -8477,6 +8553,9 @@ def _normalize_birth_columns_in_df(df: pd.DataFrame) -> tuple[pd.DataFrame, bool
 
     normalized = [normalize_person_birth_fields(r) for r in records]
 
+    if not normalized:
+        return working, changed
+
     out = pd.DataFrame(normalized)
 
 
@@ -8649,7 +8728,17 @@ def _ensure_persons_schema():
 
             changed = True
 
+    if MARITAL_STATUS_COL not in persons.columns:
 
+        persons[MARITAL_STATUS_COL] = None
+
+        changed = True
+
+    if SPOUSE_IS_MEMBER_COL not in persons.columns:
+
+        persons[SPOUSE_IS_MEMBER_COL] = None
+
+        changed = True
 
     store["persons"] = persons
 
@@ -8657,6 +8746,265 @@ def _ensure_persons_schema():
 
 
 
+
+
+def _ensure_person_spouse_schema():
+
+    df = _scd_ensure_columns(store.get(PERSON_SPOUSE_SHEET, pd.DataFrame()))
+
+    changed = False
+
+    for col in PERSON_SPOUSE_COLUMNS:
+
+        if col not in df.columns:
+
+            df[col] = None
+
+            changed = True
+
+    if changed:
+
+        store[PERSON_SPOUSE_SHEET] = df
+
+    return changed
+
+
+def get_spouse_for_person(target_store: dict, pid) -> dict | None:
+    """Return the active spouse row for pid, or None."""
+
+    df = target_store.get(PERSON_SPOUSE_SHEET, pd.DataFrame())
+
+    if df.empty or "person_id" not in df.columns:
+
+        return None
+
+    df = _scd_filter_active(df)
+
+    rows = df[df["person_id"].astype(str) == str(pid)]
+
+    if rows.empty:
+
+        return None
+
+    return rows.iloc[0].to_dict()
+
+
+def _update_person_marital_fields(target_store: dict, pid, marital_status, spouse_is_member, changed_by: str):
+    """Update only marital_status and spouse_is_member on the active person row via SCD."""
+
+    persons = _scd_ensure_columns(target_store.get("persons", pd.DataFrame()))
+
+    active_mask = (persons["person_id"].astype(str) == str(pid)) & _scd_active_mask(persons)
+
+    if not active_mask.any():
+
+        return
+
+    now = _scd_timestamp()
+
+    current_row = persons[active_mask].iloc[0].to_dict()
+
+    persons.loc[active_mask, SCD_ACTIVE_TO_COL] = now
+
+    persons.loc[active_mask, SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+
+    persons.loc[active_mask, SCD_CHANGED_BY_USER_COL] = changed_by
+
+    new_row = {k: v for k, v in current_row.items() if k not in SCD_METADATA_COLUMNS}
+
+    new_row[MARITAL_STATUS_COL] = marital_status
+
+    new_row[SPOUSE_IS_MEMBER_COL] = spouse_is_member
+
+    new_row.update(_scd_new_metadata(changed_by))
+
+    target_store["persons"] = pd.concat([persons, pd.DataFrame([new_row])], ignore_index=True)
+
+
+def set_spouse_relationship(target_store: dict, pid_a, pid_b, marital_status: str, changed_by: str):
+    """Create/update a bidirectional spouse link and sync both persons' marital status."""
+
+    now = _scd_timestamp()
+
+    df = _scd_ensure_columns(target_store.get(PERSON_SPOUSE_SHEET, pd.DataFrame()))
+
+    # Expire existing entries for both persons
+    for pid in (str(pid_a), str(pid_b)):
+
+        active_mask = (df["person_id"].astype(str) == pid) & _scd_active_mask(df)
+
+        if active_mask.any():
+
+            df.loc[active_mask, SCD_ACTIVE_TO_COL] = now
+
+            df.loc[active_mask, SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+
+            df.loc[active_mask, SCD_CHANGED_BY_USER_COL] = changed_by
+
+    # Add new rows for both directions
+    new_meta = {SCD_ACTIVE_FROM_COL: now, SCD_ACTIVE_TO_COL: None, SCD_CURRENTLY_ACTIVE_FLAG_COL: True, SCD_CHANGED_BY_USER_COL: changed_by}
+
+    rows_to_add = [
+        {"person_id": str(pid_a), "spouse_person_id": str(pid_b), **new_meta},
+        {"person_id": str(pid_b), "spouse_person_id": str(pid_a), **new_meta},
+    ]
+
+    target_store[PERSON_SPOUSE_SHEET] = pd.concat([df, pd.DataFrame(rows_to_add)], ignore_index=True)
+
+    # Sync marital status on both persons
+    for pid in (str(pid_a), str(pid_b)):
+
+        _update_person_marital_fields(target_store, pid, marital_status, True, changed_by)
+
+
+def remove_spouse_relationship(target_store: dict, pid, changed_by: str):
+    """Remove the spouse link for pid (both directions) and set both persons to أعزب."""
+
+    df = _scd_ensure_columns(target_store.get(PERSON_SPOUSE_SHEET, pd.DataFrame()))
+
+    if df.empty:
+
+        return
+
+    now = _scd_timestamp()
+
+    pid_str = str(pid)
+
+    # Find the current spouse before removing
+    active = df[_scd_active_mask(df)]
+
+    current_spouse_rows = active[active["person_id"].astype(str) == pid_str]
+
+    spouse_pid = None
+
+    if not current_spouse_rows.empty:
+
+        spouse_pid = str(current_spouse_rows.iloc[0].get("spouse_person_id") or "").strip() or None
+
+    # Expire entries for pid
+    mask_a = (df["person_id"].astype(str) == pid_str) & _scd_active_mask(df)
+
+    if mask_a.any():
+
+        df.loc[mask_a, SCD_ACTIVE_TO_COL] = now
+
+        df.loc[mask_a, SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+
+        df.loc[mask_a, SCD_CHANGED_BY_USER_COL] = changed_by
+
+    # Expire entries for spouse (reverse direction)
+    if spouse_pid:
+
+        mask_b = (df["person_id"].astype(str) == spouse_pid) & _scd_active_mask(df)
+
+        if mask_b.any():
+
+            df.loc[mask_b, SCD_ACTIVE_TO_COL] = now
+
+            df.loc[mask_b, SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+
+            df.loc[mask_b, SCD_CHANGED_BY_USER_COL] = changed_by
+
+    target_store[PERSON_SPOUSE_SHEET] = df
+
+    # Reset both persons to أعزب
+    _update_person_marital_fields(target_store, pid_str, MARITAL_STATUS_SINGLE, False, changed_by)
+
+    if spouse_pid:
+
+        _update_person_marital_fields(target_store, spouse_pid, MARITAL_STATUS_SINGLE, False, changed_by)
+
+
+def _expire_spouse_link(target_store: dict, pid_a, pid_b, changed_by: str):
+    """Expire bidirectional spouse link rows only, without touching person records."""
+
+    df = _scd_ensure_columns(target_store.get(PERSON_SPOUSE_SHEET, pd.DataFrame()))
+
+    now = _scd_timestamp()
+
+    for pid in (str(pid_a), str(pid_b)):
+
+        mask = (df["person_id"].astype(str) == pid) & _scd_active_mask(df)
+
+        if mask.any():
+
+            df.loc[mask, SCD_ACTIVE_TO_COL] = now
+
+            df.loc[mask, SCD_CURRENTLY_ACTIVE_FLAG_COL] = False
+
+            df.loc[mask, SCD_CHANGED_BY_USER_COL] = changed_by
+
+    target_store[PERSON_SPOUSE_SHEET] = df
+
+
+def get_person_marital_status(target_store: dict, pid) -> str | None:
+    """Return the current marital_status for pid, or None."""
+
+    persons = _scd_filter_active(target_store.get("persons", pd.DataFrame()))
+
+    if persons.empty:
+
+        return None
+
+    row = persons[persons["person_id"].astype(str) == str(pid)]
+
+    if row.empty:
+
+        return None
+
+    val = _normalize_text(row.iloc[0].get(MARITAL_STATUS_COL))
+
+    return val
+
+
+def get_spouse_candidates(target_store: dict, opposite_gender: str) -> list[dict]:
+    """Return list of {person_id, name} for persons in الجامعيّة/العاملة with opposite gender."""
+
+    persons = _registered_persons_df().replace({np.nan: None})
+
+    pyg = _scd_filter_active(target_store.get("person_youth_group", pd.DataFrame()))
+
+    hist = _scd_filter_active(target_store.get("person_youth_group_age_history", pd.DataFrame()))
+
+    if persons.empty or pyg.empty or hist.empty:
+
+        return []
+
+    # Find person_youth_group_record_ids whose current age group is eligible
+    eligible_rids = set(hist[hist["age_group"].isin(SPOUSE_ELIGIBLE_AGE_GROUPS)]["person_youth_group_record_id"].astype(str))
+
+    eligible_pids = set(pyg[pyg["person_youth_group_record_id"].astype(str).isin(eligible_rids)]["person_id"].astype(str))
+
+    # Filter persons by gender and eligibility
+    gender_col = "gender"
+
+    if gender_col not in persons.columns:
+
+        return []
+
+    mask = (
+        persons["person_id"].astype(str).isin(eligible_pids)
+        & (persons[gender_col].astype(str).str.strip() == opposite_gender.strip())
+    )
+
+    subset = persons[mask]
+
+    result = []
+
+    for _, row in subset.iterrows():
+
+        pid = str(row.get("person_id") or "").strip()
+
+        name_parts = [
+            str(row.get(col) or "").strip()
+            for col in ("ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name")
+        ]
+
+        full_name = " ".join(p for p in name_parts if p)
+
+        result.append({"person_id": pid, "full_name": full_name})
+
+    return result
 
 
 def _is_admin_approved(row) -> bool:
@@ -9555,7 +9903,15 @@ def _sheet_for_registered(sheet: str) -> pd.DataFrame:
 
         status_col = result[YG_APPROVAL_STATUS_COL].astype(str).str.strip().str.lower()
 
-        result = result[~status_col.isin([APPROVAL_STATUS_PENDING, APPROVAL_STATUS_REJECTED])]
+        rejected_mask = status_col.isin([APPROVAL_STATUS_PENDING, APPROVAL_STATUS_REJECTED])
+
+        if "archived" in result.columns:
+            archived_mask = result["archived"].apply(
+                lambda v: v is not None and str(v) not in ("nan", "None", "") and bool(v)
+            )
+            result = result[~rejected_mask | archived_mask]
+        else:
+            result = result[~rejected_mask]
 
     return result
 
@@ -9619,7 +9975,7 @@ def enrich_nationality_rows(rows: list[dict] | None, source_store: dict[str, pd.
 
         enriched.append(normalized)
 
-    return enriched
+    return json_safe(enriched)
 
 
 
@@ -11131,9 +11487,11 @@ def init_state():
 
     address_schema_changed = _ensure_addresses_schema()
 
+    person_spouse_schema_changed = _ensure_person_spouse_schema()
+
     _coerce_person_id_columns(store)
 
-    if schema_changed or person_title_schema_changed or person_school_system_sector_schema_changed or person_health_condition_schema_changed or person_special_note_schema_changed or person_youth_group_schema_changed or group_schema_changed or group_special_logo_schema_changed or nationality_schema_changed or schools_schema_changed or mobile_schema_changed or email_schema_changed or social_media_schema_changed or higher_education_schema_changed or jobs_schema_changed or responsibility_schema_changed or address_schema_changed:
+    if schema_changed or person_title_schema_changed or person_school_system_sector_schema_changed or person_health_condition_schema_changed or person_special_note_schema_changed or person_youth_group_schema_changed or group_schema_changed or group_special_logo_schema_changed or nationality_schema_changed or schools_schema_changed or mobile_schema_changed or email_schema_changed or social_media_schema_changed or higher_education_schema_changed or jobs_schema_changed or responsibility_schema_changed or address_schema_changed or person_spouse_schema_changed:
 
         save()
 

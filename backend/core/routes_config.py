@@ -1390,9 +1390,6 @@ def _save_config(config):
 def register_config_routes(app):
     @app.get("/api/config")
     def get_config():
-        err = auth_exports["_require_auth"]()
-        if err:
-            return err
         return jsonify({"ok": True, "config": _load_config()})
 
     @app.get("/api/config/mottos/meta")
@@ -1654,9 +1651,6 @@ def register_config_routes(app):
 
     @app.get("/api/config/school-logos")
     def list_school_logos():
-        err = auth_exports["_require_auth"]()
-        if err:
-            return err
         payload = _load_school_logos()
         entries = [_serialize_school_logo_entry(e) for e in payload.get("entries", [])]
         return jsonify({"ok": True, "entries": entries})

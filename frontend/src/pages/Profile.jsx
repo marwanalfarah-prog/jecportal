@@ -3,13 +3,14 @@ import {
   ArrowRight, ArrowLeft, Pencil, Trash2, Plus, Check, Camera, UserX, Download,
   GraduationCap, Briefcase, Heart, Users, Shield,
   Phone, PhoneCall, Globe, School, GitBranch, Archive, ArchiveRestore, MapPin, Mail,
-  Facebook, Instagram, Linkedin, ExternalLink, AlertCircle, ChevronDown
+  Facebook, Instagram, Linkedin, ExternalLink, AlertCircle, ChevronDown, Info, X, Search
 } from 'lucide-react'
 import { parsePhoneNumberFromString } from 'libphonenumber-js'
 import { api, getApiErrorMessage } from '../api.js'
 import { buildGoogleMapsOpenUrl, parseGoogleMapsUrl, sanitizeStoredCoordinate } from '../location.js'
 import { downloadProfilePdf } from '../profilePdf.js'
 import { computePermissions } from '../permissions.js'
+import { formatArabicPersonName, formatEnglishPersonName } from '../personName.js'
 
 function GenderChipContent({ gender }) {
   const normalized = String(gender || '').trim()
@@ -530,7 +531,7 @@ function normalizeHigherEducationRows(rows, { dropEmpty = false } = {}) {
         major: normalizeLooseInput(row?.major),
         degree: normalizeLooseInput(row?.degree),
         start_date: startDate,
-        end_date: isCurrent ? '' : sanitizeDateInput(row?.end_date),
+        end_date: sanitizeDateInput(row?.end_date),
         is_current: isCurrent,
         state,
         final_gpa: normalizeFinalGpaValue(row?.final_gpa),
@@ -1126,10 +1127,22 @@ function normalizeLooseInput(value) {
   return String(value || '').replace(/\s+/g, ' ').trim()
 }
 
+const BLOOD_TYPE_OPTIONS = [
+  { value: 'A+', label: 'A+' },
+  { value: 'A-', label: 'A-' },
+  { value: 'B+', label: 'B+' },
+  { value: 'B-', label: 'B-' },
+  { value: 'AB+', label: 'AB+' },
+  { value: 'AB-', label: 'AB-' },
+  { value: 'O+', label: 'O+' },
+  { value: 'O-', label: 'O-' },
+]
+
 const PERSON_HEALTH_TYPE_OPTIONS = [
   { value: 'illness', label: 'الحالات الصحية' },
   { value: 'allergy', label: 'حساسية' },
   { value: 'surgery', label: 'العمليات الجراجية' },
+  { value: 'blood_type', label: 'فصيلة الدم' },
 ]
 
 function normalizePersonHealthConditionType(value) {
@@ -1139,6 +1152,7 @@ function normalizePersonHealthConditionType(value) {
   if (lookup === 'illness' || lookup === 'illnesses' || lookup === 'health-condition' || lookup === 'health-conditions' || lookup === 'health condition' || lookup === 'health conditions' || text === 'مرض' || text === 'أمراض' || text === 'امراض' || text === 'الحالة الصحية' || text === 'الحالات الصحية') return 'illness'
   if (lookup === 'allergy' || lookup === 'allergies' || text === 'حساسية' || text === 'حساسيات' || text === 'حساسيه') return 'allergy'
   if (lookup === 'surgery' || lookup === 'surgeries' || lookup === 'operation' || lookup === 'operations' || text === 'عملية' || text === 'عمليات' || text === 'العمليات الجراحية' || text === 'العمليات الجراجية') return 'surgery'
+  if (lookup === 'blood-type' || lookup === 'blood type' || text === 'فصيلة الدم' || text === 'فصيلة دم') return 'blood_type'
   return ''
 }
 
@@ -1147,6 +1161,7 @@ function personHealthConditionTypeLabel(value) {
   if (normalized === 'illness') return 'الحالات الصحية'
   if (normalized === 'allergy') return 'حساسية'
   if (normalized === 'surgery') return 'العمليات الجراجية'
+  if (normalized === 'blood_type') return 'فصيلة الدم'
   return ''
 }
 
@@ -2682,7 +2697,7 @@ function CompactMultiSelect({ options, selected, onChange, placeholder = 'اخت
   )
 }
 
-function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches = {}, schoolStatus = '', graduatedFromSchools = false, onSchoolStatusChange, onGraduatedChange, schoolSystem = '', schoolSystemOptions = [], onSchoolSystemChange, schoolSystemSector = '', onSchoolSystemSectorChange, schoolFinalGpa = '', onSchoolFinalGpaChange, validationIssue = null }) {
+function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches = {}, schoolStatus = '', graduatedFromSchools = false, onSchoolStatusChange, onGraduatedChange, schoolSystem = '', schoolSystemOptions = [], onSchoolSystemChange, schoolSystemSector = '', onSchoolSystemSectorChange, schoolFinalGpa = '', onSchoolFinalGpaChange, validationIssue = null, showRequired = false }) {
   const normalizedSchoolStatus = schoolStatus
     ? normalizeSchoolStatusValue(schoolStatus, rows)
     : graduatedFromSchools ? SCHOOL_STATUS_GRADUATED : ''
@@ -2696,6 +2711,9 @@ function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches =
   const [message, setMessage] = useState('')
   const ref = useRef(null)
   const isJordanSchoolSystem = normalizeSchoolSystemValue(schoolSystem) === DEFAULT_SCHOOL_SYSTEM
+  const TRACK_GRADES = new Set(['الصف الحادي عشر (الأول ثانوي)', 'الصف الثاني عشر (التوجيهي)'])
+  const highestGrade = findHighestSchoolGrade(normalizedRows)
+  const showTrackSelector = isJordanSchoolSystem && (!allowCurrentSchool || TRACK_GRADES.has(highestGrade))
   const [sectorPath, setSectorPath] = useState(() => inferJordanSchoolSystemSectorPath(schoolSystemSector))
 
   useEffect(() => {
@@ -2851,8 +2869,7 @@ function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches =
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: '0.82rem', color: 'var(--gray-500)' }}>يمكن أن تكون مدرسة واحدة فقط نشطة، أو لا توجد مدرسة نشطة إذا كان العضو متخرّجًا أو غير ملتزم بدراسة مدرسيّة.</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+<div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ minWidth: 180 }}>
             <ComboDropdown
               value={normalizeSchoolSystemValue(schoolSystem)}
@@ -2861,22 +2878,29 @@ function SchoolRowsEditor({ rows, onChange, schoolOptions = [], schoolBranches =
               placeholder="نظام الدراسة"
             />
           </div>
-          <div
-            style={{ minWidth: 220, ...(validationMessageForTarget(validationIssue, 'person.school_graduated') ? PROFILE_VALIDATION_RING_STYLE : {}) }}
-            data-validation-id="person.school_graduated"
-            tabIndex={-1}
-          >
-            <SelectDropdown
-              value={normalizedSchoolStatus}
-              onChange={handleSchoolStatusChange}
-              options={SCHOOL_STATUS_OPTIONS}
-              placeholder="الحالة المدرسية"
-            />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {showRequired && (
+              <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--gray-500)' }}>
+                الحالة المدرسية <RequiredStar />
+              </span>
+            )}
+            <div
+              style={{ minWidth: 220, ...(validationMessageForTarget(validationIssue, 'person.school_graduated') ? PROFILE_VALIDATION_RING_STYLE : {}) }}
+              data-validation-id="person.school_graduated"
+              tabIndex={-1}
+            >
+              <SelectDropdown
+                value={normalizedSchoolStatus}
+                onChange={handleSchoolStatusChange}
+                options={SCHOOL_STATUS_OPTIONS}
+                placeholder="الحالة المدرسية"
+              />
+            </div>
           </div>
         </div>
       </div>
       <ValidationMessage message={validationMessageForTarget(validationIssue, 'person.school_graduated')} />
-      {isJordanSchoolSystem ? (
+      {showTrackSelector ? (
         <div className="profile-two-column-layout">
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>نوع المسار</span>
@@ -3121,7 +3145,6 @@ function HigherEducationRowsEditor({ rows, onChange, universityOptions = [], maj
       if (Object.prototype.hasOwnProperty.call(changes, 'state')) {
         if (nextState === 'current') {
           nextRow.is_current = true
-          nextRow.end_date = ''
         } else if (nextState === 'switched') {
           nextRow.is_current = false
         } else if (nextState === 'exited' || nextState === 'graduated') {
@@ -3129,7 +3152,6 @@ function HigherEducationRowsEditor({ rows, onChange, universityOptions = [], maj
         }
       }
 
-      if (nextRow.is_current) nextRow.end_date = ''
       return nextRow
     })
 
@@ -3218,19 +3240,17 @@ function HigherEducationRowsEditor({ rows, onChange, universityOptions = [], maj
                   />
                 </label>
                 <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>تاريخ النهاية</span>
-                  {!row.is_current ? (
-                    <input
-                      className="combo-input"
-                      type="date"
-                      value={row.end_date || ''}
-                      dir="ltr"
-                      style={{ textAlign: 'left' }}
-                      onChange={(event) => updateRow(index, 'end_date', event.target.value)}
-                    />
-                  ) : (
-                    <div style={{ fontSize: '0.78rem', color: 'var(--gray-400)' }}>السجل ما يزال نشطًا</div>
-                  )}
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--gray-500)' }}>
+                    {row.is_current ? 'تاريخ التخرج المتوقع' : 'تاريخ النهاية'}
+                  </span>
+                  <input
+                    className="combo-input"
+                    type="date"
+                    value={row.end_date || ''}
+                    dir="ltr"
+                    style={{ textAlign: 'left' }}
+                    onChange={(event) => updateRow(index, 'end_date', event.target.value)}
+                  />
                 </label>
               </div>
 
@@ -3620,7 +3640,9 @@ function SubTable({ rows, setRows, columns }) {
                           ? <ComboDropdown value={row[c.key]} onChange={v => update(i, c.key, v)} options={c.comboOptions} />
                           : c.options
                             ? <SelectDropdown value={row[c.key]} onChange={v => update(i, c.key, v)} options={c.options.map(o => ({ value: o }))} />
-                                : <input type={c.inputType || 'text'} value={row[c.key] || ''} onChange={e => update(i, c.key, e.target.value)} />}
+                            : c.getDynamicOptions
+                              ? (() => { const dynOpts = c.getDynamicOptions(row); return dynOpts ? <SelectDropdown value={row[c.key]} onChange={v => update(i, c.key, v)} options={dynOpts} dir="ltr" /> : <input type={c.inputType || 'text'} value={row[c.key] || ''} onChange={e => update(i, c.key, e.target.value)} /> })()
+                              : <input type={c.inputType || 'text'} value={row[c.key] || ''} onChange={e => update(i, c.key, e.target.value)} />}
                   </td>
                 ))}
                 <td>
@@ -3673,19 +3695,13 @@ function sanitizeAddressRows(rows) {
   }))
 }
 
-function collectArchivableYouthGroupIds({ memberships, fallbackMemberships = [], shouldScopeToViewerGroups = false, viewerCouncilGroupIds = [] }) {
-  const allowedGroupIds = new Set(
-    (Array.isArray(viewerCouncilGroupIds) ? viewerCouncilGroupIds : [])
-      .map((groupId) => String(groupId || '').trim())
-      .filter(Boolean)
-  )
+function collectArchivableYouthGroupIds({ memberships, fallbackMemberships = [] }) {
   const collectGroupIds = (rows) => {
     const seen = new Set()
     return (Array.isArray(rows) ? rows : [])
       .map((row) => String(row?.youth_group_id || '').trim())
       .filter((groupId) => {
         if (!groupId || seen.has(groupId)) return false
-        if (shouldScopeToViewerGroups && !allowedGroupIds.has(groupId)) return false
         seen.add(groupId)
         return true
       })
@@ -3695,7 +3711,7 @@ function collectArchivableYouthGroupIds({ memberships, fallbackMemberships = [],
   return activeGroupIds.length ? activeGroupIds : collectGroupIds(fallbackMemberships)
 }
 
-function AddressRowsEditor({ rows, onChange, governorateOptions, locationOnly = false, validationIssue = null }) {
+function AddressRowsEditor({ rows, onChange, governorateOptions, locationOnly = false, validationIssue = null, canEditLocation = true }) {
   const normalizedRows = normalizeAddressEditorRows(rows)
   const primaryIndex = normalizedRows.findIndex(row => row.is_primary)
   const targetIndex = primaryIndex >= 0 ? primaryIndex : 0
@@ -3790,6 +3806,7 @@ function AddressRowsEditor({ rows, onChange, governorateOptions, locationOnly = 
           .map(value => String(value || '').trim())
           .filter(Boolean)
           .join('، ')
+        const mapUrl = buildGoogleMapsOpenUrl(row)
         return (
         <div key={index} className="am-address-card" style={{ ...(highlightPrimary ? { border: '1px solid rgba(201,150,60,0.34)', background: 'linear-gradient(135deg,rgba(201,150,60,0.16),rgba(255,255,255,0.98))', boxShadow: '0 16px 30px rgba(201,150,60,0.16)' } : {}), ...(errorMessage ? PROFILE_VALIDATION_RING_STYLE : {}) }} data-validation-id={targetId} tabIndex={-1}>
           <div className="am-address-card-header">
@@ -3823,7 +3840,7 @@ function AddressRowsEditor({ rows, onChange, governorateOptions, locationOnly = 
 
             {!locationOnly && <div className="am-address-field">
               <div className="am-field-hint am-address-label">المحافظة / الولاية</div>
-              <ComboDropdown value={row.governorate} onChange={value => updateRow(index, 'governorate', value)} options={governorateOptions} placeholder="—" />
+              <ComboDropdown value={row.governorate} onChange={value => updateRow(index, 'governorate', value)} options={normalizeCountryValue(row.country) === 'الأردن' ? governorateOptions : []} placeholder="—" />
             </div>}
 
             {!locationOnly && <div className="am-address-field">
@@ -3845,7 +3862,17 @@ function AddressRowsEditor({ rows, onChange, governorateOptions, locationOnly = 
 
             <div className="am-address-field am-address-field-wide">
               <div className="am-field-hint am-address-label">موقع المنزل</div>
-              {(!buildGoogleMapsOpenUrl(row) || mapEditors[actualIndex]) ? (
+              {!canEditLocation ? (
+                mapUrl ? (
+                  <div className="am-address-map-meta">
+                    <button type="button" className="am-address-map-icon active" title="فتح موقع المنزل" onClick={() => window.open(mapUrl, '_blank', 'noopener,noreferrer')}>
+                      <MapPin size={16} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="view-value">—</div>
+                )
+              ) : (!mapUrl || mapEditors[actualIndex]) ? (
                 <div className="am-address-map-editor">
                   <input
                     className="form-control"
@@ -3860,14 +3887,14 @@ function AddressRowsEditor({ rows, onChange, governorateOptions, locationOnly = 
                   />
                   <div className="am-address-map-editor-actions">
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => applyMapUrl(index)}>حفظ الموقع</button>
-                    {buildGoogleMapsOpenUrl(row) && <button type="button" className="btn btn-ghost btn-sm" onClick={() => removeMapLocation(index)}>حذف الموقع</button>}
-                    {buildGoogleMapsOpenUrl(row) && <button type="button" className="btn btn-ghost btn-sm" onClick={() => closeMapEditor(index)}>إلغاء</button>}
+                    {mapUrl && <button type="button" className="btn btn-ghost btn-sm" onClick={() => removeMapLocation(index)}>حذف الموقع</button>}
+                    {mapUrl && <button type="button" className="btn btn-ghost btn-sm" onClick={() => closeMapEditor(index)}>إلغاء</button>}
                   </div>
                   {mapErrors[actualIndex] && <div className="am-field-error"><AlertCircle size={13} style={{ flexShrink: 0 }} /> {mapErrors[actualIndex]}</div>}
                 </div>
               ) : (
                 <div className="am-address-map-meta">
-                  <button type="button" className="am-address-map-icon active" title="فتح موقع المنزل" onClick={() => window.open(buildGoogleMapsOpenUrl(row), '_blank', 'noopener,noreferrer')}>
+                  <button type="button" className="am-address-map-icon active" title="فتح موقع المنزل" onClick={() => window.open(mapUrl, '_blank', 'noopener,noreferrer')}>
                     <MapPin size={16} />
                   </button>
                   <button type="button" className="am-address-map-icon" title="تعديل موقع المنزل" onClick={() => openMapEditor(index)}>
@@ -3908,11 +3935,44 @@ function InlineField({ label, value, onChange, dir = 'rtl', error = '', targetId
   )
 }
 
-function InlineComboField({ label, value, onChange, options, dir = 'rtl', error = '', targetId = '' }) {
+function RequiredStar() {
+  return <span style={{ color: '#e53e3e', marginInlineStart: 2, fontWeight: 700, fontSize: '0.9em' }} aria-hidden="true">*</span>
+}
+
+function RequiredInfo({ text }) {
+  const [show, setShow] = useState(false)
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', verticalAlign: 'middle' }}>
+      <span
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        onFocus={() => setShow(true)}
+        onBlur={() => setShow(false)}
+        tabIndex={0}
+        style={{ cursor: 'help', color: 'var(--gray-400)', marginInlineStart: 4, display: 'inline-flex', outline: 'none' }}
+      >
+        <Info size={11} />
+      </span>
+      {show && (
+        <span style={{
+          position: 'absolute', top: '100%', insetInlineStart: 0, zIndex: 9999,
+          background: 'var(--navy)', color: 'white', borderRadius: 6,
+          padding: '5px 10px', fontSize: '0.74rem', whiteSpace: 'nowrap',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.2)', marginTop: 5,
+          pointerEvents: 'none', lineHeight: 1.5, fontWeight: 400,
+        }}>
+          {text}
+        </span>
+      )}
+    </span>
+  )
+}
+
+function InlineComboField({ label, value, onChange, options, dir = 'rtl', error = '', targetId = '', required = false, requiredInfo = '' }) {
   const hasError = Boolean(error)
   return (
     <div className="info-row">
-      <span className="info-key">{label}</span>
+      <span className="info-key">{label}{required && <RequiredStar />}{requiredInfo && <RequiredInfo text={requiredInfo} />}</span>
       <div style={{ flex: 1, display: 'grid', gap: 6 }}>
         <div style={hasError ? PROFILE_VALIDATION_WRAPPER_STYLE : undefined} data-validation-id={targetId || undefined} tabIndex={targetId ? -1 : undefined}>
           <ComboDropdown value={value} onChange={onChange} options={options} dir={dir} />
@@ -3923,11 +3983,11 @@ function InlineComboField({ label, value, onChange, options, dir = 'rtl', error 
   )
 }
 
-function InlineSelectField({ label, value, onChange, options, dir = 'rtl', error = '', targetId = '' }) {
+function InlineSelectField({ label, value, onChange, options, dir = 'rtl', error = '', targetId = '', required = false, requiredInfo = '' }) {
   const hasError = Boolean(error)
   return (
     <div className="info-row">
-      <span className="info-key">{label}</span>
+      <span className="info-key">{label}{required && <RequiredStar />}{requiredInfo && <RequiredInfo text={requiredInfo} />}</span>
       <div style={{ flex: 1, display: 'grid', gap: 6 }}>
         <div style={hasError ? PROFILE_VALIDATION_WRAPPER_STYLE : undefined} data-validation-id={targetId || undefined} tabIndex={targetId ? -1 : undefined}>
           <SelectDropdown value={value} onChange={onChange} options={options} dir={dir} />
@@ -3968,7 +4028,7 @@ function InlineBirthDateField({ label, day, month, birthDateStr, onChange, error
   )
 }
 
-function InlineDobField({ label, year, day, month, birthDateStr, onChange, fromYear = 1960, error = '', targetId = '' }) {
+function InlineDobField({ label, year, day, month, birthDateStr, onChange, fromYear = 1960, error = '', targetId = '', required = false }) {
   const [monthState, setMonthState] = useState('')
   const [dayState, setDayState] = useState('')
   const hasError = Boolean(error)
@@ -4004,7 +4064,7 @@ function InlineDobField({ label, year, day, month, birthDateStr, onChange, fromY
 
   return (
     <div className="info-row">
-      <span className="info-key">{label}</span>
+      <span className="info-key">{label}{required && <RequiredStar />}</span>
       <div style={{ flex: 1, display: 'grid', gap: 6 }}>
         <div style={hasError ? PROFILE_VALIDATION_WRAPPER_STYLE : undefined} data-validation-id={targetId || undefined} tabIndex={targetId ? -1 : undefined}>
           <div style={{ display: 'grid', gridTemplateColumns: '88px minmax(0, 1fr) 110px', gap: 8, alignItems: 'end' }}>
@@ -4131,9 +4191,11 @@ function formatHigherEducationPeriod(row) {
   const start = String(row?.start_date || '').trim()
   const end = String(row?.end_date || '').trim()
   const isCurrent = normalizeHigherEducationStateValue(row?.state, { isCurrent: Boolean(row?.is_current) }) === 'current'
+  if (start && end && isCurrent) return `${start} - ${end} (متوقع)`
   if (start && end) return `${start} - ${end}`
   if (start && isCurrent) return `${start} - حاليًّا`
   if (start) return start
+  if (end && isCurrent) return `${end} (متوقع)`
   if (end) return end
   if (isCurrent) return 'حاليًّا'
   return ''
@@ -4544,11 +4606,11 @@ function YouthMembershipHistoryView({ rows }) {
 function YouthMembershipCompactCard({ row, title, badge, logoUrl, logoAlt }) {
   const [showLogo, setShowLogo] = useState(Boolean(logoUrl))
   useEffect(() => { setShowLogo(Boolean(logoUrl)) }, [logoUrl])
-  const historyRows = normalizeYouthMembershipHistoryRows(row?.age_group_history)
+  const historyRows = normalizeYouthMembershipHistoryRows(row?.age_group_history).filter(e => e.age_group !== 'مرشد روحيّ')
   const currentAgeGroup = row?.current_age_group || row?.age_group
   const resolvedTitle = normalizeLooseInput(title) || 'الشبيبة'
   const membershipMetaParts = [
-    currentAgeGroup ? { key: 'current-age-group', label: 'الفئة الحالية', value: currentAgeGroup } : null,
+    currentAgeGroup ? { key: 'current-age-group', label: currentAgeGroup === 'مرشد روحيّ' ? 'الدور في الشبيبة' : row?.archived ? 'أخر فئة' : 'الفئة الحالية', value: currentAgeGroup } : null,
     row?.youth_join_year ? { key: 'join-year', label: 'سنة الانتساب', value: String(row.youth_join_year) } : null,
   ].filter(Boolean)
 
@@ -4585,7 +4647,7 @@ function YouthMembershipCompactCard({ row, title, badge, logoUrl, logoAlt }) {
         </div>
       ) : null}
 
-      <div style={{ display: 'grid', gap: 8 }}>
+      {historyRows.length > 0 && <div style={{ display: 'grid', gap: 8 }}>
         <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--gray-400)' }}>الفئات العمرية</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
           {historyRows.map((item, index) => {
@@ -4617,24 +4679,8 @@ function YouthMembershipCompactCard({ row, title, badge, logoUrl, logoAlt }) {
               </div>
             )
           })}
-          {!historyRows.length ? (
-            <div
-              style={{
-                display: 'grid',
-                gap: 6,
-                padding: '12px 14px',
-                borderRadius: 14,
-                background: 'white',
-                border: '1px solid rgba(15, 39, 68, 0.08)',
-                boxShadow: '0 6px 16px rgba(15, 39, 68, 0.04)',
-                minWidth: 0,
-              }}
-            >
-              <div style={{ fontWeight: 700, color: 'var(--navy)', lineHeight: 1.35 }}>لا توجد فئات عمرية محفوظة</div>
-            </div>
-          ) : null}
         </div>
-      </div>
+      </div>}
     </div>
   )
 }
@@ -6345,6 +6391,10 @@ function resolveProfileValidationIssue(message) {
     return { tab: 'info', targetId: 'person.gender', message: text }
   }
 
+  if (text === 'الحالة الاجتماعية يجب أن تكون: أعزب، خاطب، أو متزوج.') {
+    return { tab: 'info', targetId: 'person.marital_status', message: text }
+  }
+
   if (text === 'المعدل المدرسي يجب أن يكون رقمًا صحيحًا أو عشريًا.') {
     return { tab: 'edu', targetId: 'person.school_final_gpa', message: text }
   }
@@ -6471,6 +6521,103 @@ function ValidationMessage({ message }) {
   )
 }
 
+// ── Arabic normalization for spouse search ────────────────────────────────────
+function _spouseNormalizeWord(word) {
+  word = String(word)
+  word = word.replace(/[ؗ-ًؚ-ْ]/g, '')
+  word = word.replace(/ـ/g, '')
+  word = word.replace(/[إأآا]/g, 'ا')
+  word = word.replace(/[يى]/g, 'ي')
+  word = word.replace(/ؤ/g, 'و')
+  word = word.replace(/ئ/g, 'ي')
+  word = word.replace(/ة/g, 'ه')
+  word = word.replace(/^ال/, '')
+  return word.toLowerCase().trim()
+}
+function _spouseNormalizeText(text) {
+  if (!text) return ''
+  return String(text).replace(/\s+/g, ' ').trim().split(' ').map(_spouseNormalizeWord).join(' ')
+}
+
+const MARITAL_STATUS_OPTIONS = [
+  { value: 'أعزب', label: 'أعزب' },
+  { value: 'خاطب', label: 'خاطب' },
+  { value: 'متزوج', label: 'متزوج' },
+]
+
+function SpouseSearchWidget({ candidates, currentSpouse, onSelect, onRemove }) {
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+
+  const normalizedQuery = _spouseNormalizeText(query)
+  const results = normalizedQuery
+    ? (candidates || []).filter(c => {
+        const normName = _spouseNormalizeText(c.full_name)
+        return normalizedQuery.split(' ').every(word => normName.includes(word))
+      }).slice(0, 20)
+    : []
+
+  if (currentSpouse?.person_id) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-md)', background: 'var(--gray-50)' }}>
+        <span style={{ flex: 1, color: 'var(--navy)', fontWeight: 600 }}>{currentSpouse.full_name || `#${currentSpouse.person_id}`}</span>
+        <button type="button" onClick={onRemove} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)', padding: 2, display: 'flex', alignItems: 'center' }} title="إلغاء الاختيار">
+          <X size={15} />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-md)', background: 'white', padding: '6px 10px' }}>
+        <Search size={14} style={{ color: 'var(--gray-400)', flexShrink: 0 }} />
+        <input
+          type="text"
+          value={query}
+          onChange={e => { setQuery(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          placeholder="ابحث عن الشريك/الخطيب…"
+          style={{ flex: 1, border: 'none', outline: 'none', fontSize: '0.875rem', direction: 'rtl', background: 'transparent' }}
+        />
+        {query && (
+          <button type="button" onClick={() => { setQuery(''); setOpen(false) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)', padding: 0, display: 'flex' }}>
+            <X size={13} />
+          </button>
+        )}
+      </div>
+      {open && results.length > 0 && (
+        <div style={{ position: 'absolute', top: '100%', right: 0, left: 0, zIndex: 200, background: 'white', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-md)', boxShadow: '0 4px 16px rgba(0,0,0,0.1)', maxHeight: 220, overflowY: 'auto', marginTop: 2 }}>
+          {results.map(c => (
+            <button
+              key={c.person_id}
+              type="button"
+              onClick={() => { onSelect(c); setQuery(''); setOpen(false) }}
+              style={{ display: 'block', width: '100%', textAlign: 'right', padding: '9px 14px', border: 'none', borderBottom: '1px solid var(--gray-100)', background: 'none', cursor: 'pointer', fontSize: '0.875rem', color: 'var(--navy)' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--gray-50)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+            >
+              {c.full_name}
+            </button>
+          ))}
+        </div>
+      )}
+      {open && query && results.length === 0 && (
+        <div style={{ position: 'absolute', top: '100%', right: 0, left: 0, zIndex: 200, background: 'white', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-md)', padding: '10px 14px', marginTop: 2, fontSize: '0.85rem', color: 'var(--gray-400)' }}>
+          لا توجد نتائج
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main profile page ─────────────────────────────────────────────────────────
 export default function Profile({ personId, isUnregistered, onBack, toast, orgContext, onViewProfile, onPromoted, currentUser, readOnly = false, onUnsavedChangesChange, registrationMode = false, onRegistrationNext = null }) {
   const [data, setData]           = useState(null)
@@ -6488,105 +6635,65 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   const [promoteBlockedIssues, setPromoteBlockedIssues] = useState(null)
   const [activeTab, setActiveTab] = useState('info')
   const [filters, setFilters]     = useState({})
-  const [filtersResolved, setFiltersResolved] = useState(!!registrationMode)
+  const [filtersResolved, setFiltersResolved] = useState(false)
   const [activeJecYear, setActiveJecYear] = useState('')
   const [personTitles, setPersonTitles] = useState([])
   const [schoolBranches, setSchoolBranches] = useState({})
   const [schoolLogoEntries, setSchoolLogoEntries] = useState([])
   const [nationalityIsoLookup, setNationalityIsoLookup] = useState(() => new Map())
   const [confirm, setConfirm]     = useState(null) // { action: 'delete' | 'archive' | 'promote' }
+  const [orgTabHasData, setOrgTabHasData] = useState(null)
+  const [gsOrgTabHasData, setGsOrgTabHasData] = useState(null)
+  const [spouseCandidates, setSpouseCandidates] = useState([])
+  const spouseCandidatesLoaded = useRef(false)
   const loadRequestId = useRef(0)
-  const filtersLoaded = useRef(false)
-  const editMetaLoaded = useRef(false)
   const dataRef = useRef(null)
   const savedDataRef = useRef(null)
   const lastArchivableMemberships = useRef([])
-  const { isAdmin: isViewerAdmin, isCouncil: _isViewerCouncil } = computePermissions(currentUser)
+  const { isAdmin: isViewerAdmin } = computePermissions(currentUser)
   const isViewingOwnProfile =
     !registrationMode
     && currentUser
     && String(currentUser.person_id) === String(personId)
     && ((currentUser.person_type === 'unregistered') === !!isUnregistered)
-  const canFullyEditProfile = registrationMode || (!readOnly && isViewerAdmin)
+  const canAdminEditProfile = !registrationMode && !readOnly && isViewerAdmin
+  const canFullyEditProfile = registrationMode || canAdminEditProfile
   const canEditOwnProfile = !registrationMode && !readOnly && !isViewerAdmin && currentUser?.role === 'member' && isViewingOwnProfile
-  const canEnterEditMode = canFullyEditProfile || canEditOwnProfile
+  const canEditGrantedProfile = !registrationMode && !readOnly && !isViewerAdmin && currentUser?.role === 'member' && !isViewingOwnProfile
+  const canEnterEditMode = canFullyEditProfile || canEditOwnProfile || canEditGrantedProfile
+  const canEditTitle = canAdminEditProfile
+  const canEditMapLocation = canFullyEditProfile || canEditOwnProfile
+  const showRequired = registrationMode || isEditing
 
   useEffect(() => {
-    if (filtersLoaded.current) return
     let cancelled = false
-    api.filters()
-      .then((filtersResponse) => {
-        if (!cancelled) {
-          setFilters(filtersResponse || {})
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setFilters({})
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          filtersLoaded.current = true
-          setFiltersResolved(true)
-        }
-      })
 
-    api.listSchoolLogos()
-      .then((schoolLogosResponse) => {
-        if (!cancelled) {
-          setSchoolLogoEntries(Array.isArray(schoolLogosResponse?.entries) ? schoolLogosResponse.entries : [])
-        }
+    // Unblock the form as soon as the two critical requests resolve
+    Promise.all([api.filters(), api.getConfig()])
+      .then(([filtersRes, configRes]) => {
+        if (cancelled) return
+        setFilters(filtersRes || {})
+        setActiveJecYear(normalizeActiveJecYearValue(configRes?.config?.active_jec_year))
+        setPersonTitles(normalizePersonTitles(configRes?.config?.person_titles || []))
+        setSchoolBranches(normalizeSchoolBranches(configRes?.config?.school_branches || {}))
       })
       .catch(() => {
-        if (!cancelled) setSchoolLogoEntries([])
+        if (cancelled) return
+        setFilters({})
+        setPersonTitles([])
+        setSchoolBranches({})
       })
+      .finally(() => { if (!cancelled) setFiltersResolved(true) })
+
+    // Load the rest in the background — they populate once ready
+    api.listSchoolLogos()
+      .then((res) => { if (!cancelled) setSchoolLogoEntries(Array.isArray(res?.entries) ? res.entries : []) })
+      .catch(() => { if (!cancelled) setSchoolLogoEntries([]) })
 
     api.listNationalityIsoCodes()
-      .then((nationalityIsoResponse) => {
-        if (!cancelled) {
-          setNationalityIsoLookup(normalizeNationalityIsoLookup(nationalityIsoResponse?.entries))
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setNationalityIsoLookup(new Map())
-      })
+      .then((res) => { if (!cancelled) setNationalityIsoLookup(normalizeNationalityIsoLookup(res?.entries)) })
+      .catch(() => { if (!cancelled) setNationalityIsoLookup(new Map()) })
 
-    return () => { cancelled = true }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    api.getConfig()
-      .then((configResponse) => {
-        if (!cancelled) {
-          setActiveJecYear(normalizeActiveJecYearValue(configResponse?.config?.active_jec_year))
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setActiveJecYear('')
-      })
-    return () => { cancelled = true }
-  }, [])
-
-  useEffect(() => {
-    if (editMetaLoaded.current) return
-    editMetaLoaded.current = true
-    let cancelled = false
-    api.getConfig()
-      .then((configResponse) => {
-        if (!cancelled) {
-          setActiveJecYear(normalizeActiveJecYearValue(configResponse?.config?.active_jec_year))
-          setPersonTitles(normalizePersonTitles(configResponse?.config?.person_titles || []))
-          setSchoolBranches(normalizeSchoolBranches(configResponse?.config?.school_branches || {}))
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setPersonTitles([])
-          setSchoolBranches({})
-        }
-      })
     return () => { cancelled = true }
   }, [])
 
@@ -6595,8 +6702,15 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   }, [canEnterEditMode, isEditing])
 
   useEffect(() => {
-    editMetaLoaded.current = false
-  }, [personId, isUnregistered])
+    if (spouseCandidatesLoaded.current || isUnregistered || !data?.person?.gender) return
+    const gender = String(data.person.gender || '').trim()
+    const oppositeGender = gender === 'ذكر' ? 'أنثى' : gender === 'أنثى' ? 'ذكر' : null
+    if (!oppositeGender) return
+    spouseCandidatesLoaded.current = true
+    api.getSpouseCandidates(oppositeGender)
+      .then(res => setSpouseCandidates(Array.isArray(res?.candidates) ? res.candidates : []))
+      .catch(() => setSpouseCandidates([]))
+  }, [data?.person?.gender, isUnregistered])
 
   useEffect(() => {
     if (!isEditing || !hasUnsavedChanges) return undefined
@@ -6727,6 +6841,8 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     setValidationErrors([])
     setValidationIssue(null)
     setPhoto(null)
+    setOrgTabHasData(null)
+    setGsOrgTabHasData(null)
 
     // Registration mode: skip API fetch, start with a blank profile in full edit mode
     if (registrationMode) {
@@ -6824,6 +6940,27 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       setData(d)
       setPhoto(d.photo ?? null)
       setLoading(false)
+
+      // Eagerly check org tab data so tabs only show when there's actual content
+      const orgMatcher = isUnregistered
+        ? (n) => String(n.unregisteredId) === String(personId)
+        : (n) => String(n.personId) === String(personId)
+      const orgGroupIds = [...new Set([
+        ...(d.person_youth_group || []).map(r => r?.youth_group_id),
+        ...(d.responsibilities || []).map(r => r?.youth_group_id),
+      ].map(v => String(v || '').trim()).filter(Boolean))]
+      const orgParams = isUnregistered
+        ? { unregisteredId: personId, groupIds: orgGroupIds }
+        : { personId, groupIds: orgGroupIds }
+      const gsParams = isUnregistered
+        ? { unregisteredId: personId, groupIds: [GS_GROUP_KEY_PROFILE] }
+        : { personId, groupIds: [GS_GROUP_KEY_PROFILE] }
+      loadOrgHistoryTrees(orgParams)
+        .then(trees => { if (!cancelled) setOrgTabHasData(buildOrgHistory(orgMatcher, trees).length > 0) })
+        .catch(() => { if (!cancelled) setOrgTabHasData(false) })
+      loadOrgHistoryTrees(gsParams)
+        .then(trees => { if (!cancelled) setGsOrgTabHasData(buildGSOrgHistory(orgMatcher, trees).length > 0) })
+        .catch(() => { if (!cancelled) setGsOrgTabHasData(false) })
     }).catch((error) => {
       if (cancelled || loadRequestId.current !== requestId) return
       savedDataRef.current = null
@@ -6866,7 +7003,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       },
       ...Object.fromEntries(SUB_KEYS.map(k => [k, stripId(nextData[k])])),
     }
-    if (registrationMode) {
+    if (registrationMode || !isViewerAdmin) {
       delete payload.person.title
     }
     payload.nationality = serializeNationalityRows(payload.nationality, { dropEmpty: true })
@@ -6903,6 +7040,12 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       return
     }
     await api.updatePerson(personId, payload)
+    const savedSpouseId = savedDataRef.current?.spouse?.person_id
+    const newSpouseId = nextData.spouse?.person_id
+    const spouseIsInSystem = toBoolDefaultFalse(nextData.person?.spouse_is_member)
+    if (spouseIsInSystem && newSpouseId && String(newSpouseId) !== String(savedSpouseId || '')) {
+      await api.setSpouse(personId, newSpouseId)
+    }
   }
 
   async function handleRegistrationNext() {
@@ -6966,6 +7109,10 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     }
     if (!person.birth_year || !person.birth_month || !person.birth_day) {
       return { tab: 'info', targetId: 'person.birth_date', message: 'تاريخ الميلاد يجب أن يحتوي السنة والشهر واليوم وأن يكون تاريخًا صالحًا.' }
+    }
+    const validMaritalStatuses = new Set(['أعزب', 'خاطب', 'متزوج'])
+    if (!person.marital_status || !validMaritalStatuses.has(String(person.marital_status || '').trim())) {
+      return { tab: 'info', targetId: 'person.marital_status', message: 'الحالة الاجتماعية يجب أن تكون: أعزب، خاطب، أو متزوج.' }
     }
     const nationalities = (d?.nationality || []).filter(r => String(r?.nationality || '').trim())
     if (!nationalities.length) {
@@ -7235,8 +7382,6 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       const youthGroupIds = collectArchivableYouthGroupIds({
         memberships: dataRef.current?.person_youth_group,
         fallbackMemberships: lastArchivableMemberships.current,
-        shouldScopeToViewerGroups,
-        viewerCouncilGroupIds,
       })
       if (!youthGroupIds.length) {
         toast('لا توجد عضوية شبيبة نشطة لأرشفتها', 'error')
@@ -7302,23 +7447,23 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     return api.youthGroupLogoUrl(gid)
   }
 
-  const viewerCouncilGroupIds = Object.keys(currentUser?.council_access || {})
-  const isViewerLeader = _isViewerCouncil
-
-  // Leaders can inspect member profiles, but only in their own youth groups.
-  const shouldScopeToViewerGroups = isViewerLeader && !isViewingOwnProfile
-  const visiblePersonYouthGroup = shouldScopeToViewerGroups
-    ? (person_youth_group || []).filter(row => viewerCouncilGroupIds.includes(String(row?.youth_group_id || '').trim()))
-    : (person_youth_group || [])
-  const visibleResponsibilities = shouldScopeToViewerGroups
-    ? (responsibilities || []).filter(row => viewerCouncilGroupIds.includes(String(row?.youth_group_id || '').trim()))
-    : (responsibilities || [])
+  const visiblePersonYouthGroup = person_youth_group || []
+  const visibleResponsibilities = responsibilities || []
   const activeVisibleYouthGroupIds = [...new Set(
     visiblePersonYouthGroup
       .filter((row) => !row?.archived)
       .map((row) => String(row?.youth_group_id || '').trim())
       .filter(Boolean)
   )]
+
+  const SCHOOL_MEMBER_AGE_GROUPS = new Set(['البراعم', 'الإعدادي', 'الثانوي'])
+  const HIGHER_MEMBER_AGE_GROUPS = new Set(['الجامعيّة', 'العاملة'])
+  const currentActiveAgeGroups = visiblePersonYouthGroup
+    .filter((m) => !m?.archived)
+    .map((m) => String(m.current_age_group || '').trim())
+    .filter(Boolean)
+  const isSchoolMember = currentActiveAgeGroups.some((ag) => SCHOOL_MEMBER_AGE_GROUPS.has(ag)) &&
+    !currentActiveAgeGroups.some((ag) => HIGHER_MEMBER_AGE_GROUPS.has(ag))
 
   const relevantGroupIds = [...new Set([
     ...visiblePersonYouthGroup.map(r => r?.youth_group_id),
@@ -7346,10 +7491,8 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
   }, {})
 
   const arabicProfileTitle = String(person?.title || '').replace(/\s+/g, ' ').trim()
-  const fullName = [person?.ar_first_name, person?.ar_second_name, person?.ar_third_name, person?.ar_last_name]
-    .filter(Boolean).join(' ') || 'بلا اسم'
-  const englishFullName = [person?.en_first_name, person?.en_second_name, person?.en_third_name, person?.en_last_name]
-    .filter(Boolean).join(' ')
+  const fullName = formatArabicPersonName(person, { fallback: 'بلا اسم' })
+  const englishFullName = formatEnglishPersonName(person, { title: englishTitleForPerson })
   const arabicNameParts = [
     { key: 'title', label: 'اللقب', value: arabicProfileTitle },
     { key: 'ar_first_name', label: 'الاسم الأول', value: person?.ar_first_name },
@@ -7391,8 +7534,8 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     .map((row) => normalizeNationalityValue(row?.nationality))
     .filter(Boolean)
     .join('، ')
-  const arabicDisplayName = [arabicProfileTitle, fullName].filter(Boolean).join(' ')
-  const englishDisplayName = [englishTitleForPerson, englishFullName].filter(Boolean).join(' ')
+  const arabicDisplayName = fullName
+  const englishDisplayName = englishFullName
   const schoolStatus = normalizeSchoolStatusValue(person?.school_graduated, schools)
   const graduatedFromSchools = isSchoolGraduatedStatus(schoolStatus)
   const schoolSystem = normalizeSchoolSystemValue(person?.school_system)
@@ -7602,17 +7745,15 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
           },
           {
             title: 'الشبيبة والمسؤوليات',
-            note: shouldScopeToViewerGroups
-              ? 'يعكس هذا التصدير فقط بيانات الشبيبة الواقعة ضمن المجموعات التي يملك المستخدم الحالي صلاحية قيادتها.'
-              : '',
+            note: '',
             records: [
               ...visiblePersonYouthGroup.map((row) => ({
                 title: youthGroupName(row?.youth_group_id),
                 badge: row?.archived ? 'عضو قديم' : 'عضو حالي',
                 fields: [
                   { label: 'سنة الانتساب', value: row?.youth_join_year },
-                  { label: 'الفئة الحالية', value: row?.current_age_group || row?.age_group },
-                  { label: 'تسلسل الفئات', value: normalizeYouthMembershipHistoryRows(row?.age_group_history).map((entry) => `${entry.age_group} (${formatYouthMembershipHistoryPeriod(entry)})`).join('، ') },
+                  (() => { const ag = row?.current_age_group || row?.age_group; return ag ? { label: ag === 'مرشد روحيّ' ? 'الدور في الشبيبة' : row?.archived ? 'أخر فئة' : 'الفئة الحالية', value: ag } : null })(),
+                  { label: 'تسلسل الفئات', value: normalizeYouthMembershipHistoryRows(row?.age_group_history).filter(e => e.age_group !== 'مرشد روحيّ').map((entry) => `${entry.age_group} (${formatYouthMembershipHistoryPeriod(entry)})`).join('، ') },
                 ],
                 accent: 'gold',
               })),
@@ -7729,14 +7870,12 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
     { id: 'address', label: 'العناوين',            icon: MapPin },
     { id: 'youth',   label: 'الشبيبة',            icon: Users },
     { id: 'edu',     label: 'التعليم',             icon: GraduationCap },
-    { id: 'work',    label: 'العمل',               icon: Briefcase },
+    ...(!isSchoolMember ? [{ id: 'work', label: 'العمل', icon: Briefcase }] : []),
     { id: 'health',  label: 'الصحة',               icon: Shield },
     { id: 'notes',   label: 'ملاحظات خاصة',        icon: Pencil },
     { id: 'hobbies', label: 'الهوايات',            icon: Heart },
-    ...(!registrationMode ? [
-      { id: 'org',   label: 'هيكل الشبيبة',       icon: GitBranch },
-      { id: 'gsorg', label: 'الأمانة العامة',      icon: GitBranch },
-    ] : []),
+    ...(!registrationMode && orgTabHasData ? [{ id: 'org', label: 'هيكل الشبيبة', icon: GitBranch }] : []),
+    ...(!registrationMode && gsOrgTabHasData ? [{ id: 'gsorg', label: 'الأمانة العامة', icon: GitBranch }] : []),
   ]
 
   const isViewMode = !registrationMode && (readOnly || !isEditing)
@@ -7754,7 +7893,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
         }
         message={
           confirm?.action === 'delete'
-            ? `هل أنت متأكد من حذف "${data?.person ? [data.person.ar_first_name, data.person.ar_last_name].filter(Boolean).join(' ') : ''}" نهائياً؟ سيتم حذف جميع بياناته بشكل دائم ولا يمكن التراجع عن هذا الإجراء.`
+            ? `هل أنت متأكد من حذف "${data?.person ? formatArabicPersonName(data.person) : ''}" نهائياً؟ سيتم حذف جميع بياناته بشكل دائم ولا يمكن التراجع عن هذا الإجراء.`
             : confirm?.action === 'promote'
               ? 'هل تريد تحويل هذا الشخص إلى عضو مسجّل؟ سيتم نقل بياناته إلى قائمة الأعضاء الرسمية.'
               : 'هل تريد أرشفة هذا السجل؟ سيتم أرشفة جميع عضويات الشبيبة النشطة المرتبطة به، ثم سينتقل إلى تبويب الأرشيف في قائمة الأعضاء ويمكن استعادته لاحقاً.'
@@ -7924,10 +8063,10 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
           </div>
         ) : isUnregistered ? (
           <UnregisteredProfileAvatar uid={personId} initials={initials} photoUrl={photo}
-            onPhotoChange={setPhoto} toast={toast} canUpload={canFullyEditProfile} />
+            onPhotoChange={setPhoto} toast={toast} canUpload={canEnterEditMode} />
         ) : (
           <ProfileAvatar personId={personId} initials={initials} photoUrl={photo}
-            onPhotoChange={setPhoto} toast={toast} canUpload={canFullyEditProfile} />
+            onPhotoChange={setPhoto} toast={toast} canUpload={canEnterEditMode} />
         )}
         <div className="profile-details">
           <div className="profile-identity-block">
@@ -8016,6 +8155,14 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                     <ViewField label="الجنس" value={person?.gender} />
                     <ViewSegmentedField label="تاريخ الميلاد" parts={birthDateParts} dir="ltr" valueDir="ltr" />
                   </div>
+                  {person?.marital_status && (
+                    <div style={{ display: 'grid', gridTemplateColumns: data?.spouse ? '1fr 1fr' : '1fr', gap: 10, alignItems: 'start' }}>
+                      <ViewField label="الحالة الاجتماعية" value={person.marital_status} />
+                      {data?.spouse?.full_name && (
+                        <ViewField label={person.marital_status === 'خاطب' ? 'الخطيب/الخطيبة' : 'الزوج/الزوجة'} value={data.spouse.full_name} />
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -8200,13 +8347,13 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                 <div className="profile-name-columns">
                   <div className="profile-name-section">
                     <div className="profile-name-section-title">الاسم بالعربية</div>
-                    {!registrationMode && (
+                    {canEditTitle && (
                       <InlineSelectField label="اللقب" value={person?.title} onChange={updateArabicTitle} options={personTitleOptions(person?.title)} />
                     )}
-                    <InlineComboField label="الاسم الأول" value={person?.ar_first_name} onChange={v => updateField('ar_first_name', v)} options={opts('ar_first_name')} error={validationMessageForTarget(validationIssue, 'person.ar_first_name')} targetId="person.ar_first_name" />
-                    <InlineComboField label="الاسم الثاني" value={person?.ar_second_name} onChange={v => updateField('ar_second_name', v)} options={opts('ar_second_name')} error={validationMessageForTarget(validationIssue, 'person.ar_second_name')} targetId="person.ar_second_name" />
-                    <InlineComboField label="الاسم الثالث" value={person?.ar_third_name} onChange={v => updateField('ar_third_name', v)} options={opts('ar_third_name')} error={validationMessageForTarget(validationIssue, 'person.ar_third_name')} targetId="person.ar_third_name" />
-                    <InlineComboField label="اسم العائلة" value={person?.ar_last_name} onChange={v => updateField('ar_last_name', v)} options={opts('ar_last_name')} error={validationMessageForTarget(validationIssue, 'person.ar_last_name')} targetId="person.ar_last_name" />
+                    <InlineComboField label="الاسم الأول" value={person?.ar_first_name} onChange={v => updateField('ar_first_name', v)} options={opts('ar_first_name')} error={validationMessageForTarget(validationIssue, 'person.ar_first_name')} targetId="person.ar_first_name" required={showRequired} />
+                    <InlineComboField label="الاسم الثاني" value={person?.ar_second_name} onChange={v => updateField('ar_second_name', v)} options={opts('ar_second_name')} error={validationMessageForTarget(validationIssue, 'person.ar_second_name')} targetId="person.ar_second_name" required={showRequired} />
+                    <InlineComboField label="الاسم الثالث" value={person?.ar_third_name} onChange={v => updateField('ar_third_name', v)} options={opts('ar_third_name')} error={validationMessageForTarget(validationIssue, 'person.ar_third_name')} targetId="person.ar_third_name" required={showRequired} />
+                    <InlineComboField label="اسم العائلة" value={person?.ar_last_name} onChange={v => updateField('ar_last_name', v)} options={opts('ar_last_name')} error={validationMessageForTarget(validationIssue, 'person.ar_last_name')} targetId="person.ar_last_name" required={showRequired} />
                     <div className="profile-name-section-title" style={{ marginTop: 12 }}>اسم الأم</div>
                     <InlineComboField label="الاسم الأول" value={person?.mother_ar_first_name} onChange={v => updateField('mother_ar_first_name', v)} options={opts('mother_ar_first_name')} error={validationMessageForTarget(validationIssue, 'person.mother_ar_first_name')} targetId="person.mother_ar_first_name" />
                     <InlineComboField label="الاسم الثاني" value={person?.mother_ar_second_name} onChange={v => updateField('mother_ar_second_name', v)} options={opts('mother_ar_second_name')} error={validationMessageForTarget(validationIssue, 'person.mother_ar_second_name')} targetId="person.mother_ar_second_name" />
@@ -8214,7 +8361,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                   </div>
                   <div className="profile-name-section profile-name-section-english">
                     <div className="profile-name-section-title">English Name</div>
-                    {!registrationMode && (
+                    {canEditTitle && (
                       <InlineSelectField label="Title" value={englishTitleForPerson} onChange={updateEnglishTitle} options={personEnglishTitleOptions(person?.title)} dir="ltr" />
                     )}
                     <InlineComboField label="First Name" value={person?.en_first_name} onChange={v => updateField('en_first_name', v)} options={opts('en_first_name')} dir="ltr" error={validationMessageForTarget(validationIssue, 'person.en_first_name')} targetId="person.en_first_name" />
@@ -8227,7 +8374,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                     <InlineComboField label="Last Name" value={person?.mother_en_last_name} onChange={v => updateField('mother_en_last_name', v)} options={opts('mother_en_last_name')} dir="ltr" error={validationMessageForTarget(validationIssue, 'person.mother_en_last_name')} targetId="person.mother_en_last_name" />
                   </div>
                 </div>
-                <InlineSelectField label="الجنس" value={person?.gender} onChange={v => updateField('gender', v)} options={opts('gender')} error={validationMessageForTarget(validationIssue, 'person.gender')} targetId="person.gender" />
+                <InlineSelectField label="الجنس" value={person?.gender} onChange={v => updateField('gender', v)} options={opts('gender')} error={validationMessageForTarget(validationIssue, 'person.gender')} targetId="person.gender" required={showRequired} />
                 <InlineDobField
                   label="تاريخ الميلاد"
                   year={person?.birth_year}
@@ -8236,12 +8383,55 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                   onChange={updateBirthDate}
                   error={validationMessageForTarget(validationIssue, 'person.birth_date')}
                   targetId="person.birth_date"
+                  required={showRequired}
                 />
+                <InlineSelectField
+                  label="الحالة الاجتماعية"
+                  value={person?.marital_status || ''}
+                  onChange={v => {
+                    const isNowSingle = v === 'أعزب'
+                    update(prev => ({
+                      person: { ...(prev.person || {}), marital_status: v, ...(isNowSingle ? { spouse_is_member: false } : {}) },
+                      ...(isNowSingle ? { spouse: null } : {}),
+                    }))
+                  }}
+                  options={MARITAL_STATUS_OPTIONS}
+                  error={validationMessageForTarget(validationIssue, 'person.marital_status')}
+                  targetId="person.marital_status"
+                  required={showRequired}
+                />
+                {(person?.marital_status === 'خاطب' || person?.marital_status === 'متزوج') && (
+                  <div style={{ padding: '10px 12px', border: '1px solid var(--gray-200)', borderRadius: 'var(--radius-md)', display: 'grid', gap: 10 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.875rem', color: 'var(--navy)', fontWeight: 500 }}>
+                      <input
+                        type="checkbox"
+                        checked={toBoolDefaultFalse(person?.spouse_is_member)}
+                        onChange={e => {
+                          const checked = e.target.checked
+                          update(prev => ({
+                            person: { ...(prev.person || {}), spouse_is_member: checked },
+                            ...(!checked ? { spouse: null } : {}),
+                          }))
+                        }}
+                        style={{ width: 16, height: 16, accentColor: 'var(--navy)' }}
+                      />
+                      هل شريكك/خطيبك عضو في شبيبة؟
+                    </label>
+                    {toBoolDefaultFalse(person?.spouse_is_member) && (
+                      <SpouseSearchWidget
+                        candidates={spouseCandidates}
+                        currentSpouse={data?.spouse || null}
+                        onSelect={c => update({ spouse: c })}
+                        onRemove={() => update({ spouse: null })}
+                      />
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             <div className="profile-stack-column">
               <div className="card">
-                <div className="card-header"><span className="card-title"><Globe size={15} /> الجنسية</span></div>
+                <div className="card-header"><span className="card-title"><Globe size={15} /> الجنسية{showRequired && <RequiredStar />}</span></div>
                 <div className="card-body">
                   <NationalityRowsEditor
                     rows={nationality}
@@ -8253,7 +8443,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                 </div>
               </div>
               <div className="card">
-                <div className="card-header"><span className="card-title"><Phone size={15} /> أرقام الهاتف</span></div>
+                <div className="card-header"><span className="card-title"><Phone size={15} /> أرقام الهاتف{showRequired && <RequiredStar />}</span></div>
                 <div className="card-body">
                   <PhoneNumbersEditor rows={mobile_numbers} onChange={rows => updateSub('mobile_numbers', rows)} jobRows={jobs} validationIssue={validationIssue} />
                 </div>
@@ -8279,7 +8469,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       {activeTab === 'address' && (
         <div className="profile-tab-panel">
           <div className="card">
-            <div className="card-header"><span className="card-title"><MapPin size={15} /> العناوين</span></div>
+            <div className="card-header"><span className="card-title"><MapPin size={15} /> العناوين{showRequired && <RequiredStar />}</span></div>
             <div className="card-body">
               {isViewMode ? (
                 <div style={{ display: 'grid', gap: 10 }}>
@@ -8303,7 +8493,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                   }) : <ViewEmptyState text="لا توجد عناوين محفوظة" />}
                 </div>
               ) : (
-                <AddressRowsEditor rows={addresses} onChange={rows => updateSub('addresses', rows)} governorateOptions={opts('governorate')} locationOnly={false} validationIssue={validationIssue} />
+                <AddressRowsEditor rows={addresses} onChange={rows => updateSub('addresses', rows)} governorateOptions={opts('governorate')} locationOnly={false} validationIssue={validationIssue} canEditLocation={canEditMapLocation} />
               )}
             </div>
           </div>
@@ -8314,16 +8504,8 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       {activeTab === 'youth' && (
         <div className="profile-tab-panel">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {shouldScopeToViewerGroups && (
-            <div style={{
-              background: '#fffbeb', border: '1px solid #e8b55a', borderRadius: 'var(--radius-md)',
-              padding: '8px 12px', fontSize: '0.8rem', color: '#92400e',
-            }}>
-              يتم عرض بيانات الشبيبة المرتبطة فقط بمجموعاتك التي لديك فيها صلاحية قيادة.
-            </div>
-          )}
           <div className="card">
-            <div className="card-header"><span className="card-title"><Users size={15} /> انتساب الشبيبة</span></div>
+            <div className="card-header"><span className="card-title"><Users size={15} /> انتساب الشبيبة{showRequired && <RequiredStar />}</span></div>
             <div className="card-body">
               {isViewMode ? (
                 <div style={{ display: 'grid', gap: 10 }}>
@@ -8386,11 +8568,11 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       {/* ── Education ── */}
       {activeTab === 'edu' && (
         <div className="profile-tab-panel">
-          <div className="profile-two-column-layout">
+          <div className={isSchoolMember ? undefined : 'profile-two-column-layout'}>
             <div className="card">
               <div className="card-header">
                 <div className="profile-card-title-stack">
-                  <span className="card-title"><School size={15} /> المدارس</span>
+                  <span className="card-title"><School size={15} /> المدارس{showRequired && <RequiredStar />}</span>
                   <div className="profile-card-meta-line">
                     <span className="profile-card-meta-item">{schoolHeaderStatus}</span>
                     <span className="profile-card-meta-separator" aria-hidden="true">•</span>
@@ -8437,6 +8619,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                     schoolSystemSector={schoolSystemSector}
                     schoolFinalGpa={schoolFinalGpa}
                     schoolSystemOptions={schoolSystemOptions}
+                    showRequired={showRequired}
                     onSchoolStatusChange={(value, nextRows) => {
                       const nextStatus = normalizeSchoolStatusValue(value, nextRows)
                       update({
@@ -8464,8 +8647,9 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                 )}
               </div>
             </div>
+            {!isSchoolMember && (
             <div className="card">
-              <div className="card-header"><span className="card-title"><GraduationCap size={15} /> التعليم العالي</span></div>
+              <div className="card-header"><span className="card-title"><GraduationCap size={15} /> التعليم العالي{showRequired && <><RequiredStar /><RequiredInfo text="مطلوب للفئة الجامعيّة أو العاملة (ما لم تختر «لم أدرس في جامعة»)" /></>}</span></div>
               <div className="card-body">
                 {isViewMode ? (
                   <div style={{ display: 'grid', gap: 10 }}>
@@ -8507,15 +8691,16 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
                 )}
               </div>
             </div>
+            )}
           </div>
         </div>
       )}
 
       {/* ── Work ── */}
-      {activeTab === 'work' && (
+      {activeTab === 'work' && !isSchoolMember && (
         <div className="profile-tab-panel">
           <div className="card">
-            <div className="card-header"><span className="card-title"><Briefcase size={15} /> التوظيف</span></div>
+            <div className="card-header"><span className="card-title"><Briefcase size={15} /> التوظيف{showRequired && <><RequiredStar /><RequiredInfo text="مطلوب للفئة الجامعيّة أو العاملة (ما لم تختر «لا أعمل»)" /></>}</span></div>
             <div className="card-body">
               {isViewMode ? (
                 <div style={{ display: 'grid', gap: 10 }}>
@@ -8581,10 +8766,19 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
               ) : (
                 <SubTable
                   rows={healthConditionRows}
-                  setRows={rows => updateSub('person_health_conditions', normalizePersonHealthConditionRows(rows))}
+                  setRows={rows => {
+                    const prev = healthConditionRows
+                    const cleaned = rows.map((row, i) => {
+                      const prevType = normalizePersonHealthConditionType(prev[i]?.type)
+                      const nextType = normalizePersonHealthConditionType(row?.type)
+                      if (prevType !== nextType) return { ...row, details: '' }
+                      return row
+                    })
+                    updateSub('person_health_conditions', normalizePersonHealthConditionRows(cleaned))
+                  }}
                   columns={[
                     { key: 'type', label: 'النوع', selectOptions: PERSON_HEALTH_TYPE_OPTIONS, width: '28%' },
-                    { key: 'details', label: 'التفاصيل', width: '72%' },
+                    { key: 'details', label: 'التفاصيل', width: '72%', getDynamicOptions: (row) => normalizePersonHealthConditionType(row?.type) === 'blood_type' ? BLOOD_TYPE_OPTIONS : null },
                   ]}
                 />
               )}
@@ -8627,7 +8821,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
       {activeTab === 'hobbies' && (
         <div className="profile-tab-panel">
           <div className="card">
-            <div className="card-header"><span className="card-title"><Heart size={15} /> الهوايات والمهارات</span></div>
+            <div className="card-header"><span className="card-title"><Heart size={15} /> الهوايات والمهارات{showRequired && <RequiredStar />}</span></div>
             <div className="card-body">
               {isViewMode ? (
                 <ViewChipList values={hobbies_skills.map((row) => row?.hobby_skill).filter(Boolean)} emptyText="لا توجد هوايات أو مهارات محفوظة" />

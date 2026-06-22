@@ -44,6 +44,7 @@ SCD_LOGICAL_SHEETS: set[str] = {
     "youth_group_social_media",
     "youth_group_social_media_ages",
     "youth_group_special_logos",
+    "person_spouse",
 }
 
 SCD_WORKBOOK_SHEET_NAMES: dict[str, str] = {

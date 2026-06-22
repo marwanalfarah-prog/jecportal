@@ -3,6 +3,7 @@ import { Search, ChevronRight, ChevronLeft, UserPlus, ArrowUpAZ, ArrowDownAZ, Ch
 import * as XLSX from 'xlsx'
 import { api } from '../api.js'
 import { ErrorState, LoadingState } from '../pageStates.jsx'
+import { formatArabicPersonName, getArabicPersonNameParts } from '../personName.js'
 
 // ── Arabic normalization ──────────────────────────────────────────────────────
 function normalizeWord(word) {
@@ -92,10 +93,7 @@ function expandQueryWords(words, aliasLookup) {
 }
 function getNameParts(p) {
   return [
-    p.ar_first_name,
-    p.ar_second_name,
-    p.ar_third_name,
-    p.ar_last_name,
+    ...getArabicPersonNameParts(p),
     p.en_first_name,
     p.en_second_name,
     p.en_third_name,
@@ -105,10 +103,7 @@ function getNameParts(p) {
 }
 
 function getDisplayName(p) {
-  return [p.title, p.ar_first_name, p.ar_second_name, p.ar_third_name, p.ar_last_name]
-    .filter(Boolean)
-    .join(' ')
-    .trim()
+  return formatArabicPersonName(p)
 }
 
 function firstNameInitial(value) {
@@ -1266,139 +1261,8 @@ function ArchiveMembershipDialog({ open, name, options, selectedId, onChange, on
   )
 }
 
-// ── Access reason helpers (non-admin mode) ────────────────────────────────────
-
-const ACCESS_REASON_LABELS = {
-  council_full:      (name) => `مجلس كامل: ${name}`,
-  council_age_group: (name, ages) => `مجلس فئة: ${name}${ages?.length ? ` (${ages.join('، ')})` : ''}`,
-  org_tree:          () => 'تحته في الهيكل التنظيمي',
-}
-
-function getAccessReasons(person, currentUser) {
-  if (!currentUser) return []
-  const reasons     = []
-  const councilAccess = currentUser.council_access       || {}
-  const descendants   = currentUser.org_tree_descendants || []
-  const personIdStr   = String(person.person_id)
-
-  // _youth_group_ids and _age_groups are parallel arrays built from ACTIVE memberships only.
-  // Index i on each refers to the same active membership record.
-  const yGIds     = (person._youth_group_ids || []).map(String)
-  const ageGroups = (person._age_groups      || [])
-
-  for (const [groupId, info] of Object.entries(councilAccess)) {
-    let matched = false
-
-    for (let i = 0; i < yGIds.length; i++) {
-      if (yGIds[i] !== groupId) continue
-
-      if (info.full_group) {
-        reasons.push({
-          type: 'council',
-          label: `مجلس كامل: ${resolveYouthGroupDisplayLabel(info.group_name, groupId)}`,
-          color: '#2563eb', bg: '#eff6ff',
-        })
-        matched = true
-        break
-      }
-
-      // Age-group specific: person's age group in THIS active membership must match.
-      const personAge  = String(ageGroups[i] || '').trim()
-      const allowedAges = info.age_groups || []
-      if (personAge && allowedAges.includes(personAge)) {
-        reasons.push({
-          type: 'council',
-          label: `مجلس فئة: ${resolveYouthGroupDisplayLabel(info.group_name, groupId)} (${personAge})`,
-          color: '#2563eb', bg: '#eff6ff',
-        })
-        matched = true
-        break
-      }
-    }
-
-    if (matched) break
-  }
-
-  if (descendants.some(d => String(d.person_id) === personIdStr && d.person_type === 'registered')) {
-    reasons.push({ type: 'org_tree', label: ACCESS_REASON_LABELS.org_tree(), color: '#059669', bg: '#f0fdf4' })
-  }
-
-  return reasons
-}
-
-/**
- * Return the subset of active youth-group memberships from which
- * a non-admin council user is allowed to archive this person.
- * Respects age-group specificity.
- */
-function getCouncilArchivableChoices(person, currentUser) {
-  if (!currentUser) return []
-  const councilAccess = currentUser.council_access || {}
-  const yGIds     = (person._youth_group_ids || []).map(String)
-  const ageGroups = person._age_groups || []
-  const choices   = []
-  const seen      = new Set()
-
-  for (let i = 0; i < yGIds.length; i++) {
-    const gid  = yGIds[i]
-    if (seen.has(gid)) continue
-    const info = councilAccess[gid]
-    if (!info) continue
-
-    const personAge    = String(ageGroups[i] || '').trim()
-    const allowedAges  = info.age_groups || []
-    if (!info.full_group && personAge && !allowedAges.includes(personAge)) continue
-
-    seen.add(gid)
-    const groupLabel = resolveYouthGroupDisplayLabel(info.group_name, gid)
-    choices.push({ id: gid, label: personAge ? `${groupLabel} (${personAge})` : groupLabel })
-  }
-  return choices
-}
-
-function isPersonAccessible(person, currentUser) {
-  if (!currentUser) return true
-  return getAccessReasons(person, currentUser).length > 0
-}
-
-/**
- * Check accessibility using the server-computed lists from auth/me.
- * Works for ALL person types including archived persons and unregistered persons,
- * since council_accessible_persons and org_tree_descendants include all accessible IDs
- * regardless of active/archived membership status.
- */
-function isPersonAccessibleById(personId, personType, currentUser) {
-  if (!currentUser) return true
-  const pid = String(personId)
-  return (
-    (currentUser.council_accessible_persons || []).some(
-      a => String(a.person_id) === pid && a.person_type === personType
-    ) ||
-    (currentUser.org_tree_descendants || []).some(
-      a => String(a.person_id) === pid && a.person_type === personType
-    )
-  )
-}
-
-/** Badge reason for archived or unregistered persons (simpler than getAccessReasons). */
-function getSimpleAccessReasons(personId, personType, currentUser) {
-  if (!currentUser) return []
-  const pid = String(personId)
-  const reasons = []
-  if ((currentUser.council_accessible_persons || []).some(
-    a => String(a.person_id) === pid && a.person_type === personType
-  )) reasons.push({ type: 'council', label: 'صلاحية المجلس', color: '#2563eb', bg: '#eff6ff' })
-  if ((currentUser.org_tree_descendants || []).some(
-    a => String(a.person_id) === pid && a.person_type === personType
-  )) reasons.push({ type: 'org_tree', label: 'تحته في الهيكل التنظيمي', color: '#059669', bg: '#f0fdf4' })
-  return reasons
-}
-
 // ── Main ─────────────────────────────────────────────────────────────────────
-export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, toast, currentUser }) {
-  // currentUser = null/undefined → admin mode (full access, all tabs, all actions)
-  // currentUser = user object    → non-admin mode (filtered, read-only, registered tab only)
-  const isAdminMode = !currentUser
+export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, toast, restrictedToPersonIds = null, restrictedToUnregIds = null }) {
   const [activeTab, setActiveTab]         = useState('registered')
   const [allPersons, setAllPersons]       = useState([])
   const [unregistered, setUnreg]          = useState([])
@@ -1433,6 +1297,11 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
 
   const nameAliasLookup = useMemo(() => buildNameAliasLookup(nameVariations), [nameVariations])
 
+  // Whether viewing in restricted (member-privilege) mode.
+  // Computed as a stable boolean so it is safe to use as a useEffect dependency
+  // (Set objects get new references on every parent render, causing infinite loops).
+  const isRestricted = !!(restrictedToPersonIds || restrictedToUnregIds)
+
   useEffect(() => {
     let canceled = false
     setLoading(true)
@@ -1440,35 +1309,61 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
     setRegisteredLoadError('')
     setUnregisteredLoadError('')
 
-    ;(async () => {
-      try {
-        const enriched = await api.membersIndex()
-        if (!canceled) setAllPersons(enriched)
-      } catch {
-        if (!canceled) {
-          setAllPersons([])
-          setRegisteredLoadError('تعذر تحميل الأعضاء المسجّلين حالياً. حاول مرة أخرى.')
-          toast?.('تعذر تحميل الأعضاء المسجّلين', 'error')
+    if (isRestricted) {
+      // Restricted mode: load both registered and unregistered from single endpoint
+      ;(async () => {
+        try {
+          const accessible = await api.getAccessibleMembers()
+          if (!canceled) {
+            setAllPersons(accessible.registered || [])
+            setUnreg(accessible.unregistered || [])
+          }
+        } catch {
+          if (!canceled) {
+            setAllPersons([])
+            setUnreg([])
+            setRegisteredLoadError('تعذر تحميل الأعضاء المسجّلين حالياً. حاول مرة أخرى.')
+            toast?.('تعذر تحميل الأعضاء', 'error')
+          }
+        } finally {
+          if (!canceled) {
+            setLoading(false)
+            setUnregLoading(false)
+          }
         }
-      } finally {
-        if (!canceled) setLoading(false)
-      }
-    })()
+      })()
+    } else {
+      // Admin mode: load registered and unregistered separately
+      ;(async () => {
+        try {
+          const enriched = await api.membersIndex()
+          if (!canceled) setAllPersons(enriched)
+        } catch {
+          if (!canceled) {
+            setAllPersons([])
+            setRegisteredLoadError('تعذر تحميل الأعضاء المسجّلين حالياً. حاول مرة أخرى.')
+            toast?.('تعذر تحميل الأعضاء المسجّلين', 'error')
+          }
+        } finally {
+          if (!canceled) setLoading(false)
+        }
+      })()
 
-    ;(async () => {
-      try {
-        const unreg = await api.getUnregistered()
-        if (!canceled) setUnreg(unreg)
-      } catch {
-        if (!canceled) {
-          setUnreg([])
-          setUnregisteredLoadError('تعذر تحميل غير المسجّلين حالياً. حاول مرة أخرى.')
-          toast?.('تعذر تحميل غير المسجّلين', 'error')
+      ;(async () => {
+        try {
+          const unreg = await api.getUnregistered()
+          if (!canceled) setUnreg(unreg)
+        } catch {
+          if (!canceled) {
+            setUnreg([])
+            setUnregisteredLoadError('تعذر تحميل غير المسجّلين حالياً. حاول مرة أخرى.')
+            toast?.('تعذر تحميل غير المسجّلين', 'error')
+          }
+        } finally {
+          if (!canceled) setUnregLoading(false)
         }
-      } finally {
-        if (!canceled) setUnregLoading(false)
-      }
-    })()
+      })()
+    }
 
     ;(async () => {
       try {
@@ -1480,22 +1375,15 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
     })()
 
     return () => { canceled = true }
-  }, [reloadKey, toast])
+  }, [reloadKey, toast, isRestricted])
 
-  // Split active vs archived; non-admin mode restricts to accessible people only
-  const activePersons   = useMemo(() => {
-    const active = allPersons.filter(p => !p.archived)
-    if (isAdminMode) return active
-    return active.filter(p => isPersonAccessible(p, currentUser))
-  }, [allPersons, isAdminMode, currentUser])
+  // The backend already filters in restricted mode; in admin mode the full list is returned.
+  // We never re-filter on the frontend to avoid incorrectly excluding the user's own entry.
+  const visiblePersons = allPersons
 
-  const archivedPersons = useMemo(() => {
-    const arch = allPersons.filter(p => p.archived)
-    if (isAdminMode) return arch
-    // Use server-computed list for archived persons (active membership data is empty for them)
-    return arch.filter(p => isPersonAccessibleById(p.person_id, 'registered', currentUser))
-  }, [allPersons, isAdminMode, currentUser])
-  // activeUnreg/archivedUnreg: backend already filters to accessible for non-admin
+  // Split active vs archived
+  const activePersons   = useMemo(() => visiblePersons.filter(p => !p.archived), [visiblePersons])
+  const archivedPersons = useMemo(() => visiblePersons.filter(p => p.archived), [visiblePersons])
   const activeUnreg     = useMemo(() => unregistered.filter(r => !r.archived), [unregistered])
   const archivedUnreg   = useMemo(() => unregistered.filter(r => r.archived),  [unregistered])
   const archivedAll     = useMemo(() => {
@@ -1842,18 +1730,6 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
         onCancel={() => setArchivePrompt(null)}
       />
 
-      {/* Non-admin info banner */}
-      {!isAdminMode && (
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10,
-          padding: '10px 16px', marginBottom: 14, fontSize: '0.83rem', color: '#1e40af',
-        }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          تظهر هنا فقط الأعضاء الذين لديك صلاحية الاطلاع على بياناتهم بناءً على دورك في الهيكل التنظيمي أو المجلس
-        </div>
-      )}
-
       {/* Tab switcher */}
       <div className="tabs" style={{ marginBottom: 16 }}>
         <button className={`tab${activeTab === 'registered' ? ' active' : ''}`} onClick={() => setActiveTab('registered')}>
@@ -1863,28 +1739,24 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
             {activePersons.length.toLocaleString('ar-EG')}
           </span>
         </button>
-        {(isAdminMode || activeUnreg.length > 0) && (
-          <button className={`tab${activeTab === 'unregistered' ? ' active' : ''}`} onClick={() => setActiveTab('unregistered')}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ display: 'inline', marginLeft: 5 }}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="8" x2="23" y2="14"/><line x1="23" y1="8" x2="17" y2="14"/></svg>
-            غير المسجّلين
-            {activeUnreg.length > 0 && (
-              <span style={{ background: '#e8b55a', color: '#92400e', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, padding: '1px 8px', marginRight: 6 }}>
-                {activeUnreg.length.toLocaleString('ar-EG')}
-              </span>
-            )}
-          </button>
-        )}
-        {(isAdminMode || archivedAll.length > 0) && (
-          <button className={`tab${activeTab === 'archived' ? ' active' : ''}`} onClick={() => setActiveTab('archived')}>
-            <Archive size={14} style={{ display: 'inline', marginLeft: 5 }} />
-            الأرشيف
-            {archivedAll.length > 0 && (
-              <span style={{ background: 'var(--gray-400)', color: 'white', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, padding: '1px 8px', marginRight: 6 }}>
-                {archivedAll.length.toLocaleString('ar-EG')}
-              </span>
-            )}
-          </button>
-        )}
+        {(activeUnreg.length > 0 || archivedUnreg.length > 0 || !isRestricted) && <button className={`tab${activeTab === 'unregistered' ? ' active' : ''}`} onClick={() => setActiveTab('unregistered')}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ display: 'inline', marginLeft: 5 }}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="8" x2="23" y2="14"/><line x1="23" y1="8" x2="17" y2="14"/></svg>
+          غير المسجّلين
+          {activeUnreg.length > 0 && (
+            <span style={{ background: '#e8b55a', color: '#92400e', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, padding: '1px 8px', marginRight: 6 }}>
+              {activeUnreg.length.toLocaleString('ar-EG')}
+            </span>
+          )}
+        </button>}
+        {(archivedAll.length > 0 || !isRestricted) && <button className={`tab${activeTab === 'archived' ? ' active' : ''}`} onClick={() => setActiveTab('archived')}>
+          <Archive size={14} style={{ display: 'inline', marginLeft: 5 }} />
+          الأرشيف
+          {archivedAll.length > 0 && (
+            <span style={{ background: 'var(--gray-400)', color: 'white', borderRadius: 20, fontSize: '0.72rem', fontWeight: 700, padding: '1px 8px', marginRight: 6 }}>
+              {archivedAll.length.toLocaleString('ar-EG')}
+            </span>
+          )}
+        </button>}
       </div>
 
       {/* ═══════════════════ REGISTERED TAB ═══════════════════ */}
@@ -1897,16 +1769,14 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
               <input placeholder="ابحث بأي بيانات…" value={q} onChange={e => { setQ(e.target.value); setPage(1) }} />
               {q && <X size={15} style={{ color: 'var(--gray-400)', cursor: 'pointer', flexShrink: 0 }} onClick={() => { setQ(''); setPage(1) }} />}
             </div>
-            {isAdminMode && (
-              <button
-                className="btn btn-ghost"
-                onClick={() => exportProfilesToWorkbook({ rows: visible, mode: 'registered' })}
-                disabled={exportingTarget === 'registered' || visible.length === 0}
-              >
-                <Download size={15} />
-                {exportingTarget === 'registered' ? 'جارٍ التصدير…' : 'تنزيل Excel'}
-              </button>
-            )}
+            <button
+              className="btn btn-ghost"
+              onClick={() => exportProfilesToWorkbook({ rows: visible, mode: 'registered' })}
+              disabled={exportingTarget === 'registered' || visible.length === 0}
+            >
+              <Download size={15} />
+              {exportingTarget === 'registered' ? 'جارٍ التصدير…' : 'تنزيل Excel'}
+            </button>
             <button className={`btn ${showFilters ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setShowFilters(s => !s)}>
               <ChevronDown size={15} style={{ transform: showFilters ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
               فلترة
@@ -1927,10 +1797,7 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
 
           {/* Count */}
           <div style={{ fontSize: '0.83rem', color: 'var(--gray-500)', marginBottom: 10 }}>
-            {isAdminMode
-              ? <>عرض <strong>{visible.length.toLocaleString('ar-EG')}</strong> من أصل {activePersons.length.toLocaleString('ar-EG')} عضو</>
-              : <><strong>{visible.length.toLocaleString('ar-EG')}</strong> عضو يمكنك الاطلاع على بياناتهم</>
-            }
+            عرض <strong>{visible.length.toLocaleString('ar-EG')}</strong> من أصل {activePersons.length.toLocaleString('ar-EG')} عضو
             {hasAnyFilter && <span style={{ color: 'var(--gold)', fontWeight: 600, marginRight: 6 }}>(مفلتر)</span>}
           </div>
 
@@ -1947,55 +1814,27 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
               <div className="empty-state"><Search size={48} /><p>لا توجد نتائج مطابقة</p></div>
             ) : pageRows.map(p => {
               const name = getDisplayName(p)
-              const accessReasons    = isAdminMode ? [] : getAccessReasons(p, currentUser)
-              const archivableGroups = isAdminMode ? null : getCouncilArchivableChoices(p, currentUser)
-              const canArchive       = isAdminMode || (archivableGroups && archivableGroups.length > 0)
               return (
                 <div key={p.person_id} className="member-row" onClick={() => onSelectPerson(p.person_id)}>
                   <Avatar name={name} photoUrl={p._photo} />
                   <div className="member-info">
                     <div className="member-name">{name}</div>
                     <div className="member-meta">{buildMemberMeta(p)}</div>
-                    {accessReasons.length > 0 && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-                        {accessReasons.map((r, i) => (
-                          <span key={i} style={{
-                            fontSize: '0.68rem', fontWeight: 700,
-                            padding: '2px 8px', borderRadius: 20,
-                            background: r.bg, color: r.color,
-                            border: `1px solid ${r.color}33`,
-                            whiteSpace: 'nowrap',
-                          }}>
-                            {r.label}
-                          </span>
-                        ))}
-                      </div>
-                    )}
                   </div>
-                  {canArchive && (
+                  {!isRestricted && (
                     <div style={{ display: 'flex', gap: 4, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                       <button
                         className="btn btn-ghost btn-sm"
                         title="أرشفة"
-                        onClick={e => {
-                          if (isAdminMode) {
-                            handleArchivePerson(e, p)
-                          } else {
-                            e.stopPropagation()
-                            const name2 = getDisplayName(p) || 'هذا العضو'
-                            setArchivePrompt({ type: 'archive-reg', id: p.person_id, name: name2, options: archivableGroups, selectedId: archivableGroups[0]?.id })
-                          }
-                        }}
+                        onClick={e => handleArchivePerson(e, p)}
                         style={{ padding: '4px 8px', color: 'var(--gray-500)' }}
                       >
                         <Archive size={14} />
                       </button>
-                      {isAdminMode && (
-                        <button className="btn btn-ghost btn-sm" title="حذف نهائي" onClick={e => handleDeletePerson(e, p)}
-                          style={{ padding: '4px 8px', color: 'var(--red)' }}>
-                          <Trash2 size={14} />
-                        </button>
-                      )}
+                      <button className="btn btn-ghost btn-sm" title="حذف نهائي" onClick={e => handleDeletePerson(e, p)}
+                        style={{ padding: '4px 8px', color: 'var(--red)' }}>
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   )}
                   <ChevronLeft size={16} style={{ color: 'var(--gray-300)', flexShrink: 0 }} />
@@ -2075,24 +1914,14 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
               <div className="empty-state"><Search size={48} /><p>لا توجد نتائج مطابقة</p></div>
             ) : uPageRows.map(r => {
               const name = getDisplayName(r)
-              const uReasons = isAdminMode ? [] : getSimpleAccessReasons(r.person_id, 'unregistered', currentUser)
               return (
                 <div key={r.person_id} className="member-row" onClick={() => onSelectUnregistered?.(r.person_id)} style={{ cursor: 'pointer' }}>
                   <Avatar name={name} photoUrl={r._photo} />
                   <div className="member-info">
                     <div className="member-name">{name || 'بدون اسم'}</div>
                     <div className="member-meta">{buildMemberMeta(r)}</div>
-                    {uReasons.length > 0 && (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-                        {uReasons.map((reason, i) => (
-                          <span key={i} style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: reason.bg, color: reason.color, border: `1px solid ${reason.color}33`, whiteSpace: 'nowrap' }}>
-                            {reason.label}
-                          </span>
-                        ))}
-                      </div>
-                    )}
                   </div>
-                  {isAdminMode && (
+                  {!isRestricted && (
                     <div style={{ display: 'flex', gap: 4, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                       <button className="btn btn-ghost btn-sm" title="أرشفة" onClick={e => handleArchiveUnreg(e, r)}
                         style={{ padding: '4px 8px', color: 'var(--gray-500)' }}>
@@ -2186,7 +2015,6 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
                 const name   = getDisplayName(r)
                 const isReg  = r._isReg
                 const ptype  = isReg ? 'registered' : 'unregistered'
-                const archReasons = isAdminMode ? [] : getSimpleAccessReasons(r.person_id, ptype, currentUser)
                 return (
                   <div key={`${ptype}-${r.person_id}`} className="member-row"
                     onClick={() => isReg ? onSelectPerson(r.person_id) : onSelectUnregistered?.(r.person_id)}
@@ -2200,17 +2028,8 @@ export default function Members({ onSelectPerson, onSelectUnregistered, onAdd, t
                           {isReg ? 'مسجّل' : 'غير مسجّل'}
                         </span>
                       </div>
-                      {archReasons.length > 0 && (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 4 }}>
-                          {archReasons.map((reason, i) => (
-                            <span key={i} style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: reason.bg, color: reason.color, border: `1px solid ${reason.color}33`, whiteSpace: 'nowrap' }}>
-                              {reason.label}
-                            </span>
-                          ))}
-                        </div>
-                      )}
                     </div>
-                    {isAdminMode && (
+                    {!isRestricted && (
                       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
                         <button className="btn btn-ghost btn-sm" title="استعادة من الأرشيف"
                           onClick={e => { e.stopPropagation(); isReg ? handleUnarchivePerson(e, r) : handleUnarchiveUnreg(e, r) }}

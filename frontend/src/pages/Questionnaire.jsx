@@ -8,6 +8,23 @@ import {
 import { api } from '../api.js'
 import { EmptyState, ErrorState, LoadingState } from '../pageStates.jsx'
 
+function normalizeWord(word) {
+  word = String(word)
+  word = word.replace(/[ؗ-ًؚ-ْ]/g, '')
+  word = word.replace(/ـ/g, '')
+  word = word.replace(/[إأآا]/g, 'ا')
+  word = word.replace(/[يى]/g, 'ي')
+  word = word.replace(/ؤ/g, 'و')
+  word = word.replace(/ئ/g, 'ي')
+  word = word.replace(/ة/g, 'ه')
+  word = word.replace(/^ال/, '')
+  return word.toLowerCase().trim()
+}
+function normalizeArabic(text) {
+  if (!text) return ''
+  return String(text).replace(/\s+/g, ' ').trim().split(' ').map(normalizeWord).join(' ')
+}
+
 // ─── Constants — mirror OrgTree exactly ───────────────────────────────────────
 const BARAEM_GROUP = 'البراعم'
 const BARAEM_BIG_GROUP = 'البراعم الكبرى'
@@ -739,9 +756,10 @@ function QuestionnaireForm({ initial, youthGroups, persons, onSave, onCancel, to
   }
 
   const filtP = persons.filter(p => {
-    const q = pSearch.trim().toLowerCase()
+    const q = normalizeArabic(pSearch)
     if (!q) return true
-    return (p.display_name||p.username||'').toLowerCase().includes(q) || String(p.person_id||'').includes(q)
+    const name = normalizeArabic(p.display_name || p.username || '')
+    return q.split(' ').filter(Boolean).every(w => name.includes(w))
   }).slice(0,30)
 
   const crd = { background:'white', borderRadius:12, border:'1px solid #e2e6ef', overflow:'hidden', marginBottom:16 }
@@ -817,7 +835,7 @@ function QuestionnaireForm({ initial, youthGroups, persons, onSave, onCancel, to
                     onMouseLeave={e=>e.currentTarget.style.background='none'}>
                     <User size={13} color="#9ba5bc"/>
                     <span style={{ fontWeight:600, fontSize:'0.88rem', color:'#1a2a3a' }}>{p.display_name||p.username}</span>
-                    <span style={{ fontSize:'0.72rem', color:'#9ba5bc', marginRight:'auto' }}>ID: {p.person_id}</span>
+                    <span style={{ fontSize:'0.72rem', color:'#9ba5bc', marginRight:'auto' }}>{p.username}</span>
                   </button>
                 ))}
                 {filtP.length===0 && <div style={{ padding:'20px', textAlign:'center', color:'#9ba5bc', fontSize:'0.85rem' }}>لا توجد نتائج</div>}

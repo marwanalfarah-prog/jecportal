@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, RefreshCw, ClipboardList, User, Users, Shield, ExternalLink } from 'lucide-react'
+import { CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, RefreshCw, ClipboardList, User, Users, Shield, ExternalLink, UserCheck } from 'lucide-react'
 import { api, getApiErrorMessage } from '../api.js'
-import { computePermissions, canApproveYG } from '../permissions.js'
+import { computePermissions } from '../permissions.js'
 
 const STATUS_COLORS = {
-  pending:  { bg: '#fffbeb', border: '#fde68a', text: '#92400e', icon: Clock,        label: 'قيد الانتظار' },
-  approved: { bg: '#f0fdf4', border: '#86efac', text: '#166534', icon: CheckCircle,  label: 'تمت الموافقة' },
-  rejected: { bg: '#fef2f2', border: '#fca5a5', text: '#991b1b', icon: XCircle,      label: 'مرفوض' },
+  pending:      { bg: '#fffbeb', border: '#fde68a', text: '#92400e', icon: Clock,        label: 'قيد الانتظار' },
+  awaiting_yg:  { bg: '#eff6ff', border: '#bfdbfe', text: '#1e40af', icon: Clock,        label: 'بانتظار موافقة الشبيبة' },
+  approved:     { bg: '#f0fdf4', border: '#86efac', text: '#166534', icon: CheckCircle,  label: 'تمت الموافقة' },
+  rejected:     { bg: '#fef2f2', border: '#fca5a5', text: '#991b1b', icon: XCircle,      label: 'مرفوض' },
 }
 
 function StatusBadge({ status }) {
@@ -58,22 +59,31 @@ function ApproveRejectButtons({ onApprove, onReject, loading }) {
   )
 }
 
+function OverallPipelineStatus(pipeline) {
+  const adminStatus = pipeline.admin_approval_status || 'pending'
+  if (adminStatus === 'rejected') return 'rejected'
+  if (adminStatus === 'pending') return 'pending'
+  const ygs = pipeline.yg_memberships || []
+  if (!ygs.length) return 'approved'
+  const statuses = ygs.map(m => m.yg_approval_status || 'pending')
+  if (statuses.every(s => s === 'approved')) return 'approved'
+  if (statuses.every(s => s === 'rejected')) return 'rejected'
+  if (statuses.some(s => s === 'awaiting_yg')) return 'awaiting_yg'
+  return 'pending'
+}
+
 function PipelineCard({ pipeline, canAdminApprove, onAction, loading, currentUser, onViewProfile }) {
   const [expanded, setExpanded] = useState(true)
   const adminStatus = pipeline.admin_approval_status || 'pending'
   const isMyOwnRequest = currentUser?.person_id !== undefined && String(currentUser.person_id) === String(pipeline.person_id)
   const isPendingUser = currentUser?.is_pending
   const canOpenProfile = !isPendingUser || isMyOwnRequest
+  const overallStatus = OverallPipelineStatus(pipeline)
 
   return (
     <div style={{ border: '1.5px solid #e2e6ef', borderRadius: 12, marginBottom: 14, overflow: 'hidden' }}>
       {/* Header */}
-      <div
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '14px 18px', background: '#fafbfc', borderBottom: expanded ? '1px solid #e2e6ef' : 'none',
-        }}
-      >
+      <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', background: '#fafbfc', borderBottom: expanded ? '1px solid #e2e6ef' : 'none' }}>
         <button
           type="button"
           onClick={() => setExpanded(e => !e)}
@@ -84,36 +94,25 @@ function PipelineCard({ pipeline, canAdminApprove, onAction, loading, currentUse
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontWeight: 700, color: '#0f2744', fontSize: '0.92rem' }}>
-              {pipeline.display_name || `شخص #${pipeline.person_id}`}
+              {pipeline.display_name || 'متقدّم جديد'}
               {isMyOwnRequest && <span style={{ fontSize: '0.72rem', color: '#9ba5bc', marginRight: 8 }}>(طلبي)</span>}
             </div>
-            <div style={{ fontSize: '0.73rem', color: '#9ba5bc', marginTop: 1 }}>طلب تسجيل · ID: {pipeline.person_id}</div>
+            <div style={{ fontSize: '0.73rem', color: '#9ba5bc', marginTop: 1 }}>طلب تسجيل</div>
           </div>
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <StatusBadge status={adminStatus === 'approved' ? (pipeline.yg_memberships?.every(m => m.yg_approval_status === 'approved') ? 'approved' : pipeline.yg_memberships?.every(m => m.yg_approval_status === 'rejected') ? 'rejected' : 'pending') : adminStatus} />
+          <StatusBadge status={overallStatus} />
           {canOpenProfile && onViewProfile && (
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); onViewProfile(pipeline.person_id) }}
               title="عرض الملف الشخصي"
-              style={{
-                display: 'flex', alignItems: 'center', gap: 5,
-                padding: '5px 10px', background: '#eef4ff',
-                border: '1px solid #c5d8f8', borderRadius: 8,
-                cursor: 'pointer', color: '#0f2744', fontSize: '0.78rem',
-                fontFamily: 'var(--font-body)', fontWeight: 700,
-                whiteSpace: 'nowrap',
-              }}
+              style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', background: '#eef4ff', border: '1px solid #c5d8f8', borderRadius: 8, cursor: 'pointer', color: '#0f2744', fontSize: '0.78rem', fontFamily: 'var(--font-body)', fontWeight: 700, whiteSpace: 'nowrap' }}
             >
               <ExternalLink size={12} /> الملف الشخصي
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => setExpanded(e => !e)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', padding: 4 }}
-          >
+          <button type="button" onClick={() => setExpanded(e => !e)} style={{ background: 'none', border: 'none', cursor: 'pointer', display: 'flex', padding: 4 }}>
             {expanded ? <ChevronUp size={16} color="#9ba5bc" /> : <ChevronDown size={16} color="#9ba5bc" />}
           </button>
         </div>
@@ -121,22 +120,22 @@ function PipelineCard({ pipeline, canAdminApprove, onAction, loading, currentUse
 
       {expanded && (
         <div style={{ padding: '16px 18px' }}>
-          {/* Admin approval step */}
+          {/* Step 1 — Admin approval */}
           <div style={{ marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               <div style={{ width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: adminStatus === 'approved' ? '#f0fdf4' : adminStatus === 'rejected' ? '#fef2f2' : '#fffbeb', flexShrink: 0 }}>
                 <Shield size={14} color={adminStatus === 'approved' ? '#166534' : adminStatus === 'rejected' ? '#991b1b' : '#92400e'} />
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0f2744' }}>موافقة الإدارة على البيانات الشخصية</div>
+                <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0f2744' }}>الخطوة ١ · مراجعة الفريق للبيانات الشخصية</div>
                 {pipeline.admin_approval_by && (
                   <div style={{ fontSize: '0.73rem', color: '#9ba5bc' }}>
                     {adminStatus === 'approved' ? 'وافق' : 'رفض'}: {pipeline.admin_approval_by}
-                    {pipeline.admin_approval_date && ` · ${pipeline.admin_approval_date.slice(0,10)}`}
+                    {pipeline.admin_approval_date && ` · ${pipeline.admin_approval_date.slice(0, 10)}`}
                   </div>
                 )}
                 {!pipeline.admin_approval_by && adminStatus === 'pending' && (
-                  <div style={{ fontSize: '0.73rem', color: '#92400e' }}>بانتظار مراجعة الإدارة…</div>
+                  <div style={{ fontSize: '0.73rem', color: '#92400e' }}>بانتظار مراجعة الفريق…</div>
                 )}
                 {pipeline.admin_approval_notes && (
                   <div style={{ fontSize: '0.73rem', color: '#991b1b', marginTop: 2 }}>السبب: {pipeline.admin_approval_notes}</div>
@@ -156,58 +155,77 @@ function PipelineCard({ pipeline, canAdminApprove, onAction, loading, currentUse
             )}
           </div>
 
-          {/* YG memberships */}
-          {(adminStatus === 'approved' || pipeline.yg_memberships?.length > 0) && (
+          {/* Step 2 — YG memberships */}
+          {(adminStatus !== 'pending' || (pipeline.yg_memberships?.length > 0)) && (
             <div>
               <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4a5568', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Users size={13} /> عضويات الشبيبة
+                <Users size={13} /> الخطوة ٢ · عضويات الشبيبة
               </div>
               {(pipeline.yg_memberships || []).map((yg, i) => {
                 const ygStatus = yg.yg_approval_status || 'pending'
-                const _perms = computePermissions(currentUser)
-                const canApproveThisYG = !isPendingUser && !isMyOwnRequest &&
-                  canApproveYG(_perms, yg.youth_group_id, yg.age_group)
                 const youthGroupName = yg.youth_group_name && !api.isRawYouthGroupIdentifier(yg.youth_group_name)
                   ? yg.youth_group_name
                   : api.formatYouthGroupLabel(yg.youth_group_id)
 
                 return (
-                  <div key={i} style={{ background: '#f9fafb', borderRadius: 8, padding: '12px', marginBottom: 8, border: '1px solid #e2e6ef' }}>
+                  <div key={i} style={{ background: '#f9fafb', borderRadius: 8, padding: '12px', marginBottom: 8, border: `1px solid ${STATUS_COLORS[ygStatus]?.border || '#e2e6ef'}` }}>
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#0f2744' }}>{youthGroupName}</div>
                         {yg.age_group && <div style={{ fontSize: '0.75rem', color: '#9ba5bc', marginTop: 2 }}>الفئة: {yg.age_group}</div>}
+
+                        {/* Who approved/rejected */}
                         {yg.yg_approved_by && (
                           <div style={{ fontSize: '0.73rem', color: '#9ba5bc', marginTop: 2 }}>
                             {ygStatus === 'approved' ? 'وافق' : 'رفض'}: {yg.yg_approved_by}
-                            {yg.yg_approval_date && ` · ${yg.yg_approval_date.slice(0,10)}`}
+                            {yg.yg_approval_date && ` · ${yg.yg_approval_date.slice(0, 10)}`}
                           </div>
                         )}
-                        {!yg.yg_approved_by && ygStatus === 'pending' && adminStatus === 'approved' && (
-                          <div style={{ fontSize: '0.73rem', color: '#92400e', marginTop: 2 }}>
-                            بانتظار الموافقة
-                            {yg.approvers?.length > 0 && (
-                              <span style={{ marginRight: 6 }}>
-                                ({yg.approvers.map(a => a.role).join('، ')})
-                              </span>
-                            )}
+
+                        {/* Admin not yet approved */}
+                        {ygStatus === 'pending' && adminStatus === 'pending' && (
+                          <div style={{ fontSize: '0.73rem', color: '#9ba5bc', marginTop: 2 }}>في انتظار مراجعة الفريق أولاً</div>
+                        )}
+
+                        {/* Admin approved — no second approver needed, auto-approved */}
+                        {ygStatus === 'pending' && adminStatus === 'approved' && (
+                          <div style={{ fontSize: '0.73rem', color: '#92400e', marginTop: 2 }}>بانتظار الموافقة…</div>
+                        )}
+
+                        {/* Awaiting YG second approval */}
+                        {ygStatus === 'awaiting_yg' && (
+                          <div style={{ marginTop: 6 }}>
+                            <div style={{ fontSize: '0.73rem', color: '#1e40af', fontWeight: 600, marginBottom: 4 }}>
+                              بانتظار الموافقة الثانية من:
+                            </div>
+                            {(yg.awaiting_approvers || []).map((approver, ai) => (
+                              <div key={ai} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.73rem', color: '#374151', marginBottom: 2 }}>
+                                <UserCheck size={11} color="#1e40af" />
+                                <span style={{ fontWeight: 600 }}>{approver.person_name || 'عضو'}</span>
+                                {approver.grant_label && (
+                                  <span style={{ color: '#6b7280' }}>· {approver.grant_label}</span>
+                                )}
+                              </div>
+                            ))}
                           </div>
                         )}
-                        {!yg.yg_approved_by && ygStatus === 'pending' && adminStatus === 'pending' && (
-                          <div style={{ fontSize: '0.73rem', color: '#9ba5bc', marginTop: 2 }}>في انتظار موافقة الإدارة أولاً</div>
-                        )}
+
                         {yg.yg_approval_notes && (
                           <div style={{ fontSize: '0.73rem', color: '#991b1b', marginTop: 2 }}>السبب: {yg.yg_approval_notes}</div>
                         )}
                       </div>
                       <StatusBadge status={ygStatus} />
                     </div>
-                    {canApproveThisYG && ygStatus === 'pending' && adminStatus === 'approved' && (
-                      <ApproveRejectButtons
-                        loading={loading}
-                        onApprove={() => onAction('yg_approve', { recordId: yg.record_id })}
-                        onReject={(reason) => onAction('yg_reject', { recordId: yg.record_id, reason })}
-                      />
+
+                    {/* YG Approve/Reject buttons — only shown to the designated approver */}
+                    {ygStatus === 'awaiting_yg' && yg.can_yg_approve && !isPendingUser && (
+                      <div style={{ marginTop: 8 }}>
+                        <ApproveRejectButtons
+                          loading={loading}
+                          onApprove={() => onAction('yg_approve', { recordId: yg.record_id })}
+                          onReject={(reason) => onAction('yg_reject', { recordId: yg.record_id, reason })}
+                        />
+                      </div>
                     )}
                   </div>
                 )
@@ -220,15 +238,16 @@ function PipelineCard({ pipeline, canAdminApprove, onAction, loading, currentUse
   )
 }
 
-export default function Requests({ currentUser, toast, onViewProfile }) {
+export default function Requests({ currentUser, toast, onViewProfile, hasYgApprovalAccess }) {
   const [requests, setRequests] = useState([])
-  const [view, setView] = useState('pending')
+  const [ygAssignments, setYgAssignments] = useState([])
+  const [view, setView] = useState('none')
   const [activeTab, setActiveTab] = useState('pending')
   const [loading, setLoading] = useState(false)
   const [actionLoading, setActionLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const { isAdmin, isPendingUser: isPending, isCouncil } = computePermissions(currentUser)
+  const { isAdmin, isPendingUser: isPending } = computePermissions(currentUser)
 
   const loadRequests = async () => {
     setLoading(true); setError('')
@@ -236,10 +255,12 @@ export default function Requests({ currentUser, toast, onViewProfile }) {
       if (activeTab === 'pending') {
         const d = await api.getRequests()
         setRequests(d.requests || [])
+        setYgAssignments(d.yg_assignments || [])
         setView(d.view || 'none')
       } else {
         const d = await api.getRequestsHistory()
         setRequests(d.history || [])
+        setYgAssignments([])
         setView('history')
       }
     } catch (err) {
@@ -262,10 +283,10 @@ export default function Requests({ currentUser, toast, onViewProfile }) {
         toast?.('تم رفض الطلب', 'info')
       } else if (actionType === 'yg_approve') {
         await api.ygApproveRequest(params.recordId, '')
-        toast?.('تمت الموافقة على عضوية الشبيبة ✓', 'success')
+        toast?.('تمت الموافقة على العضوية ✓', 'success')
       } else if (actionType === 'yg_reject') {
         await api.ygRejectRequest(params.recordId, params.reason)
-        toast?.('تم رفض عضوية الشبيبة', 'info')
+        toast?.('تم رفض العضوية', 'info')
       }
       await loadRequests()
     } catch (err) {
@@ -275,10 +296,13 @@ export default function Requests({ currentUser, toast, onViewProfile }) {
     }
   }
 
-  // Backend already filters correctly:
-  //   GET /api/requests        → only requests needing action (pending tab)
-  //   GET /api/requests/history → all requests regardless of status (history tab)
-  const displayRequests = requests
+  const isYgApprover = hasYgApprovalAccess || view === 'yg_approver'
+  const showTabs = !isPending && (isAdmin || isYgApprover)
+  const hasAdminRequests = requests.length > 0
+  const hasYgAssignments = ygAssignments.length > 0
+  const isEmpty = activeTab === 'history'
+    ? requests.length === 0
+    : !hasAdminRequests && !hasYgAssignments
 
   return (
     <div style={{ padding: '24px', fontFamily: 'var(--font-body)', direction: 'rtl', maxWidth: 860, margin: '0 auto' }}>
@@ -291,7 +315,7 @@ export default function Requests({ currentUser, toast, onViewProfile }) {
           <div>
             <h1 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#0f2744', margin: 0 }}>الطلبات</h1>
             <p style={{ fontSize: '0.78rem', color: '#9ba5bc', margin: 0 }}>
-              {isPending ? 'حالة طلب تسجيلك' : isAdmin ? 'إدارة طلبات التسجيل' : 'طلبات الانضمام لشبيبتك'}
+              {isPending ? 'حالة طلب تسجيلك' : isAdmin ? 'إدارة طلبات التسجيل' : 'موافقات عضوية الشبيبة'}
             </p>
           </div>
         </div>
@@ -300,8 +324,8 @@ export default function Requests({ currentUser, toast, onViewProfile }) {
         </button>
       </div>
 
-      {/* Tabs (only for admin/council) */}
-      {!isPending && (
+      {/* Tabs */}
+      {showTabs && (
         <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: '#f5f6fa', borderRadius: 10, padding: 4 }}>
           {[
             { id: 'pending', label: 'قيد الانتظار' },
@@ -335,27 +359,80 @@ export default function Requests({ currentUser, toast, onViewProfile }) {
           <div className="spinner" style={{ margin: '0 auto 12px' }} />
           جارٍ التحميل…
         </div>
-      ) : displayRequests.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px', color: '#9ba5bc' }}>
-          <ClipboardList size={40} style={{ marginBottom: 12, opacity: 0.3 }} />
-          <div style={{ fontSize: '0.9rem' }}>
-            {activeTab === 'pending' ? 'لا توجد طلبات معلّقة حالياً' : 'لا يوجد سجل طلبات'}
-          </div>
-        </div>
       ) : (
-        <div>
-          {displayRequests.map((req, i) => (
+        <>
+          {/* Pending tab content */}
+          {activeTab !== 'history' && (
+            <>
+              {/* Admin requests section */}
+              {hasAdminRequests && (
+                <div>
+                  {isYgApprover && (
+                    <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#4a5568', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Shield size={13} /> طلبات بانتظار مراجعة الفريق
+                    </div>
+                  )}
+                  {requests.map((req, i) => (
+                    <PipelineCard
+                      key={i}
+                      pipeline={req.pipeline}
+                      canAdminApprove={isAdmin}
+                      onAction={handleAction}
+                      loading={actionLoading}
+                      currentUser={currentUser}
+                      onViewProfile={onViewProfile}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* YG assignments section */}
+              {hasYgAssignments && (
+                <div style={{ marginTop: hasAdminRequests ? 24 : 0 }}>
+                  {hasAdminRequests && (
+                    <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e40af', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <UserCheck size={13} /> طلبات تحتاج موافقتك على العضوية
+                    </div>
+                  )}
+                  {ygAssignments.map((req, i) => (
+                    <PipelineCard
+                      key={`yg-${i}`}
+                      pipeline={req.pipeline}
+                      canAdminApprove={false}
+                      onAction={handleAction}
+                      loading={actionLoading}
+                      currentUser={currentUser}
+                      onViewProfile={onViewProfile}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* History tab */}
+          {activeTab === 'history' && requests.map((req, i) => (
             <PipelineCard
               key={i}
               pipeline={req.pipeline}
-              canAdminApprove={isAdmin}
+              canAdminApprove={false}
               onAction={handleAction}
               loading={actionLoading}
               currentUser={currentUser}
               onViewProfile={onViewProfile}
             />
           ))}
-        </div>
+
+          {/* Empty state */}
+          {isEmpty && (
+            <div style={{ textAlign: 'center', padding: '48px', color: '#9ba5bc' }}>
+              <ClipboardList size={40} style={{ marginBottom: 12, opacity: 0.3 }} />
+              <div style={{ fontSize: '0.9rem' }}>
+                {activeTab === 'pending' ? 'لا توجد طلبات معلّقة حالياً' : 'لا يوجد سجل طلبات'}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       <style>{`.spin { animation: spin 0.8s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }`}</style>

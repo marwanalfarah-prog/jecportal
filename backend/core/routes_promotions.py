@@ -7,7 +7,8 @@ import pandas as pd
 from flask import jsonify, request
 
 from core import state as S
-from core.routes_auth import _changed_by_user_id, _current_user, _get_council_access, _get_person_youth_groups
+from core.routes_auth import _changed_by_user_id, _current_user, _require_admin
+from core.routes_privileges import get_user_promotion_access
 
 
 AGE_GROUP_ORDER = ['البراعم', 'الإعدادي', 'الثانوي', 'الجامعيّة', 'العاملة']
@@ -263,15 +264,18 @@ def _scan_for_pending(result, person_type, persons_df, pyg_df, youth_groups_filt
             continue
         seen.add(key)
 
-        fn = str(person.get('ar_first_name') or '')
-        ln = str(person.get('ar_last_name') or '')
+        display_name = " ".join(
+            str(person.get(k) or "").strip()
+            for k in ("title", "ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name")
+            if str(person.get(k) or "").strip()
+        )
         pid_out = int(pid_str) if person_type == 'registered' else pid_str
 
         result.append({
             'id': _make_promo_id(person_type, pid_str, yg, ag),
             'person_type': person_type,
             'person_id': pid_out,
-            'display_name': f'{fn} {ln}'.strip(),
+            'display_name': display_name,
             'birth_year': by,
             'youth_group': yg,
             'from_age_group': ag,
@@ -359,15 +363,18 @@ def _build_approved(result, person_type, pyg_all_df, persons_df, youth_groups_fi
         except (ValueError, TypeError):
             pass
 
-        fn = str(person.get('ar_first_name') or '')
-        ln = str(person.get('ar_last_name') or '')
+        display_name = " ".join(
+            str(person.get(k) or "").strip()
+            for k in ("title", "ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name")
+            if str(person.get(k) or "").strip()
+        )
         pid_out = int(pid_str) if person_type == 'registered' else pid_str
 
         result.append({
             'id': _make_promo_id(person_type, pid_str, yg, from_ag),
             'person_type': person_type,
             'person_id': pid_out,
-            'display_name': f'{fn} {ln}'.strip(),
+            'display_name': display_name,
             'birth_year': by,
             'youth_group': yg,
             'from_age_group': from_ag,
@@ -408,47 +415,53 @@ def _compute_promotions(youth_groups_filter=None) -> list[dict]:
 def register_promotions_routes(app):
     @app.get("/api/promotions")
     def list_promotions():
-        u = _current_user()
-        if not u:
+        user = _current_user()
+        if not user:
             return jsonify({"error": "unauthorized"}), 401
 
-        if u["role"] == "admin":
-            promos = _compute_promotions()
-        else:
-            youth_groups = _get_person_youth_groups(u["person_type"], u["person_id"])
-            council_access = _get_council_access(u["person_type"], u["person_id"], youth_groups)
-            yg_filter = set(council_access.keys())
-            promos = _compute_promotions(youth_groups_filter=yg_filter)
+        if user.get("role") == "admin":
+            return jsonify({"promotions": _compute_promotions()})
 
-            def _can_see(pr):
-                grp = pr.get("youth_group")
-                info = council_access.get(grp)
-                if not info:
-                    return False
-                if info.get("full_group"):
-                    return True
-                from_ag = pr.get("from_age_group")
-                to_ag = pr.get("to_age_group")
-                ags = info.get("age_groups", [])
-                return from_ag in ags or to_ag in ags
+        # Allow members who have promotion_access privilege
+        person_id = str(user.get("person_id") or "")
+        if not person_id:
+            return jsonify({"error": "forbidden"}), 403
 
-            promos = [p for p in promos if _can_see(p)]
+        access = get_user_promotion_access(person_id)
+        if not access:
+            return jsonify({"error": "forbidden"}), 403
+
+        yg_filter = set(access["youth_group_ids"]) or None
+        promos = _compute_promotions(youth_groups_filter=yg_filter)
+
+        # Further filter by age groups if the grant scope restricted them
+        allowed_ags = set(access.get("age_groups") or [])
+        if allowed_ags:
+            promos = [
+                p for p in promos
+                if p.get("from_age_group") in allowed_ags or p.get("to_age_group") in allowed_ags
+            ]
 
         return jsonify({"promotions": promos})
 
     @app.post("/api/promotions/scan")
     def scan_promotions():
-        u = _current_user()
-        if not u:
+        user = _current_user()
+        if not user:
             return jsonify({"error": "unauthorized"}), 401
 
-        if u["role"] == "admin":
+        if user.get("role") == "admin":
             promos = _compute_promotions()
         else:
-            ygs = _get_person_youth_groups(u["person_type"], u["person_id"])
-            council_access = _get_council_access(u["person_type"], u["person_id"], ygs)
-            yg_filter = set(council_access.keys())
+            person_id = str(user.get("person_id") or "")
+            access = get_user_promotion_access(person_id) if person_id else None
+            if not access:
+                return jsonify({"error": "forbidden"}), 403
+            yg_filter = set(access["youth_group_ids"]) or None
             promos = _compute_promotions(youth_groups_filter=yg_filter)
+            allowed_ags = set(access.get("age_groups") or [])
+            if allowed_ags:
+                promos = [p for p in promos if p.get("from_age_group") in allowed_ags or p.get("to_age_group") in allowed_ags]
 
         pending = [p for p in promos if p["status"] == "pending"]
         return jsonify({"ok": True, "created": len(pending), "promotions": pending})
@@ -469,24 +482,18 @@ def register_promotions_routes(app):
             return jsonify({"error": "invalid promotion id"}), 400
         person_type, pid_str, yg, from_ag = parsed
 
+        if u.get("role") != "admin":
+            person_id = str(u.get("person_id") or "")
+            access = get_user_promotion_access(person_id) if person_id else None
+            if not access or yg not in set(access["youth_group_ids"]):
+                return jsonify({"error": "forbidden"}), 403
+
         if action == "reject":
             # Without persistence, rejection is a no-op
             return jsonify({"ok": True, "promotion": {
                 "id": promo_id, "status": "rejected",
                 "from_age_group": from_ag, "youth_group": yg,
             }})
-
-        # action == "approve"
-        if u["role"] != "admin":
-            ygs = _get_person_youth_groups(u["person_type"], u["person_id"])
-            ca = _get_council_access(u["person_type"], u["person_id"], ygs)
-            info = ca.get(yg)
-            if not info:
-                return jsonify({"error": "forbidden"}), 403
-            if not info.get("full_group"):
-                ags = info.get("age_groups", [])
-                if from_ag not in ags:
-                    return jsonify({"error": "forbidden"}), 403
 
         # Determine to_age_group dynamically
         rules_dict = _load_promotion_rules()
@@ -562,13 +569,17 @@ def register_promotions_routes(app):
                     _app_reg("hobbies_skills", extra.get("hobbies_skills", []))
                 S.save()
 
-            fn = str(person_row.iloc[0].get("ar_first_name") or '')
-            ln = str(person_row.iloc[0].get("ar_last_name") or '')
+            promo_row = person_row.iloc[0]
+            promo_display_name = " ".join(
+                str(promo_row.get(k) or "").strip()
+                for k in ("title", "ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name")
+                if str(promo_row.get(k) or "").strip()
+            )
             return jsonify({"ok": True, "promotion": {
                 "id": promo_id,
                 "person_type": person_type,
                 "person_id": pid,
-                "display_name": f"{fn} {ln}".strip(),
+                "display_name": promo_display_name,
                 "youth_group": yg,
                 "from_age_group": from_ag,
                 "to_age_group": to_ag,
@@ -655,10 +666,20 @@ def register_promotions_routes(app):
 
     @app.delete("/api/promotions/<promo_id>")
     def delete_promotion(promo_id):
-        u = _current_user()
-        if not u:
+        user = _current_user()
+        if not user:
             return jsonify({"error": "unauthorized"}), 401
-        # Promotions are derived from SCD; nothing to delete
+
+        if user.get("role") != "admin":
+            person_id = str(user.get("person_id") or "")
+            parsed = _parse_promo_id(promo_id)
+            if not parsed or not person_id:
+                return jsonify({"error": "forbidden"}), 403
+            _, _, yg, _ = parsed
+            access = get_user_promotion_access(person_id)
+            if not access or yg not in set(access["youth_group_ids"]):
+                return jsonify({"error": "forbidden"}), 403
+
         return jsonify({"ok": True})
 
 

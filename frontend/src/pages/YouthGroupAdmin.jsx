@@ -159,7 +159,7 @@ function RegistrationDonutChart({ registered, unregistered, archived }) {
   )
 }
 
-export default function YouthGroupAdmin({ toast }) {
+export default function YouthGroupAdmin({ toast, restrictedGroupIds = null }) {
   const [groups, setGroups] = useState([])
   const [parishes, setParishes] = useState([])
   const [selected, setSelected] = useState('')
@@ -171,9 +171,7 @@ export default function YouthGroupAdmin({ toast }) {
   const [logoUploading, setLogoUploading] = useState(false)
   const [specialLogoUploading, setSpecialLogoUploading] = useState(false)
   const [logoBust, setLogoBust] = useState(Date.now())
-  const [ageRules, setAgeRules] = useState([])
-  const [defaultAgeRules, setDefaultAgeRules] = useState([])
-  const [savingAgeRules, setSavingAgeRules] = useState(false)
+
   const [selectedParishId, setSelectedParishId] = useState('')
   const [savingParish, setSavingParish] = useState(false)
   const [useParishLogo, setUseParishLogo] = useState(false)
@@ -197,7 +195,9 @@ export default function YouthGroupAdmin({ toast }) {
     setGroupsLoadError('')
     api.listYouthGroupProfiles()
       .then(res => {
-        const list = res.groups || []
+        const list = restrictedGroupIds
+          ? (res.groups || []).filter(g => restrictedGroupIds.includes(g.group_id))
+          : (res.groups || [])
         setGroups(list)
         if (list[0]?.group_id) setSelected(list[0].group_id)
       })
@@ -224,8 +224,7 @@ export default function YouthGroupAdmin({ toast }) {
     api.getYouthGroupDetails(selected)
       .then(res => {
         setDetails(res)
-        setAgeRules(res?.promotion_settings?.age_rules || [])
-        setDefaultAgeRules(res?.promotion_settings?.default_age_rules || [])
+
         setSelectedParishId(String(res?.group?.parish_id || ''))
         setUseParishLogo(Boolean(res?.group?.use_parish_logo))
         setSocialMediaEntries(Array.isArray(res?.group?.social_media) ? res.group.social_media : [])
@@ -286,16 +285,6 @@ export default function YouthGroupAdmin({ toast }) {
     const unregistered = members.filter((m) => !m?.archived && m?.person_type === 'unregistered').length
     return { registered, unregistered, archived }
   }, [members])
-
-  const uiAgeRules = useMemo(() => {
-    const byGroup = Object.fromEntries((ageRules || []).map(r => [r.age_group, r]))
-    const byDefault = Object.fromEntries((defaultAgeRules || []).map(r => [r.age_group, r]))
-    return AGE_GROUPS.map((group) => ({
-      ...(byDefault[group] || { age_group: group, min_birth_year: null, max_birth_year: null, promotion_to: null }),
-      ...(byGroup[group] || { age_group: group }),
-      age_group: group,
-    }))
-  }, [ageRules, defaultAgeRules])
 
   const onUploadLogo = async (event) => {
     const file = event.target.files?.[0]
@@ -394,41 +383,6 @@ export default function YouthGroupAdmin({ toast }) {
       toast?.('فشل رفع الشعار الخاص بالمناسبة', 'error')
     } finally {
       setSpecialLogoUploading(false)
-    }
-  }
-
-  const updateRule = (ageGroup, key, value) => {
-    setAgeRules((prev) => {
-      const list = [...(prev || [])]
-      const idx = list.findIndex(r => r.age_group === ageGroup)
-      const next = idx >= 0 ? { ...list[idx], [key]: value } : { age_group: ageGroup, [key]: value }
-      if (idx >= 0) list[idx] = next
-      else list.push(next)
-      return list
-    })
-  }
-
-  const onResetAgeRules = () => {
-    setAgeRules((defaultAgeRules || []).map(r => ({ ...r })))
-  }
-
-  const onSaveAgeRules = async () => {
-    if (!selected) return
-    setSavingAgeRules(true)
-    try {
-      const payload = { age_rules: uiAgeRules.map(r => ({
-        age_group: r.age_group,
-        min_birth_year: r.min_birth_year ?? null,
-        max_birth_year: r.max_birth_year ?? null,
-        promotion_to: r.promotion_to || null,
-      })) }
-      const res = await api.updateYouthGroupPromotionLimits(selected, payload)
-      setAgeRules(res?.age_rules || payload.age_rules)
-      toast?.('تم حفظ حدود الترفيع الخاصة بالفرقة', 'success')
-    } catch {
-      toast?.('فشل حفظ حدود الترفيع', 'error')
-    } finally {
-      setSavingAgeRules(false)
     }
   }
 
@@ -1272,89 +1226,36 @@ export default function YouthGroupAdmin({ toast }) {
               <div className="card" style={{ padding: 16 }}>
                 <div style={{ fontWeight: 800, color: 'var(--navy)', marginBottom: 6 }}>بيانات قد تكون بحاجة مراجعة</div>
                 <div style={{ color: 'var(--gray-500)', fontSize: '0.8rem', marginBottom: 10 }}>
-                  يتم عرض الأعضاء الذين لديهم أجزاء اسم ناقصة، أو مدرسة مفقودة لفئات البراعم/الإعدادي/الثانوي.
+                  أعضاء لديهم حقول مطلوبة غير مكتملة في ملفاتهم الشخصية.
                 </div>
                 {problematic.length === 0 ? (
                   <div style={{ color: 'var(--gray-500)' }}>لا توجد ملاحظات حالياً.</div>
                 ) : (
                   <div style={{ display: 'grid', gap: 8, maxHeight: 260, overflowY: 'auto' }}>
                     {problematic.map((row) => (
-                      <div key={`${row.person_type}:${row.person_id}`} style={{ border: '1px solid var(--gray-200)', borderRadius: 10, padding: 10 }}>
-                        <div style={{ color: 'var(--gray-700)', fontWeight: 700 }}>
+                      <div key={`${row.person_type}:${row.person_id}`} style={{ border: '1.5px solid #fde68a', borderRadius: 10, padding: 10, background: '#fffbeb' }}>
+                        <div style={{ color: 'var(--gray-800)', fontWeight: 700 }}>
                           {row.full_name || row.person_id}
                         </div>
                         <div style={{ color: 'var(--gray-500)', fontSize: '0.78rem', marginTop: 2 }}>
                           {row.person_type === 'registered' ? 'مسجل' : 'غير مسجل'} · {row.age_group || '—'}
                         </div>
-                        <div style={{ color: '#b45309', fontSize: '0.8rem', marginTop: 6 }}>
-                          {(row.issues || []).join(' | ')}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 8 }}>
+                          {(row.issues || []).map((issue, i) => (
+                            <span key={i} style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 4,
+                              background: '#fef3c7', border: '1px solid #f59e0b',
+                              color: '#92400e', fontSize: '0.75rem', fontWeight: 700,
+                              padding: '3px 9px', borderRadius: 20,
+                            }}>
+                              ⚠ {issue}
+                            </span>
+                          ))}
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
-              </div>
-
-              <div className="card" style={{ padding: 16 }}>
-                <div style={{ fontWeight: 800, color: 'var(--navy)', marginBottom: 6 }}>حدود الترفيع حسب الفرقة</div>
-                <div style={{ color: 'var(--gray-500)', fontSize: '0.8rem', marginBottom: 10 }}>
-                  يتم فحص كل عضو حسب سنة الميلاد والفئة الحالية. هذه الحدود تخص الفرقة الحالية فقط.
-                </div>
-                <div style={{ display: 'grid', gap: 8 }}>
-                  {uiAgeRules.map((rule) => {
-                    const defaultRule = (defaultAgeRules || []).find(r => r.age_group === rule.age_group) || {}
-                    return (
-                      <div key={rule.age_group} style={{ border: '1px solid var(--gray-200)', borderRadius: 10, padding: 10, display: 'grid', gap: 8 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-                          <div style={{ color: 'var(--gray-700)', fontWeight: 700 }}>{rule.age_group}</div>
-                          <div style={{ color: 'var(--gray-500)', fontSize: '0.75rem' }}>
-                            الافتراضي: {defaultRule.min_birth_year ?? '—'} / {defaultRule.max_birth_year ?? '—'}
-                          </div>
-                        </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                          <input
-                            type="number"
-                            placeholder="أصغر سنة"
-                            value={rule.min_birth_year ?? ''}
-                            onChange={(e) => {
-                              const raw = e.target.value.trim()
-                              updateRule(rule.age_group, 'min_birth_year', raw === '' ? null : Number(raw))
-                            }}
-                            style={{ border: '1px solid var(--gray-200)', borderRadius: 8, padding: '8px 10px', fontFamily: 'var(--font-body)' }}
-                          />
-                          <input
-                            type="number"
-                            placeholder="أكبر سنة"
-                            value={rule.max_birth_year ?? ''}
-                            onChange={(e) => {
-                              const raw = e.target.value.trim()
-                              updateRule(rule.age_group, 'max_birth_year', raw === '' ? null : Number(raw))
-                            }}
-                            style={{ border: '1px solid var(--gray-200)', borderRadius: 8, padding: '8px 10px', fontFamily: 'var(--font-body)' }}
-                          />
-                        </div>
-                        <select
-                          value={rule.promotion_to || ''}
-                          onChange={(e) => updateRule(rule.age_group, 'promotion_to', e.target.value || null)}
-                          style={{ border: '1px solid var(--gray-200)', borderRadius: 8, padding: '8px 10px', fontFamily: 'var(--font-body)', background: 'white' }}
-                        >
-                          <option value="">بدون ترفيع تلقائي</option>
-                          {AGE_GROUPS.filter(g => g !== rule.age_group).map((g) => (
-                            <option key={g} value={g}>{g}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )
-                  })}
-                </div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                  <button type="button" className="btn btn-light btn-sm" onClick={onResetAgeRules} disabled={savingAgeRules}>
-                    إعادة القيم الافتراضية
-                  </button>
-                  <button type="button" className="btn btn-gold btn-sm" onClick={onSaveAgeRules} disabled={savingAgeRules}>
-                    {savingAgeRules ? 'جاري الحفظ...' : 'حفظ الحدود'}
-                  </button>
-                </div>
               </div>
 
               <div className="card" style={{ padding: 16 }}>

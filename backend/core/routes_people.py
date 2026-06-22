@@ -1,5 +1,6 @@
 import os
 import re
+import threading
 from datetime import date
 from urllib.parse import urlparse
 
@@ -10,13 +11,9 @@ from flask import jsonify, request, send_from_directory
 from core import state as S
 from core.database import SCD_LOGICAL_SHEETS as _SCD_LOGICAL_SHEETS
 from core.database import logical_sheet_name as _logical_sheet_name
-import core.privilege_store as PS
 from core.routes_auth import (
     _current_user,
     _deactivate_auth_users_for_person,
-    _get_council_access,
-    _get_council_accessible_persons,
-    _get_org_tree_descendants,
     _get_person_youth_groups,
     _require_admin,
     _require_auth,
@@ -319,6 +316,10 @@ def collect_profile_validation_errors(body: dict, person_fields: dict, *, addres
             if _has_value(value) and not _is_arabic_or_english_address_text(value):
                 errors.append(f"العنوان #{index}: {label} يجب أن يكون بالعربية أو بالإنجليزية فقط دون خلط بين اللغتين.")
 
+    marital_status = S._normalize_text(person_fields.get(S.MARITAL_STATUS_COL))
+    if marital_status is not None and marital_status not in S.MARITAL_STATUS_VALUES:
+        errors.append("الحالة الاجتماعية يجب أن تكون: أعزب، خاطب، أو متزوج.")
+
     _validate_row_date_fields(body.get("schools", []), "المدرسة", errors)
     _validate_row_date_fields(body.get("higher_education", []), "التعليم الجامعي", errors)
     _validate_row_date_fields(body.get("jobs", []), "الوظائف", errors)
@@ -514,6 +515,24 @@ def get_profile_sub_rows(store: dict, pid, sheet, *, compare_as_string: bool):
     return normalize_profile_rows(sheet, rows)
 
 
+def _build_spouse_payload(store: dict, pid) -> dict | None:
+    spouse_row = S.get_spouse_for_person(store, pid)
+    if not spouse_row:
+        return None
+    spouse_pid = str(spouse_row.get("spouse_person_id") or "").strip()
+    if not spouse_pid:
+        return None
+    persons_df = S._scd_filter_active(store.get("persons", pd.DataFrame()))
+    if persons_df.empty or "person_id" not in persons_df.columns:
+        return {"person_id": spouse_pid}
+    row = persons_df[persons_df["person_id"].astype(str) == spouse_pid]
+    if row.empty:
+        return {"person_id": spouse_pid}
+    r = row.iloc[0].to_dict()
+    name_parts = [str(r.get(c) or "").strip() for c in ("ar_first_name", "ar_second_name", "ar_third_name", "ar_last_name")]
+    return {"person_id": spouse_pid, "full_name": " ".join(p for p in name_parts if p)}
+
+
 def build_profile_record(
     persons_df: pd.DataFrame,
     store: dict,
@@ -559,6 +578,7 @@ def build_profile_record(
         "hobbies_skills": get_profile_sub_rows(store, pid, "hobbies_skills", compare_as_string=compare_as_string),
         "person_health_conditions": get_profile_sub_rows(store, pid, S.PERSON_HEALTH_CONDITION_SHEET, compare_as_string=compare_as_string),
         "person_special_notes": get_profile_sub_rows(store, pid, S.PERSON_SPECIAL_NOTE_SHEET, compare_as_string=compare_as_string),
+        "spouse": _build_spouse_payload(store, pid),
     }
 
 
@@ -1020,55 +1040,16 @@ def profile_edit_scope(person_type: str, pid):
     ):
         return "self"
     if user.get("role") == "member":
-        youth_groups = _get_person_youth_groups(user.get("person_type"), user.get("person_id"))
-        council_access = _get_council_access(user.get("person_type"), user.get("person_id"), youth_groups)
-        accessible_group_ids = {str(gid).strip() for gid in council_access.keys() if str(gid).strip()}
-        if accessible_group_ids & _profile_group_ids(person_type, pid):
-            return "council"
+        from core.routes_privileges import get_user_profile_access_ids
+
+        member_pid = str(user.get("person_id") or "")
+        if member_pid:
+            reg_ids, unreg_ids = get_user_profile_access_ids(member_pid)
+            if person_type == "registered" and str(pid) in reg_ids:
+                return "granted"
+            if person_type == "unregistered" and str(pid) in unreg_ids:
+                return "granted"
     return None
-
-
-def _profile_group_ids(person_type: str, pid) -> set[str]:
-    """Return all youth-group IDs the person belongs to (active memberships + responsibilities)."""
-    groups: set[str] = set()
-    if person_type not in {"registered", "unregistered"}:
-        return groups
-
-    store = S.store if person_type == "registered" else S.unreg_store
-    compare_as_string = person_type == "unregistered"
-
-    for sheet in ("person_youth_group", "responsibilities"):
-        df = S._scd_filter_active(store.get(sheet, pd.DataFrame()))
-        if df.empty or "person_id" not in df.columns or S.YOUTH_GROUP_ID_COL not in df.columns:
-            continue
-        rows = df[df["person_id"].astype(str) == str(pid)] if compare_as_string else df[df["person_id"] == pid]
-        for value in rows[S.YOUTH_GROUP_ID_COL].dropna().astype(str):
-            gid = value.strip()
-            if gid:
-                groups.add(gid)
-
-    return groups
-
-
-def _profile_age_groups_in_group(person_type: str, pid, group_id: str) -> set[str]:
-    """Return the person's current age groups within a specific youth group."""
-    ages: set[str] = set()
-    store = S.store if person_type == "registered" else S.unreg_store
-    compare_as_string = person_type == "unregistered"
-
-    pyg = S._scd_filter_active(store.get("person_youth_group", pd.DataFrame()))
-    if pyg.empty or "person_id" not in pyg.columns or S.YOUTH_GROUP_ID_COL not in pyg.columns:
-        return ages
-
-    rows = pyg[pyg["person_id"].astype(str) == str(pid)] if compare_as_string else pyg[pyg["person_id"] == pid]
-    rows = rows[rows[S.YOUTH_GROUP_ID_COL].astype(str).str.strip() == group_id]
-
-    if "age_group" in rows.columns:
-        for ag in rows["age_group"].dropna().astype(str):
-            ag = ag.strip()
-            if ag:
-                ages.add(ag)
-    return ages
 
 
 def profile_view_scope(person_type: str, pid):
@@ -1078,9 +1059,10 @@ def profile_view_scope(person_type: str, pid):
     Returns:
       "full"     — admin, unrestricted
       "self"     — viewing own profile
-      "scoped"   — council or org-tree access (may be read-restricted)
+      "granted"  — privilege-granted access
       None       — no access
     """
+    from core.routes_privileges import get_user_promotion_access, get_user_profile_access_ids
     user = _current_user()
     if not user:
         return None
@@ -1091,45 +1073,18 @@ def profile_view_scope(person_type: str, pid):
     if user.get("person_type") == person_type and str(user.get("person_id")) == str(pid):
         return "self"
 
-    if user.get("role") != "member":
-        return None
-
-    user_person_type = user.get("person_type")
-    user_person_id   = user.get("person_id")
-    username         = user.get("username", "")
-
-    if not user_person_type or user_person_id is None:
-        return None
-
-    youth_groups    = _get_person_youth_groups(user_person_type, user_person_id)
-    computed_council = _get_council_access(user_person_type, user_person_id, youth_groups)
-    # Apply PrivilegeManager overrides so they are respected here too
-    council_access  = PS.apply_overrides(username, computed_council)
-
-    # ── Council access — age-group specific ──────────────────────────────────
-    if council_access:
-        target_groups = _profile_group_ids(person_type, pid)
-        for group_id, info in council_access.items():
-            if group_id not in target_groups:
-                continue
-            if info.get("full_group"):
-                return "scoped"
-            # Age-group specific: the person must be in one of the allowed age groups
-            allowed_ages = set(info.get("age_groups") or [])
-            if allowed_ages:
-                person_ages = _profile_age_groups_in_group(person_type, pid, group_id)
-                if person_ages & allowed_ages:
-                    return "scoped"
-
-    # ── Org-tree hierarchy ───────────────────────────────────────────────────
-    try:
-        descendants = _get_org_tree_descendants(user_person_type, user_person_id, youth_groups)
-        pid_str = str(pid)
-        if any(str(d.get("person_id")) == pid_str and d.get("person_type") == person_type
-               for d in descendants):
-            return "scoped"
-    except Exception:
-        pass
+    member_pid = str(user.get("person_id") or "")
+    if member_pid:
+        reg_ids, unreg_ids = get_user_profile_access_ids(member_pid)
+        if person_type == "registered" and str(pid) in reg_ids:
+            return "granted"
+        if person_type == "unregistered" and str(pid) in unreg_ids:
+            return "granted"
+        # Legacy: promotion_access also grants profile view for registered
+        if person_type == "registered":
+            access = get_user_promotion_access(member_pid)
+            if access:
+                return "granted"
 
     return None
 
@@ -1143,47 +1098,127 @@ def require_profile_view_access(person_type: str, pid):
     return None
 
 
-def _get_user_council_group_ids(user) -> set[str]:
-    if not user or user.get("role") != "member":
-        return set()
-    youth_groups = _get_person_youth_groups(user.get("person_type"), user.get("person_id"))
-    council_access = _get_council_access(user.get("person_type"), user.get("person_id"), youth_groups)
-    return {str(gid).strip() for gid in council_access.keys() if str(gid).strip()}
+_ADDRESS_LOCATION_FIELDS = ("lat", "lng", "location_url")
 
 
-def _apply_address_location_restriction(incoming_addresses, store, pid, compare_as_string: bool) -> list:
-    """prv2: strip lat/lng from incoming address rows, restore from stored rows by position."""
-    if not incoming_addresses:
-        return list(incoming_addresses or [])
-    addr_df = S._scd_filter_active(store.get(S.ADDRESS_SHEET, pd.DataFrame()))
-    if not addr_df.empty and "person_id" in addr_df.columns:
-        if compare_as_string:
-            mask = addr_df["person_id"].astype(str) == str(pid)
-        else:
-            mask = addr_df["person_id"] == pid
-        stored_rows = addr_df[mask].replace({pd.NA: None}).to_dict(orient="records")
+def _address_text_key(row: dict | None) -> tuple[str, str, str, str]:
+    payload = row if isinstance(row, dict) else {}
+    street_address = payload.get(S.STREET_ADDRESS_COL)
+    if street_address is None:
+        street_address = payload.get("address")
+    return (
+        S._normalize_text(payload.get("country")),
+        S._normalize_text(payload.get("governorate")),
+        S._normalize_text(payload.get("city")),
+        S._normalize_text(street_address),
+    )
+
+
+def _active_profile_address_rows(store: dict, pid, *, compare_as_string: bool) -> list[dict]:
+    df = S._scd_filter_active(store.get(S.ADDRESS_SHEET, pd.DataFrame()))
+    if df.empty or "person_id" not in df.columns:
+        return []
+    if compare_as_string:
+        df = df[df["person_id"].astype(str) == str(pid)]
     else:
-        stored_rows = []
-    result = []
-    for i, row in enumerate(incoming_addresses):
-        row = dict(row)
-        for field in ("lat", "lng", "location_url"):
-            row.pop(field, None)
-        if i < len(stored_rows):
-            for field in ("lat", "lng"):
-                val = stored_rows[i].get(field)
-                if val is not None:
-                    row[field] = val
-        result.append(row)
-    return result
+        df = df[df["person_id"] == pid]
+    if df.empty:
+        return []
+    return df.replace({pd.NA: None, np.nan: None}).to_dict(orient="records")
 
 
-def _validate_membership_scope(body, store, pid, scope, council_group_ids, compare_as_string: bool):
+def _preserve_address_locations_for_non_owner(
+    store: dict,
+    pid,
+    rows,
+    *,
+    compare_as_string: bool,
+) -> list:
+    if not isinstance(rows, list):
+        return []
+
+    existing_rows = _active_profile_address_rows(store, pid, compare_as_string=compare_as_string)
+    existing_by_key: dict[tuple[str, str, str, str], list[dict]] = {}
+    empty_key_existing_by_index: dict[int, dict] = {}
+    for index, existing_row in enumerate(existing_rows):
+        key = _address_text_key(existing_row)
+        if any(key):
+            existing_by_key.setdefault(key, []).append(existing_row)
+        else:
+            empty_key_existing_by_index[index] = existing_row
+
+    sanitized_rows = []
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            sanitized_rows.append(row)
+            continue
+
+        next_row = {k: v for k, v in row.items() if k not in _ADDRESS_LOCATION_FIELDS}
+        key = _address_text_key(row)
+        existing_row = None
+        if any(key):
+            matches = existing_by_key.get(key)
+            if matches:
+                existing_row = matches.pop(0)
+        else:
+            existing_row = empty_key_existing_by_index.get(index)
+
+        if existing_row:
+            for field in _ADDRESS_LOCATION_FIELDS:
+                value = existing_row.get(field)
+                if value not in (None, ""):
+                    next_row[field] = value
+
+        sanitized_rows.append(next_row)
+
+    return sanitized_rows
+
+
+def _sanitize_profile_payload_for_edit_scope(
+    body: dict,
+    scope: str,
+    store: dict,
+    pid,
+    *,
+    compare_as_string: bool,
+) -> dict:
+    payload = dict(body or {})
+
+    if scope != "full" and isinstance(payload.get("person"), dict):
+        payload["person"] = {k: v for k, v in payload["person"].items() if k != "title"}
+
+    if scope == "granted":
+        if isinstance(payload.get("person"), dict):
+            payload["person"] = {
+                k: v
+                for k, v in payload["person"].items()
+                if k not in _ADDRESS_LOCATION_FIELDS
+            }
+        if "addresses" in payload:
+            payload["addresses"] = _preserve_address_locations_for_non_owner(
+                store,
+                pid,
+                payload.get("addresses"),
+                compare_as_string=compare_as_string,
+            )
+
+    return payload
+
+
+def _strip_profile_title_for_non_admin(body: dict) -> dict:
+    user = _current_user()
+    if user and user.get("role") == "admin":
+        return body
+    payload = dict(body or {})
+    if isinstance(payload.get("person"), dict):
+        payload["person"] = {k: v for k, v in payload["person"].items() if k != "title"}
+    return payload
+
+
+def _validate_membership_scope(body, store, pid, compare_as_string: bool):
     """
-    Validates and adjusts person_youth_group in body for 'council' or 'self' scope.
+    Validates and adjusts person_youth_group in body for 'self' scope.
     Returns (modified_body, errors).
-    - council: other-group rows preserved from store; editable group rows validated
-    - self: all groups validated with same rules except archived direction
     """
     errors = []
 
@@ -1230,32 +1265,21 @@ def _validate_membership_scope(body, store, pid, scope, council_group_ids, compa
         if gid:
             incoming_by_group[gid] = row
 
-    editable_groups = council_group_ids if scope == "council" else set(existing_by_group.keys())
-
     # Cannot add a new membership
     new_groups = set(incoming_by_group.keys()) - set(existing_by_group.keys())
     if new_groups:
         return body, ["لا يمكن إضافة عضوية جديدة في شبيبة."]
 
-    # Cannot remove an existing editable membership
-    for gid in editable_groups:
-        if gid in existing_by_group and gid not in incoming_by_group:
+    # Cannot remove an existing membership
+    for gid in existing_by_group:
+        if gid not in incoming_by_group:
             return body, ["لا يمكن حذف عضوية الشخص في الشبيبة."]
 
     final_rows: list[dict] = []
 
-    # Preserve non-editable groups exactly as stored (council scope only)
-    for gid, ex_row in existing_by_group.items():
-        if gid in editable_groups:
-            continue
-        rid = str(ex_row.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL, "") or "")
-        row_copy = dict(ex_row)
-        row_copy["age_group_history"] = list(history_by_record.get(rid, []))
-        final_rows.append(row_copy)
-
-    # Validate and add editable groups
+    # Validate and add groups
     for gid, inc_row in incoming_by_group.items():
-        if gid not in editable_groups or gid not in existing_by_group:
+        if gid not in existing_by_group:
             continue
         ex_row = existing_by_group[gid]
         rid = str(ex_row.get(S.PERSON_YOUTH_GROUP_RECORD_ID_COL, "") or "")
@@ -1265,10 +1289,10 @@ def _validate_membership_scope(body, store, pid, scope, council_group_ids, compa
         current_ag = S.current_age_group_from_history_rows(existing_hist) or ex_row.get("age_group")
         current_ag_idx = S.AGE_GROUP_ORDER_INDEX.get(current_ag, -1) if current_ag else -1
 
-        # Archived direction: prv3 (self) can only go active→inactive
+        # Archived direction: self can only go active→inactive
         existing_archived = bool(ex_row.get("archived", False))
         incoming_archived = bool(inc_row.get("archived", False))
-        if scope == "self" and existing_archived and not incoming_archived:
+        if existing_archived and not incoming_archived:
             return body, ["لا يمكنك إعادة تفعيل العضوية في الشبيبة."]
 
         # Validate new age group history entries
@@ -1303,76 +1327,6 @@ def _validate_membership_scope(body, store, pid, scope, council_group_ids, compa
     modified_body = dict(body)
     modified_body["person_youth_group"] = final_rows
     return modified_body, []
-
-
-def _filter_responsibilities_for_council(body, store, pid, council_group_ids, compare_as_string: bool) -> dict:
-    """prv2: preserve non-council responsibility rows from store; only allow incoming rows for council groups."""
-    resp_df = S._scd_filter_active(store.get("responsibilities", pd.DataFrame()))
-    if not resp_df.empty and "person_id" in resp_df.columns:
-        pmask = (
-            resp_df["person_id"].astype(str) == str(pid)
-            if compare_as_string
-            else resp_df["person_id"] == pid
-        )
-        existing_resp = resp_df[pmask].replace({pd.NA: None}).to_dict(orient="records")
-    else:
-        existing_resp = []
-
-    preserved = [
-        r for r in existing_resp
-        if str(r.get(S.YOUTH_GROUP_ID_COL, "") or "").strip() not in council_group_ids
-    ]
-    incoming_resp = list(body.get("responsibilities") or [])
-    council_resp = [
-        r for r in incoming_resp
-        if str(r.get(S.YOUTH_GROUP_ID_COL, "") or "").strip() in council_group_ids
-    ]
-    modified = dict(body)
-    modified["responsibilities"] = preserved + council_resp
-    return modified
-
-
-def build_location_only_address_rows(store: dict, pid, incoming_rows, *, compare_as_string: bool):
-    source_rows = incoming_rows if isinstance(incoming_rows, list) else []
-    incoming = source_rows[0] if source_rows else {}
-    location_url = str(incoming.get("location_url") or "").strip()
-    lat = S._normalize_coordinate(incoming.get("lat"), "lat")
-    lng = S._normalize_coordinate(incoming.get("lng"), "lng")
-
-    if location_url and (lat is None or lng is None):
-        lat, lng = S.resolve_google_maps_coordinates(location_url)
-    if location_url and (lat is None or lng is None):
-        raise ValueError("coordinates not found")
-    if not location_url:
-        lat = None
-        lng = None
-
-    addresses_df = store.get("addresses", pd.DataFrame())
-    if addresses_df.empty or "person_id" not in addresses_df.columns:
-        existing_rows = []
-    elif compare_as_string:
-        existing_rows = S.df_to_json(addresses_df[addresses_df["person_id"].astype(str) == str(pid)])
-    else:
-        existing_rows = S.df_to_json(addresses_df[addresses_df["person_id"] == pid])
-
-    if existing_rows:
-        primary_index = next((index for index, row in enumerate(existing_rows) if S._to_bool(row.get("is_primary"))), 0)
-        normalized_rows = [dict(row) for row in existing_rows]
-        normalized_rows[primary_index]["location_url"] = location_url or None
-        normalized_rows[primary_index]["lat"] = lat
-        normalized_rows[primary_index]["lng"] = lng
-        return normalized_rows
-
-    return [{
-        "country": S.DEFAULT_COUNTRY,
-        "governorate": None,
-        "city": None,
-        "address": None,
-        "location_url": location_url or None,
-        "lat": lat,
-        "lng": lng,
-        "is_primary": True,
-    }]
 
 
 def _person_full_name(person: dict | None) -> str:
@@ -1625,100 +1579,28 @@ def register_registered_routes(app):
 
     @app.get("/api/persons/members-index")
     def get_persons_members_index():
-        err = _require_auth()
+        err = _require_admin()
         if err:
             return err
         cached_payload, cached_version, data_version = S.members_index_cache_state()
         if cached_payload is not None and cached_version == data_version:
-            return jsonify(cached_payload)
+            return jsonify(S.json_safe(cached_payload))
         payload = S.build_members_index()
         S.set_members_index_cache(payload, data_version)
-        return jsonify(payload)
+        return jsonify(S.json_safe(payload))
 
     @app.get("/api/filters")
     def filters():
-        err = _require_auth()
-        if err:
-            return err
-        persons = S._registered_persons_df()
-        pyg = S._sheet_for_registered("person_youth_group")
-        resp = S._sheet_for_registered("responsibilities")
-        nat = S._sheet_for_registered("nationality")
-        sch = S._sheet_for_registered("schools")
-        he = S._sheet_for_registered("higher_education")
-        jobs = S._sheet_for_registered("jobs")
-        hob = S._sheet_for_registered("hobbies_skills")
-
-        youth_group_counts = []
-        youth_group_count_map = {}
-        if not pyg.empty and S.YOUTH_GROUP_ID_COL in pyg.columns:
-            counts = (
-                pyg[["person_id", S.YOUTH_GROUP_ID_COL]]
-                .dropna(subset=[S.YOUTH_GROUP_ID_COL])
-                .drop_duplicates()
-                .groupby(S.YOUTH_GROUP_ID_COL)["person_id"].count()
-            )
-            youth_group_count_map = {
-                str(gid): int(count)
-                for gid, count in counts.items()
-                if str(gid).strip()
-            }
-
-        seen_youth_group_ids = set()
-        for option in S.youth_group_options():
-            group_id = str(option.get("value") or "").strip()
-            if not group_id:
-                continue
-            seen_youth_group_ids.add(group_id)
-            youth_group_counts.append({
-                "value": group_id,
-                "label": S.youth_group_display_label(group_id) or str(option.get("label") or ""),
-                "count": youth_group_count_map.get(group_id, 0),
-            })
-
-        for group_id, count in youth_group_count_map.items():
-            if group_id in seen_youth_group_ids:
-                continue
-            youth_group_counts.append({
-                "value": group_id,
-                "label": S.youth_group_display_label(group_id),
-                "count": count,
-            })
-
-        youth_group_counts.sort(key=lambda item: (-int(item.get("count") or 0), str(item.get("label") or item.get("value") or "")))
-
-        return jsonify({
-            "ar_first_name": S.value_counts_json(persons["ar_first_name"]),
-            "ar_second_name": S.value_counts_json(persons["ar_second_name"]),
-            "ar_third_name": S.value_counts_json(persons["ar_third_name"]),
-            "ar_last_name": S.value_counts_json(persons["ar_last_name"]),
-            "en_first_name": S.value_counts_json(persons["en_first_name"]),
-            "en_second_name": S.value_counts_json(persons["en_second_name"]),
-            "en_third_name": S.value_counts_json(persons["en_third_name"]),
-            "en_last_name": S.value_counts_json(persons["en_last_name"]),
-            "mother_ar_first_name": S.value_counts_json(persons["mother_ar_first_name"]),
-            "mother_ar_second_name": S.value_counts_json(persons["mother_ar_second_name"]),
-            "mother_ar_last_name": S.value_counts_json(persons["mother_ar_last_name"]),
-            "mother_en_first_name": S.value_counts_json(persons["mother_en_first_name"]),
-            "mother_en_second_name": S.value_counts_json(persons["mother_en_second_name"]),
-            "mother_en_last_name": S.value_counts_json(persons["mother_en_last_name"]),
-            "gender": S.value_counts_json(persons["gender"]),
-            "school_system": S.value_counts_json(persons["school_system"]),
-            "governorate": S.value_counts_json(persons["governorate"]),
-            "birth_year": S.value_counts_json(persons["birth_year"].astype(str)),
-            "nationality": S.pid_counts(nat, "nationality"),
-            "youth_group": youth_group_counts,
-            "age_group": S.pid_counts(pyg, "age_group"),
-            "youth_join_year": S.pid_counts(pyg, "youth_join_year"),
-            "responsibility": S.pid_counts(resp, "responsibility_name"),
-            "school": S.pid_counts(sch, S.SCHOOL_NAME_COL),
-            "university": S.pid_counts(he, S.HIGHER_EDUCATION_INSTITUTION_COL),
-            "major": S.pid_counts(he, "major"),
-            "degree": S.pid_counts(he, "degree"),
-            "job_title": S.pid_counts(jobs, "job_title"),
-            "company": S.pid_counts(jobs, S.EMPLOYER_NAME_COL),
-            "hobby_skill": S.pid_counts(hob, "hobby_skill"),
-        })
+        cached, cached_version, data_version = S.filters_cache_state()
+        if cached is not None and cached_version == data_version:
+            return jsonify(cached)
+        with _filters_lock:
+            cached, cached_version, data_version = S.filters_cache_state()
+            if cached is not None and cached_version == data_version:
+                return jsonify(cached)
+            payload = _compute_filters_payload()
+            S.set_filters_cache(payload, data_version)
+        return jsonify(payload)
 
     @app.get("/api/calendar/birthdays")
     def get_calendar_birthdays():
@@ -1753,10 +1635,8 @@ def register_registered_routes(app):
             accessible_pids = set(valid_pid_strs)
             viewable_pids   = accessible_pids
         else:
-            youth_groups   = _get_person_youth_groups(person_type, person_id)
-            council_access = _get_council_access(person_type, person_id, youth_groups)
-            council_group_ids = {str(gid).strip() for gid in council_access.keys() if str(gid).strip()}
-            all_group_ids = {str(gid).strip() for gid in youth_groups if str(gid).strip()} | council_group_ids
+            youth_groups = _get_person_youth_groups(person_type, person_id)
+            group_ids = {str(gid).strip() for gid in youth_groups if str(gid).strip()}
 
             pyg = _active_registered_membership_df()
             def pids_in_groups(group_ids):
@@ -1764,31 +1644,11 @@ def register_registered_routes(app):
                     return set()
                 return set(pyg[pyg[S.YOUTH_GROUP_ID_COL].astype(str).isin(group_ids)]["person_id"].astype(str))
 
-            # Accessible = own groups + all council groups (shows name on calendar)
-            accessible_pids = pids_in_groups(all_group_ids) | ({own_pid_str} if own_pid_str else set())
+            # Accessible = own groups (shows name on calendar)
+            accessible_pids = pids_in_groups(group_ids) | ({own_pid_str} if own_pid_str else set())
 
-            # Viewable = can click through to profile.
-            # Respects age-group specificity for council access (not just any group member).
+            # Viewable = can click through to profile (own profile only).
             viewable_pids: set[str] = ({own_pid_str} if own_pid_str else set())
-            # Apply privilege overrides to get the effective council access
-            effective_council = PS.apply_overrides(user.get("username", ""), council_access)
-            for group_id, info in effective_council.items():
-                if info.get("full_group"):
-                    viewable_pids |= pids_in_groups({group_id})
-                else:
-                    allowed_ages = set(info.get("age_groups") or [])
-                    if allowed_ages and not pyg.empty and S.YOUTH_GROUP_ID_COL in pyg.columns and "age_group" in pyg.columns:
-                        mask = (pyg[S.YOUTH_GROUP_ID_COL].astype(str) == group_id) & pyg["age_group"].isin(allowed_ages)
-                        viewable_pids |= set(pyg[mask]["person_id"].astype(str))
-            # Org-tree descendants are also viewable
-            try:
-                for d in _get_org_tree_descendants(person_type, person_id, youth_groups):
-                    if d.get("person_type") == "registered":
-                        d_pid = str(d.get("person_id", "")).strip()
-                        if d_pid:
-                            viewable_pids.add(d_pid)
-            except Exception:
-                pass
 
         valid = valid[valid_pid_strs.isin(accessible_pids)]
 
@@ -1818,9 +1678,6 @@ def register_registered_routes(app):
 
     @app.get("/api/nationality-iso-codes")
     def get_nationality_iso_codes():
-        err = _require_auth()
-        if err:
-            return err
         lookup = S.nationality_iso_lookup()
         entries = [
             {
@@ -1857,9 +1714,8 @@ def register_registered_routes(app):
             photo_url_template="/api/person/{pid}/photo",
         )
         if not record:
-            # Allow viewing pending-registration profiles for: the person themselves,
-            # admins (who need to review before approving), and council members who
-            # have access to at least one of the person's youth groups.
+            # Allow viewing pending-registration profiles for: the person themselves
+            # and admins (who need to review before approving).
             viewer = _current_user()
             can_view_pending = False
             if viewer:
@@ -1867,18 +1723,6 @@ def register_registered_routes(app):
                     can_view_pending = True
                 elif viewer.get("person_id") is not None and str(viewer.get("person_id")) == str(pid):
                     can_view_pending = True
-                else:
-                    # Council member: check if they have access to any of the person's pending YG memberships
-                    pyg = S._scd_filter_active(S.store.get("person_youth_group", pd.DataFrame()))
-                    if not pyg.empty and "person_id" in pyg.columns:
-                        person_yg_ids = set(
-                            pyg[pyg["person_id"].astype(str) == str(pid)][S.YOUTH_GROUP_ID_COL]
-                            .dropna().astype(str).tolist()
-                        )
-                        viewer_yg = _get_person_youth_groups(viewer.get("person_type"), viewer.get("person_id"))
-                        council_access = _get_council_access(viewer.get("person_type"), viewer.get("person_id"), viewer_yg)
-                        if person_yg_ids & set(council_access.keys()):
-                            can_view_pending = True
 
             if can_view_pending:
                 all_active = S._scd_filter_active(S.store.get("persons", pd.DataFrame()))
@@ -1970,41 +1814,21 @@ def register_registered_routes(app):
             return jsonify({"error": "unauthorized"}), 403
 
         body = request.json or {}
-        if scope == "location_only":
-            if set(body.keys()) - {"addresses"}:
-                return jsonify({"error": "forbidden"}), 403
-            try:
-                addresses_rows = build_location_only_address_rows(S.store, pid, body.get("addresses"), compare_as_string=False)
-            except ValueError:
-                return jsonify({"error": "invalid google maps location"}), 400
-
-            with S.lock:
-                changed_by = _changed_by_from_current_user()
-                replace_profile_sub_rows(S.store, pid, "addresses", addresses_rows, compare_as_string=False, changed_by=changed_by)
-                S.save()
-            return jsonify({"ok": True})
-
         with S.lock:
-            if scope in ("council", "self"):
-                user = _current_user()
-                council_group_ids = _get_user_council_group_ids(user) if scope == "council" else set()
-                body = dict(body)
-                if "person" in body and "title" in (body.get("person") or {}):
-                    body["person"] = {k: v for k, v in body["person"].items() if k != "title"}
-                if scope == "council" and "addresses" in body:
-                    body["addresses"] = _apply_address_location_restriction(
-                        body.get("addresses"), S.store, pid, compare_as_string=False
-                    )
+            body = _sanitize_profile_payload_for_edit_scope(
+                body,
+                scope,
+                S.store,
+                pid,
+                compare_as_string=False,
+            )
+            if scope != "full":
                 if "person_youth_group" in body:
                     body, membership_errors = _validate_membership_scope(
-                        body, S.store, pid, scope, council_group_ids, compare_as_string=False
+                        body, S.store, pid, compare_as_string=False
                     )
                     if membership_errors:
                         return _validation_error_response(membership_errors)
-                if scope == "council" and "responsibilities" in body:
-                    body = _filter_responsibilities_for_council(
-                        body, S.store, pid, council_group_ids, compare_as_string=False
-                    )
 
             raw_person = body.get("person", {})
             p, person_payload = prepare_profile_person_payload(
@@ -2100,12 +1924,108 @@ def register_registered_routes(app):
                     S.PERSON_SPECIAL_NOTE_SHEET,
                 ),
             )
+
+            # ── Marital status / spouse sync ─────────────────────────────────
+            new_marital_status = S._normalize_text(p.get(S.MARITAL_STATUS_COL))
+            new_spouse_is_member = S._to_bool(p.get(S.SPOUSE_IS_MEMBER_COL))
+            old_marital_status = S._normalize_text(current_row.get(S.MARITAL_STATUS_COL)) if person_mask.any() else None
+
+            spouse_row = S.get_spouse_for_person(S.store, pid)
+            spouse_pid = str(spouse_row.get("spouse_person_id") or "").strip() if spouse_row else None
+
+            if spouse_pid:
+                if new_marital_status == S.MARITAL_STATUS_SINGLE:
+                    # Person went single → remove link, set spouse to أعزب as well
+                    S._expire_spouse_link(S.store, pid, spouse_pid, changed_by)
+                    S._update_person_marital_fields(S.store, spouse_pid, S.MARITAL_STATUS_SINGLE, False, changed_by)
+                elif not new_spouse_is_member:
+                    # User unchecked "spouse is member" → remove link only, keep spouse's own status
+                    spouse_current_status = S.get_person_marital_status(S.store, spouse_pid)
+                    S._expire_spouse_link(S.store, pid, spouse_pid, changed_by)
+                    S._update_person_marital_fields(S.store, spouse_pid, spouse_current_status, False, changed_by)
+                elif new_marital_status and new_marital_status != old_marital_status:
+                    # Status changed (e.g. خاطب→متزوج) → sync spouse's status
+                    S._update_person_marital_fields(S.store, spouse_pid, new_marital_status, True, changed_by)
+            # ─────────────────────────────────────────────────────────────────
+
+            S.save()
+        return jsonify({"ok": True})
+
+    @app.get("/api/persons/spouse-candidates")
+    def get_spouse_candidates():
+        err = _require_auth()
+        if err:
+            return err
+        gender = S._normalize_text(request.args.get("gender", ""))
+        if not gender:
+            return jsonify({"error": "gender parameter required"}), 400
+        candidates = S.get_spouse_candidates(S.store, gender)
+        return jsonify({"candidates": candidates})
+
+    @app.get("/api/persons/<int:pid>/spouse")
+    def get_spouse(pid):
+        scope = profile_edit_scope("registered", pid)
+        if not scope:
+            return jsonify({"error": "unauthorized"}), 403
+        payload = _build_spouse_payload(S.store, pid)
+        return jsonify({"spouse": payload})
+
+    @app.post("/api/persons/<int:pid>/spouse")
+    def set_spouse(pid):
+        scope = profile_edit_scope("registered", pid)
+        if not scope:
+            return jsonify({"error": "unauthorized"}), 403
+        body = request.json or {}
+        spouse_pid_raw = S._normalize_text(str(body.get("spouse_person_id", "")))
+        if not spouse_pid_raw:
+            return jsonify({"error": "spouse_person_id required"}), 400
+        try:
+            spouse_pid = int(spouse_pid_raw)
+        except (TypeError, ValueError):
+            return jsonify({"error": "invalid spouse_person_id"}), 400
+        with S.lock:
+            # Verify spouse exists and is in eligible age group
+            persons_df = S._scd_filter_active(S.store.get("persons", pd.DataFrame()))
+            if persons_df[persons_df["person_id"] == spouse_pid].empty:
+                return jsonify({"error": "الشخص المحدد غير موجود"}), 404
+            # Must be opposite gender (checked on frontend but also enforce here)
+            my_row = persons_df[persons_df["person_id"] == pid]
+            spouse_row = persons_df[persons_df["person_id"] == spouse_pid]
+            if my_row.empty or spouse_row.empty:
+                return jsonify({"error": "person not found"}), 404
+            my_gender = S._normalize_text(my_row.iloc[0].get("gender"))
+            spouse_gender = S._normalize_text(spouse_row.iloc[0].get("gender"))
+            if my_gender == spouse_gender:
+                return jsonify({"error": "يجب أن يكون الشريك من الجنس الآخر"}), 400
+            # Determine the marital status to apply to both
+            my_marital = S._normalize_text(my_row.iloc[0].get(S.MARITAL_STATUS_COL))
+            if my_marital not in (S.MARITAL_STATUS_ENGAGED, S.MARITAL_STATUS_MARRIED):
+                my_marital = S.MARITAL_STATUS_ENGAGED
+            changed_by = _changed_by_from_current_user()
+            # Remove any existing link for pid first (so set_spouse_relationship starts clean)
+            existing = S.get_spouse_for_person(S.store, pid)
+            if existing:
+                old_sp = str(existing.get("spouse_person_id") or "").strip()
+                if old_sp:
+                    S._expire_spouse_link(S.store, pid, old_sp, changed_by)
+            S.set_spouse_relationship(S.store, pid, spouse_pid, my_marital, changed_by)
+            S.save()
+        return jsonify({"ok": True, "spouse": _build_spouse_payload(S.store, pid)})
+
+    @app.delete("/api/persons/<int:pid>/spouse")
+    def delete_spouse(pid):
+        scope = profile_edit_scope("registered", pid)
+        if not scope:
+            return jsonify({"error": "unauthorized"}), 403
+        with S.lock:
+            changed_by = _changed_by_from_current_user()
+            S.remove_spouse_relationship(S.store, pid, changed_by)
             S.save()
         return jsonify({"ok": True})
 
     @app.post("/api/person")
     def add_person():
-        body = request.json or {}
+        body = _strip_profile_title_for_non_admin(request.json or {})
         with S.lock:
             new_id = S._next_person_id()
             raw_person = body.get("person", {})
@@ -2222,19 +2142,13 @@ def register_registered_routes(app):
 
     @app.patch("/api/person/<int:pid>/archive")
     def archive_person(pid):
-        user = _current_user()
-        if not user:
-            return jsonify({"error": "unauthorized"}), 401
+        err = _require_admin()
+        if err:
+            return err
         body = request.json or {}
         youth_group_ids = _request_youth_group_ids(body)
         if not youth_group_ids:
             return jsonify({"error": "youth_group_id is required"}), 400
-        # Council members may archive from groups they manage
-        if user.get("role") != "admin":
-            council = user.get("council_access") or {}
-            for gid in youth_group_ids:
-                if gid not in council:
-                    return jsonify({"error": "forbidden — no council access to group"}), 403
 
         with S.lock:
             err = update_profile_membership_archive_state(
@@ -2321,40 +2235,13 @@ def _validate_promote_record(record):
     return errors
 
 
-def _council_and_descendants_ids(user: dict, person_type: str) -> set[str]:
-    """
-    Return the set of person_id strings of a given person_type that this
-    non-admin user can access via council access (age-group specific) or
-    org-tree descendant relationships.
-    """
-    accessible: set[str] = set()
-    pt = user.get("person_type")
-    pid = user.get("person_id")
-    username = user.get("username", "")
-    if not pt or pid is None:
-        return accessible
-    youth_groups     = _get_person_youth_groups(pt, pid)
-    computed_council = _get_council_access(pt, pid, youth_groups)
-    council          = PS.apply_overrides(username, computed_council)
-    for a in _get_council_accessible_persons(council):
-        if a.get("person_type") == person_type:
-            accessible.add(str(a["person_id"]).strip())
-    for d in _get_org_tree_descendants(pt, pid, youth_groups):
-        if d.get("person_type") == person_type:
-            accessible.add(str(d["person_id"]).strip())
-    return accessible
-
-
 def _filter_person_list(payload: list, user: dict, person_type: str = "registered") -> list:
     """Filter a list of person records to only those the user has access to."""
     if not payload:
         return []
     if user.get("role") == "admin":
         return payload
-    ids = _council_and_descendants_ids(user, person_type)
-    if not ids:
-        return []
-    return [r for r in payload if str(r.get("person_id", "")).strip() in ids]
+    return []
 
 
 def _filter_unreg_list(enriched: list, user: dict):
@@ -2696,7 +2583,7 @@ def register_unregistered_routes(app):
 
     @app.post("/api/unregistered")
     def add_unregistered():
-        body = request.json or {}
+        body = _strip_profile_title_for_non_admin(request.json or {})
         provided_uid = S._normalize_person_id(body.get("person_id"))
         new_uid = provided_uid if provided_uid not in (None, "") else S._next_person_id()
         with S.unreg_lock:
@@ -2814,28 +2701,6 @@ def register_unregistered_routes(app):
             return jsonify({"error": "unauthorized"}), 403
 
         body = request.json or {}
-        if scope == "location_only":
-            if set(body.keys()) - {"addresses"}:
-                return jsonify({"error": "forbidden"}), 403
-            try:
-                addresses_rows = build_location_only_address_rows(S.unreg_store, uid, body.get("addresses"), compare_as_string=True)
-            except ValueError:
-                return jsonify({"error": "invalid google maps location"}), 400
-
-            with S.unreg_lock:
-                changed_by = _changed_by_from_current_user()
-                replace_profile_sub_rows(S.unreg_store, uid, "addresses", addresses_rows, compare_as_string=True, changed_by=changed_by)
-                S._save_unreg_store()
-                record = build_profile_record(
-                    S.unregistered_persons_view_df(),
-                    S.unreg_store,
-                    uid,
-                    compare_as_string=True,
-                    photo_path_getter=S.get_unreg_photo_path,
-                    photo_url_template="/api/unregistered/{pid}/photo",
-                )
-            return jsonify({"ok": True, "record": record})
-
         with S.unreg_lock:
             persons_df = S.unreg_store.get("persons", pd.DataFrame())
             if persons_df.empty or "person_id" not in persons_df.columns:
@@ -2844,26 +2709,20 @@ def register_unregistered_routes(app):
             if idx.empty:
                 return jsonify({"error": "not found"}), 404
 
-            if scope in ("council", "self"):
-                user = _current_user()
-                council_group_ids = _get_user_council_group_ids(user) if scope == "council" else set()
-                body = dict(body)
-                if "person" in body and "title" in (body.get("person") or {}):
-                    body["person"] = {k: v for k, v in body["person"].items() if k != "title"}
-                if scope == "council" and "addresses" in body:
-                    body["addresses"] = _apply_address_location_restriction(
-                        body.get("addresses"), S.unreg_store, uid, compare_as_string=True
-                    )
+            body = _sanitize_profile_payload_for_edit_scope(
+                body,
+                scope,
+                S.unreg_store,
+                uid,
+                compare_as_string=True,
+            )
+            if scope != "full":
                 if "person_youth_group" in body:
                     body, membership_errors = _validate_membership_scope(
-                        body, S.unreg_store, uid, scope, council_group_ids, compare_as_string=True
+                        body, S.unreg_store, uid, compare_as_string=True
                     )
                     if membership_errors:
                         return _validation_error_response(membership_errors)
-                if scope == "council" and "responsibilities" in body:
-                    body = _filter_responsibilities_for_council(
-                        body, S.unreg_store, uid, council_group_ids, compare_as_string=True
-                    )
 
             raw_person = body.get("person", {})
             p, person_payload = prepare_profile_person_payload(
@@ -3239,6 +3098,91 @@ def register_unregistered_routes(app):
             if changed:
                 S._save_unreg_store()
         return jsonify({"ok": True, "created": created})
+
+
+_filters_lock = threading.Lock()
+
+
+def _compute_filters_payload():
+    persons = S._registered_persons_df()
+    pyg = S._sheet_for_registered("person_youth_group")
+    resp = S._sheet_for_registered("responsibilities")
+    nat = S._sheet_for_registered("nationality")
+    sch = S._sheet_for_registered("schools")
+    he = S._sheet_for_registered("higher_education")
+    jobs = S._sheet_for_registered("jobs")
+    hob = S._sheet_for_registered("hobbies_skills")
+
+    youth_group_counts = []
+    youth_group_count_map = {}
+    if not pyg.empty and S.YOUTH_GROUP_ID_COL in pyg.columns:
+        counts = (
+            pyg[["person_id", S.YOUTH_GROUP_ID_COL]]
+            .dropna(subset=[S.YOUTH_GROUP_ID_COL])
+            .drop_duplicates()
+            .groupby(S.YOUTH_GROUP_ID_COL)["person_id"].count()
+        )
+        youth_group_count_map = {
+            str(gid): int(count)
+            for gid, count in counts.items()
+            if str(gid).strip()
+        }
+
+    seen_youth_group_ids = set()
+    for option in S.youth_group_options():
+        group_id = str(option.get("value") or "").strip()
+        if not group_id:
+            continue
+        seen_youth_group_ids.add(group_id)
+        youth_group_counts.append({
+            "value": group_id,
+            "label": S.youth_group_display_label(group_id) or str(option.get("label") or ""),
+            "count": youth_group_count_map.get(group_id, 0),
+        })
+
+    for group_id, count in youth_group_count_map.items():
+        if group_id in seen_youth_group_ids:
+            continue
+        youth_group_counts.append({
+            "value": group_id,
+            "label": S.youth_group_display_label(group_id),
+            "count": count,
+        })
+
+    youth_group_counts.sort(key=lambda item: (-int(item.get("count") or 0), str(item.get("label") or item.get("value") or "")))
+
+    return {
+        "ar_first_name": S.value_counts_json(persons["ar_first_name"]),
+        "ar_second_name": S.value_counts_json(persons["ar_second_name"]),
+        "ar_third_name": S.value_counts_json(persons["ar_third_name"]),
+        "ar_last_name": S.value_counts_json(persons["ar_last_name"]),
+        "en_first_name": S.value_counts_json(persons["en_first_name"]),
+        "en_second_name": S.value_counts_json(persons["en_second_name"]),
+        "en_third_name": S.value_counts_json(persons["en_third_name"]),
+        "en_last_name": S.value_counts_json(persons["en_last_name"]),
+        "mother_ar_first_name": S.value_counts_json(persons["mother_ar_first_name"]),
+        "mother_ar_second_name": S.value_counts_json(persons["mother_ar_second_name"]),
+        "mother_ar_last_name": S.value_counts_json(persons["mother_ar_last_name"]),
+        "mother_en_first_name": S.value_counts_json(persons["mother_en_first_name"]),
+        "mother_en_second_name": S.value_counts_json(persons["mother_en_second_name"]),
+        "mother_en_last_name": S.value_counts_json(persons["mother_en_last_name"]),
+        "gender": S.value_counts_json(persons["gender"]),
+        "school_system": S.value_counts_json(persons["school_system"]),
+        "governorate": S.value_counts_json(persons["governorate"]),
+        "birth_year": S.value_counts_json(persons["birth_year"].astype(str)),
+        "nationality": S.pid_counts(nat, "nationality"),
+        "youth_group": youth_group_counts,
+        "age_group": S.pid_counts(pyg, "age_group"),
+        "youth_join_year": S.pid_counts(pyg, "youth_join_year"),
+        "responsibility": S.pid_counts(resp, "responsibility_name"),
+        "school": S.pid_counts(sch, S.SCHOOL_NAME_COL),
+        "university": S.pid_counts(he, S.HIGHER_EDUCATION_INSTITUTION_COL),
+        "major": S.pid_counts(he, "major"),
+        "degree": S.pid_counts(he, "degree"),
+        "job_title": S.pid_counts(jobs, "job_title"),
+        "company": S.pid_counts(jobs, S.EMPLOYER_NAME_COL),
+        "hobby_skill": S.pid_counts(hob, "hobby_skill"),
+    }
 
 
 def register_person_routes(app):

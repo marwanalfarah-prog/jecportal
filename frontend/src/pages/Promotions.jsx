@@ -229,7 +229,7 @@ function AdultDataModal({ onConfirm, onCancel, youthGroup }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function Promotions({ councilAccess, currentUser, onSelectPerson, toast }) {
+export default function Promotions({ currentUser, onSelectPerson, toast, isAdmin = true }) {
   const [promotions,   setPromotions] = useState([])
   const [loading,      setLoading]    = useState(true)
   const [loadError,    setLoadError]  = useState('')
@@ -257,10 +257,8 @@ export default function Promotions({ councilAccess, currentUser, onSelectPerson,
   const resolveGroupLabel = useCallback((groupRef) => {
     const text = String(groupRef || '').trim()
     if (!text) return '—'
-    const info = (councilAccess || {})[text]
-    if (info?.group_name && !api.isRawYouthGroupIdentifier(info.group_name)) return info.group_name
     return api.formatYouthGroupLabel(text) || api.genericYouthGroupLabel
-  }, [councilAccess])
+  }, [])
 
   const reloadPromotions = useCallback(() => {
     setPromoLoad(true)
@@ -327,7 +325,7 @@ export default function Promotions({ councilAccess, currentUser, onSelectPerson,
   return (
     <div>
 
-      {/* Header — group access cards + pending count */}
+      {/* Header — pending count */}
       <div style={{ display:'flex', gap:12, marginBottom:20, flexWrap:'wrap' }}>
         {pendingCount > 0 && (
           <div style={{
@@ -339,28 +337,6 @@ export default function Promotions({ councilAccess, currentUser, onSelectPerson,
             <div style={{ fontSize:'0.78rem', color:'#b45309', marginTop:2 }}>ترفيعات بانتظار الموافقة</div>
           </div>
         )}
-        {Object.entries(councilAccess || {}).map(([yg, info]) => (
-          <div key={yg} style={{
-            background:'white', borderRadius:12, padding:'14px 20px',
-            border:`1px solid ${info.full_group ? '#fde68a' : '#e2e6ef'}`,
-            boxShadow:'0 1px 4px rgba(15,39,68,0.06)', flex:'2 1 200px',
-          }}>
-            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
-              <div style={{ fontSize:'0.8rem', fontWeight:700, color:'#0f2744' }}>
-                {resolveGroupLabel(info.group_name || yg)}
-              </div>
-              {info.full_group && (
-                <span style={{ fontSize:'0.68rem', fontWeight:700, padding:'1px 8px', borderRadius:20,
-                  background:'#fffbeb', color:'#92400e', border:'1px solid #fde68a' }}>
-                  صلاحية كاملة
-                </span>
-              )}
-            </div>
-            <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
-              {(info.age_groups || []).map(ag => <AgeBadge key={ag} group={ag}/>)}
-            </div>
-          </div>
-        ))}
       </div>
 
       {/* Age group ranges reference */}
@@ -439,7 +415,7 @@ export default function Promotions({ councilAccess, currentUser, onSelectPerson,
                   <Avatar pid={pr.person_id} isUnreg={pr.person_type === 'unregistered'} name={pr.display_name}/>
                   <div>
                     <div style={{ fontWeight:700, color:'#1a2a3a', fontSize:'0.95rem' }}>
-                      {pr.display_name || `#${pr.person_id}`}
+                      {pr.display_name || '—'}
                     </div>
                     <div style={{ fontSize:'0.76rem', color:'#9ba5bc', marginTop:2 }}>
                       سنة الميلاد: <span style={{ fontFamily:'monospace', fontWeight:600 }}>{pr.birth_year || '—'}</span>

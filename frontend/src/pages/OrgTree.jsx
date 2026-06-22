@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { api } from '../api.js'
 import { ErrorState, LoadingState } from '../pageStates.jsx'
+import { formatArabicBasePersonName, formatArabicPersonName, getArabicPersonNameParts } from '../personName.js'
 
 // ── Arabic normalization ───────────────────────────────────────────────────────
 function normalizeWord(w) {
@@ -1444,7 +1445,7 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
         )
       : allPersons
     const regResults = pool.filter(p => {
-      const parts = [p.ar_first_name, p.ar_second_name, p.ar_third_name, p.ar_last_name].filter(Boolean).map(normalizeArabic)
+      const parts = getArabicPersonNameParts(p, { normalizer: normalizeArabic })
       return nameMatchesQuery(parts, qWordGroups)
     }).slice(0, 6).map(p => ({ ...p, _source: 'registered' }))
 
@@ -1456,7 +1457,7 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
         )
       : (allUnregistered || [])
     const unregResults = unregPool.filter(u => {
-      const parts = [u.ar_first_name, u.ar_second_name, u.ar_third_name, u.ar_last_name].filter(Boolean).map(normalizeArabic)
+      const parts = getArabicPersonNameParts(u, { normalizer: normalizeArabic })
       return nameMatchesQuery(parts, qWordGroups)
     }).slice(0, 4).map(u => ({ ...u, _source: 'unregistered' }))
 
@@ -1464,7 +1465,7 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
   }
 
   const pickPerson = (p) => {
-    const base = [p.ar_first_name, p.ar_second_name, p.ar_third_name, p.ar_last_name].filter(Boolean).join(' ')
+    const base = formatArabicBasePersonName(p)
     const pickedTitle = String(p.title || '').trim()
     const nextPersonType = pickedTitle ? 'مكرّس' : 'علماني'
     const nextLaqab = pickedTitle
@@ -1478,7 +1479,7 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
 
   const pickUnregistered = (u) => {
     // u is an enriched unregistered record: { person_id, ar_first_name, ar_last_name, title, _photo, ... }
-    const base = [u.ar_first_name, u.ar_second_name, u.ar_third_name, u.ar_last_name].filter(Boolean).join(' ')
+    const base = formatArabicBasePersonName(u)
     const uLaqab = u.title || ''
     const uType = uLaqab ? 'مكرّس' : 'علماني'
     setBaseName(base); setPersonType(uType); setLaqab(uLaqab)
@@ -1695,7 +1696,7 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
               {results.map((p, idx) => {
                 const isUnreg = p._source === 'unregistered'
                 // Both registered and unregistered now use same name fields
-                const name = [p.ar_first_name, p.ar_second_name, p.ar_third_name, p.ar_last_name].filter(Boolean).join(' ') || 'بدون اسم'
+                const name = formatArabicPersonName(p, { fallback: 'بدون اسم' })
                 const photo = p._photo || null
                 return (
                   <div key={isUnreg ? `u-${p.person_id}` : p.person_id}
@@ -1735,7 +1736,7 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
             // Check if an unregistered person with this name already exists
             const norm = normalizeArabic(newBase.trim())
             const existing = norm ? (allUnregistered || []).find(u => {
-              const uBase = [u.ar_first_name, u.ar_second_name, u.ar_third_name, u.ar_last_name].filter(Boolean).join(' ')
+              const uBase = formatArabicBasePersonName(u)
               return normalizeArabic(uBase.trim()) === norm
             }) : null
             if (existing) {
@@ -2409,7 +2410,7 @@ function buildHullPath(pts) {
   return { d, top }
 }
 
-export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onViewUnregisteredProfile, viewOnly = false, allowedGroups = null }) {
+export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onViewUnregisteredProfile, viewOnly = false, allowedGroups = null, myActiveGroups = null }) {
   const [groups, setGroups]           = useState([])
   const [selectedGroup, setGroup]     = useState('')
   const [nodes, setNodes]             = useState([])
@@ -2629,7 +2630,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
       const norm = normalizeArabic(rawName)
       if (!norm) return
       const match = latestUnreg.find(u => {
-        const uBase = [u.ar_first_name, u.ar_second_name, u.ar_third_name, u.ar_last_name].filter(Boolean).join(' ')
+        const uBase = formatArabicBasePersonName(u)
         return normalizeArabic(uBase.trim()) === norm
       })
       if (match) {
@@ -3202,7 +3203,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
     return !groupSearch || normalizeArabic(label).includes(normalizeArabic(groupSearch))
   })
 
-  // Auto-select if member has only one group
+  // Auto-select if allowedGroups restricts to exactly one group
   useEffect(() => {
     if (allowedGroups && allowedGroups.length === 1 && !selectedGroup) {
       setGroup(allowedGroups[0])
@@ -3212,6 +3213,40 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
 
   // ── Group selector screen ──────────────────────────────────────────────────
   if (!selectedGroup) {
+    const myGroupSet = new Set(myActiveGroups || [])
+    const myFilteredGroups = filteredGroups.filter(g => myGroupSet.has(g.value))
+    const otherFilteredGroups = filteredGroups.filter(g => !myGroupSet.has(g.value))
+    const hasMyGroups = myFilteredGroups.length > 0
+
+    const renderGroupRow = (g, isMine) => (
+      <div key={g.value} onClick={() => setGroup(g.value)}
+        style={{
+          padding:'14px 20px', cursor:'pointer', borderBottom:'1px solid var(--gray-100)',
+          display:'flex', alignItems:'center', justifyContent:'space-between', transition:'background 0.15s',
+          background: isMine ? '#f0f5ff' : 'white',
+        }}
+        onMouseEnter={e=>e.currentTarget.style.background= isMine ? '#e4eeff' : 'var(--gray-50)'}
+        onMouseLeave={e=>e.currentTarget.style.background= isMine ? '#f0f5ff' : 'white'}>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          {isMine && (
+            <span style={{ width:8, height:8, borderRadius:'50%', background:'var(--navy)', flexShrink:0, display:'inline-block' }}/>
+          )}
+          <div>
+            <div style={{ fontWeight:700, color:'var(--navy)', fontSize:'0.95rem' }}>{g.label || api.formatYouthGroupLabel(g.value)}</div>
+            <div style={{ fontSize:'0.78rem', color: isMine ? 'var(--navy)' : 'var(--gray-400)', marginTop:2, opacity: isMine ? 0.6 : 1 }}>{g.count} عضو</div>
+          </div>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          {isMine && (
+            <span style={{ fontSize:'0.7rem', fontWeight:700, color:'var(--navy)', background:'rgba(15,39,68,0.1)', padding:'2px 8px', borderRadius:20 }}>
+              عضويتي
+            </span>
+          )}
+          <ArrowRight size={16} style={{ color:'var(--gray-300)', transform:'rotate(180deg)' }}/>
+        </div>
+      </div>
+    )
+
     return (
       <div>
         <div style={{ maxWidth: 540, margin: '60px auto 0', textAlign: 'center' }}>
@@ -3219,7 +3254,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
             <GitBranch size={32} color="var(--gold)" />
           </div>
           <h2 style={{ fontFamily:'var(--font-head)', color:'var(--navy)', fontSize:'1.6rem', marginBottom:8 }}>الهيكل التنظيمي</h2>
-          <p style={{ color:'var(--gray-500)', marginBottom:32, fontSize:'0.95rem' }}>اختر فرقة الشبيبة لعرض هيكلها التنظيمي أو إنشائه</p>
+          <p style={{ color:'var(--gray-500)', marginBottom:32, fontSize:'0.95rem' }}>اختر فرقة الشبيبة لعرض هيكلها التنظيمي</p>
 
           <div style={{ position:'relative', marginBottom:12 }}>
             <Search size={16} style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)', color:'var(--gray-400)' }}/>
@@ -3228,25 +3263,27 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
             />
           </div>
 
-          <div style={{ maxHeight:360, overflowY:'auto', border:'1px solid var(--gray-200)', borderRadius:'var(--radius-lg)', background:'white', boxShadow:'var(--shadow-sm)' }}>
+          <div style={{ maxHeight:420, overflowY:'auto', border:'1px solid var(--gray-200)', borderRadius:'var(--radius-lg)', background:'white', boxShadow:'var(--shadow-sm)' }}>
             {loadingGroups
               ? <div style={{ padding: 32, display: 'flex', justifyContent: 'center' }}><div className="spinner" /></div>
               : filteredGroups.length === 0
                 ? <div style={{ padding: 32, color: 'var(--gray-400)', fontSize: '0.9rem' }}>لا توجد مجموعات</div>
                 : null
             }
-            {filteredGroups.map(g => (
-              <div key={g.value} onClick={() => setGroup(g.value)}
-                style={{ padding:'14px 20px', cursor:'pointer', borderBottom:'1px solid var(--gray-100)', display:'flex', alignItems:'center', justifyContent:'space-between', transition:'background 0.15s' }}
-                onMouseEnter={e=>e.currentTarget.style.background='var(--gray-50)'}
-                onMouseLeave={e=>e.currentTarget.style.background='white'}>
-                <div>
-                  <div style={{ fontWeight:700, color:'var(--navy)', fontSize:'0.95rem' }}>{g.label || api.formatYouthGroupLabel(g.value)}</div>
-                  <div style={{ fontSize:'0.78rem', color:'var(--gray-400)', marginTop:2 }}>{g.count} عضو</div>
+            {hasMyGroups && (
+              <>
+                <div style={{ padding:'8px 20px', background:'var(--navy)', display:'flex', alignItems:'center', gap:8 }}>
+                  <span style={{ fontSize:'0.72rem', fontWeight:800, color:'rgba(255,255,255,0.7)', letterSpacing:'0.5px' }}>فرقي</span>
                 </div>
-                <ArrowRight size={16} style={{ color:'var(--gray-300)', transform:'rotate(180deg)' }}/>
-              </div>
-            ))}
+                {myFilteredGroups.map(g => renderGroupRow(g, true))}
+                {otherFilteredGroups.length > 0 && (
+                  <div style={{ padding:'8px 20px', background:'var(--gray-50)', borderTop:'1px solid var(--gray-100)' }}>
+                    <span style={{ fontSize:'0.72rem', fontWeight:800, color:'var(--gray-400)', letterSpacing:'0.5px' }}>جميع الفرق</span>
+                  </div>
+                )}
+              </>
+            )}
+            {otherFilteredGroups.map(g => renderGroupRow(g, false))}
           </div>
         </div>
       </div>

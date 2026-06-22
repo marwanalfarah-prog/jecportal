@@ -11,7 +11,6 @@ import {
   getNavItems,
   getAllowedPages,
   getAdminAllowedUrlPages,
-  hasAnyProfileAccess,
 } from './permissions.js'
 import { LoadingState } from './pageStates.jsx'
 import { buildMottoBibleReaderTarget, formatMottoTextWithSource } from './mottoBibleReference.js'
@@ -78,7 +77,6 @@ const ROUTE_LOADING_TITLES = {
   my_questions: 'جارٍ تحميل استبياناتي',
   promotions: 'جارٍ تحميل الترفيعات',
   requests: 'جارٍ تحميل الطلبات',
-  privileges: 'جارٍ تحميل مدير الصلاحيات',
 }
 
 function RouteLoader({ page, minHeight = 320, description = 'يتم تجهيز مكونات الصفحة الآن.' }) {
@@ -136,6 +134,23 @@ class ProfileRouteErrorBoundary extends Component {
   }
 }
 
+function _normalizeWord(word) {
+  word = String(word)
+  word = word.replace(/[ؗ-ًؚ-ْ]/g, '')
+  word = word.replace(/ـ/g, '')
+  word = word.replace(/[إأآا]/g, 'ا')
+  word = word.replace(/[يى]/g, 'ي')
+  word = word.replace(/ؤ/g, 'و')
+  word = word.replace(/ئ/g, 'ي')
+  word = word.replace(/ة/g, 'ه')
+  word = word.replace(/^ال/, '')
+  return word.toLowerCase().trim()
+}
+function normalizeArabic(text) {
+  if (!text) return ''
+  return String(text).replace(/\s+/g, ' ').trim().split(' ').map(_normalizeWord).join(' ')
+}
+
 // ── ViewAsPicker Modal ────────────────────────────────────────────────────────
 function ViewAsPicker({ currentAdminUser, onSelect, onClose }) {
   const [users,   setUsers]   = useState([])
@@ -151,12 +166,11 @@ function ViewAsPicker({ currentAdminUser, onSelect, onClose }) {
   // Only show member users (not other admins, not the admin themselves)
   const filtered = users.filter(u => {
     if (u.username === currentAdminUser.username) return false
-    const q = search.trim().toLowerCase()
+    const q = normalizeArabic(search)
     if (!q) return true
-    return (
-      (u.username || '').toLowerCase().includes(q) ||
-      (u.display_name || '').toLowerCase().includes(q)
-    )
+    const name = normalizeArabic(u.display_name || u.username || '')
+    return q.split(' ').filter(Boolean).every(w => name.includes(w)) ||
+      (u.username || '').toLowerCase().includes(search.trim().toLowerCase())
   })
 
   const roleLabel = u => {
@@ -165,26 +179,7 @@ function ViewAsPicker({ currentAdminUser, onSelect, onClose }) {
   }
 
   const handleSelect = async (u) => {
-    // We need to enrich the user with youth_groups and council_access
-    // Reuse /auth/me logic by fetching enriched user data from listUsers
-    // The listUsers endpoint strips passwords but keeps person_id, person_type, role etc.
-    // We need youth_groups — fetch from personsEnriched or construct from the user record
-    // The simplest approach: call a dedicated endpoint. Instead, we build the user object
-    // from what we have (listUsers already returns person_id, person_type, role, display_name)
-    // and fetch enrichment via a workaround: read /auth/me won't work since we're admin.
-    // So we pass the raw user and let App.jsx fetch youth_groups & council_access via
-    // the already-existing api.councilMembers or by calling api.me impersonation.
-    // Best approach: the backend already computes council_access in /auth/me.
-    // Since we can't change sessions, we'll compute council_access client-side
-    // by fetching persons enriched and matching. For now pass u as-is and use
-    // a lightweight enrichment call.
-
-    // Fetch the full user object enriched with youth_groups/council_access
-    // by calling a new backend endpoint — but we don't want to change the backend.
-    // The listUsers endpoint returns the raw user record. We add youth_groups
-    // by matching person_id in personsEnriched. council_access is complex.
-    // Simplest correct solution: call the enriched endpoint.
-    onSelect({ ...u, council_access: u.council_access || {}, youth_groups: u.youth_groups || [] })
+    onSelect({ ...u, youth_groups: u.youth_groups || [] })
   }
 
   return (
@@ -269,7 +264,6 @@ function ViewAsPicker({ currentAdminUser, onSelect, onClose }) {
                     </div>
                     <div style={{ fontSize: '0.75rem', color: '#9ba5bc', marginTop: 1 }}>
                       @{u.username}
-                      {u.person_id && <span style={{ marginRight: 8, color: '#b0bac9' }}>· ID: {u.person_id}</span>}
                     </div>
                   </div>
                   {/* Role badge */}
@@ -555,8 +549,8 @@ const PAGE_PATHS = {
   calendar:             '/calendar',
   promotions:           '/promotions',
   requests:             '/requests',
-  add_member:           '/add-member',
   privileges:           '/privileges',
+  add_member:           '/add-member',
 }
 
 const PATH_PAGES = Object.fromEntries(
@@ -613,7 +607,8 @@ export default function App() {
   const [isUnregistered, setIsUnreg]    = useState(() => parseRoute(window.location.pathname).unreg)
   const [orgContext, setOrgContext]      = useState(null)
   const [profileReturnPage, setProfileReturnPage] = useState('members')
-  const [viewAsUser, setViewAsUser]       = useState(null)   // { username, display_name, role, person_id, person_type, youth_groups, council_access, ... }
+  const [viewAsUser, setViewAsUser]       = useState(null)   // { username, display_name, role, person_id, person_type, youth_groups, ... }
+  const [memberAccess, setMemberAccess]   = useState(null)   // { profile_access: [person_id, ...] } — null means not yet fetched
   const [showViewAsPicker, setShowViewAsPicker] = useState(false)
   const [showCredentialsModal, setShowCredentialsModal] = useState(false)
   const [credUsername, setCredUsername] = useState('')
@@ -643,6 +638,7 @@ export default function App() {
         setPage('profile')
         setProfileReturnPage('orgtree')
         replaceRoute('profile', user.person_id, user.person_type === 'unregistered')
+        api.getMyAccess().then(setMemberAccess).catch(() => setMemberAccess({ profile_access: [] }))
       } else if (user?.role === 'admin' && !user?.is_pending) {
         const { page: urlPage } = parseRoute(window.location.pathname)
         const adminAllowed = getAdminAllowedUrlPages()
@@ -652,6 +648,21 @@ export default function App() {
         }
       }
     }).catch(() => setAuthUser(null))
+  }, [])
+
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      setAuthUser(prev => {
+        if (!prev) return prev
+        setMemberAccess(null)
+        setPage('login')
+        setSelected(null)
+        replaceRoute('login')
+        return null
+      })
+    }
+    window.addEventListener('api:session-expired', handleSessionExpired)
+    return () => window.removeEventListener('api:session-expired', handleSessionExpired)
   }, [])
 
   useEffect(() => {
@@ -706,6 +717,7 @@ export default function App() {
         setProfileReturnPage('orgtree')
       })
       replaceRoute('profile', user.person_id, user.person_type === 'unregistered')
+      api.getMyAccess().then(setMemberAccess).catch(() => setMemberAccess({ profile_access: [] }))
     } else {
       preloadRoute('dashboard')
       startTransition(() => { setPage('dashboard') })
@@ -720,6 +732,7 @@ export default function App() {
     await api.logout()
     setProfileHasUnsavedChanges(false)
     setAuthUser(null)
+    setMemberAccess(null)
     setPage('login')
     setSelected(null)
     replaceRoute('login')
@@ -779,8 +792,8 @@ export default function App() {
 
   // When impersonating, use the viewAsUser as effective context (read-only for everything)
   // All permission logic is centralised in permissions.js — do not add inline checks here.
-  const perms = computePermissions(authUser, viewAsUser)
-  const { effectiveUser, isAdmin, isMember, isPendingUser, councilAccess, isCouncil } = perms
+  const perms = computePermissions(authUser, viewAsUser, memberAccess)
+  const { effectiveUser, isAdmin, isMember, isPendingUser } = perms
   const memberYouthGroups = [...new Set((effectiveUser?.youth_groups || []).filter(Boolean))]
   const memberYouthGroupsKey = memberYouthGroups.join('|')
 
@@ -821,6 +834,7 @@ export default function App() {
   })
 
   useEffect(() => {
+    if (!authUser) return
     api.filters()
       .then((f) => {
         const map = {}
@@ -832,7 +846,7 @@ export default function App() {
         setYouthGroupLabels(map)
       })
       .catch(() => {})
-  }, [])
+  }, [authUser])
 
   useEffect(() => {
     if (!isMember) {
@@ -923,9 +937,7 @@ export default function App() {
 
   const goBack = ({ skipUnsavedPrompt = false } = {}) => {
     if (!confirmLeavingDirtyProfile({ skipUnsavedPrompt })) return
-    const targetPage = isMember
-      ? (profileReturnPage === 'promotions' ? 'promotions' : 'orgtree')
-      : profileReturnPage
+    const targetPage = isMember ? 'orgtree' : profileReturnPage
     preloadRoute(targetPage)
     startTransition(() => {
       setSelected(null)
@@ -1002,9 +1014,6 @@ export default function App() {
     const handler = () => {
       if (!authUser) return
       const { page: newPage, pid, unreg } = parseRoute(window.location.pathname)
-      const isAdminNow = authUser.role === 'admin' && !viewAsUser
-      const adminAllowed = ['dashboard', 'members', 'orgtree', 'general_secretariat', 'users', 'questionnaires', 'youth_groups', 'churches_map', 'bible_reader', 'config', 'requests', 'add_member']
-      const memberAllowed = ['profile', 'orgtree', 'general_secretariat', 'promotions', 'churches_map', 'bible_reader', 'my_questions', 'requests', 'add_member']
       if (newPage === 'profile') {
         startTransition(() => {
           if (pid) setSelected(pid)
@@ -1013,7 +1022,8 @@ export default function App() {
         })
         return
       }
-      const allowed = isAdminNow ? adminAllowed : memberAllowed
+      const permsNow = computePermissions(authUser, viewAsUser, memberAccess)
+      const allowed = getAllowedPages(permsNow)
       if (newPage && allowed.includes(newPage)) {
         startTransition(() => {
           setPage(newPage)
@@ -1022,7 +1032,7 @@ export default function App() {
           setIsUnreg(false)
         })
       } else {
-        const defaultPage = isAdminNow ? 'dashboard' : 'profile'
+        const defaultPage = permsNow.isAdmin ? 'dashboard' : 'profile'
         window.history.replaceState(null, '', pageToPath(defaultPage))
         startTransition(() => setPage(defaultPage))
       }
@@ -1081,7 +1091,7 @@ export default function App() {
       <Registration
         onComplete={() => {
           exitAddMember()
-          toast('تم إرسال طلب التسجيل بنجاح! سيتلقى مراجعة الإدارة قريباً', 'success')
+          toast('تم إرسال طلب التسجيل بنجاح! سيتلقى مراجعة الفريق قريباً', 'success')
         }}
         onBack={exitAddMember}
         loggedInUser={authUser}
@@ -1161,27 +1171,6 @@ export default function App() {
             </>
           )}
 
-          {/* Council access badge */}
-          {isCouncil && (
-            <div className="sidebar-council-card" style={{
-              margin: '16px 8px 0', padding: '10px 12px',
-              background: 'rgba(201,150,60,0.15)', borderRadius: 10,
-              border: '1px solid rgba(201,150,60,0.3)',
-            }}>
-              <div style={{ color: '#e8b55a', fontSize: '0.72rem', fontWeight: 700, marginBottom: 4 }}>
-                صلاحية مجلس الفئة
-              </div>
-              {Object.entries(councilAccess).map(([grp, info]) => (
-                <div key={grp} style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.6)', lineHeight: 1.8 }}>
-                  <span style={{ color: '#ffffff', opacity: 0.9 }}>{displayYouthGroupName(info.group_name, grp)}: </span>
-                  {info.full_group
-                    ? <span style={{ color: '#e8b55a', fontWeight: 700 }}>جميع الأعضاء</span>
-                    : (info.age_groups || []).join(' · ')
-                  }
-                </div>
-              ))}
-            </div>
-          )}
         </nav>
 
         {/* User info + logout */}
@@ -1206,7 +1195,7 @@ export default function App() {
                 </div>
               ) : (
                 <div style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.72rem' }}>
-                  {isAdmin ? 'مدير النظام' : isCouncil ? 'عضو مجلس' : 'عضو'}
+                  {isAdmin ? 'مدير النظام' : 'عضو'}
                 </div>
               )}
             </div>
@@ -1351,12 +1340,13 @@ export default function App() {
           <Suspense fallback={<RouteLoader page={page} />}>
             {isAdmin && page === 'dashboard' && <Dashboard onOpenBibleReference={openBibleReaderReference} />}
 
-            {hasAnyProfileAccess(perms, effectiveUser) && page === 'members' && (
+            {(isAdmin || (isMember && (perms.profileAccessIds?.size > 0 || perms.profileAccessUnregIds?.size > 0))) && page === 'members' && (
               <Members
                 onSelectPerson={pid => goProfile(pid, null, false, 'members')}
                 onSelectUnregistered={uid => goProfile(uid, null, true, 'members')}
                 toast={toast}
-                currentUser={isAdmin ? null : effectiveUser}
+                restrictedToPersonIds={isMember ? perms.profileAccessIds : null}
+                restrictedToUnregIds={isMember ? perms.profileAccessUnregIds : null}
               />
             )}
 
@@ -1372,8 +1362,8 @@ export default function App() {
                   onPromoted={(newPid) => handlePromoted(newPid, { skipUnsavedPrompt: true })}
                   onUnsavedChangesChange={setProfileHasUnsavedChanges}
                   currentUser={effectiveUser}
-                  // Council members or impersonating admin viewing others → read-only
-                  readOnly={!!(viewAsUser) || (isMember && String(selectedPid) !== String(effectiveUser?.person_id))}
+                  // Impersonation or inaccessible member profile -> read-only
+                  readOnly={!!(viewAsUser) || (isMember && !canViewProfile(selectedPid, isUnregistered))}
                 />
               </ProfileRouteErrorBoundary>
             )}
@@ -1387,15 +1377,16 @@ export default function App() {
                   goProfile(uid, null, true, 'orgtree')
                 }}
                 viewOnly={isMember}
+                myActiveGroups={isMember ? memberYouthGroups : null}
               />
             )}
 
-            {isCouncil && page === 'promotions' && (
+            {(isAdmin || perms.hasPromotionAccess) && page === 'promotions' && (
               <Promotions
-                councilAccess={councilAccess}
                 currentUser={effectiveUser}
-                onSelectPerson={pid => goProfile(pid, null, false, 'promotions')}
+                onSelectPerson={isAdmin ? (pid => goProfile(pid, null, false, 'promotions')) : null}
                 toast={toast}
+                isAdmin={isAdmin}
               />
             )}
 
@@ -1412,14 +1403,15 @@ export default function App() {
 
             {isAdmin && page === 'users' && <UserManagement toast={toast}/>}
 
-            {isAdmin && page === 'privileges' && <PrivilegeManager toast={toast}/>}
-
             {isAdmin && page === 'questionnaires' && (
               <Questionnaire toast={toast} />
             )}
 
-            {isAdmin && page === 'youth_groups' && (
-              <YouthGroupAdmin toast={toast} />
+            {(isAdmin || perms.hasYgFileAccess) && page === 'youth_groups' && (
+              <YouthGroupAdmin
+                toast={toast}
+                restrictedGroupIds={isAdmin ? null : perms.ygFileAccessGroupIds}
+              />
             )}
 
             {page === 'churches_map' && (
@@ -1434,6 +1426,10 @@ export default function App() {
 
             {page === 'bible_reader' && (
               <BibleReader toast={toast} externalTarget={bibleReaderTarget} />
+            )}
+
+            {isAdmin && page === 'privileges' && (
+              <PrivilegeManager toast={toast} />
             )}
 
             {isAdmin && page === 'config' && (
@@ -1452,6 +1448,7 @@ export default function App() {
                 currentUser={effectiveUser}
                 toast={toast}
                 onViewProfile={(pid) => goProfile(pid, null, false, 'requests')}
+                hasYgApprovalAccess={perms.hasYgApprovalAccess}
               />
             )}
           </Suspense>
