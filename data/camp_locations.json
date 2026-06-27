@@ -1,0 +1,643 @@
+{
+  "locations": [
+    {
+      "id": "CAMPLOC000001",
+      "name": "مركز سيدة السلام - كنيسة  الراعي الصالح - طريق المطار",
+      "buildings": [
+        {
+          "id": "CAMPBLD000001",
+          "name": "مبنى المنامات",
+          "maps_url": "https://www.google.com/maps/place/Our+Lady+of+Peace+Center+%D9%85%D8%B1%D9%83%D8%B2+%D8%B3%D9%8A%D8%AF%D8%A9+%D8%A7%D9%84%D8%B3%D9%84%D8%A7%D9%85%E2%80%AD/@31.8697996,35.8606058,17z/data=!3m1!4b1!4m6!3m5!1s0x151ca649faade6b7:0x47073ea242f60843!8m2!3d31.8697996!4d35.8631807!16s%2Fg%2F1hf4m_y27?entry=ttu&g_ep=EgoyMDI2MDYxNi4wIKXMDSoASAFQAw%3D%3D",
+          "floors": [
+            {
+              "id": "CAMPFLR000001",
+              "name": "الطابق الثاني",
+              "floor_plan_image": true,
+              "rooms": [
+                {
+                  "id": "CAMPRM000001",
+                  "name": "201",
+                  "capacity": 4,
+                  "features": [
+                    "حمام",
+                    "مكيف"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:17:50.268913",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 4
+                    }
+                  ],
+                  "updated_at": "2026-06-27T13:24:58.500261"
+                },
+                {
+                  "id": "CAMPRM000002",
+                  "name": "204",
+                  "bed_count": 4,
+                  "bed_type": "سرير طابقي",
+                  "capacity": 8,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:18:32.667638"
+                },
+                {
+                  "id": "CAMPRM000003",
+                  "name": "205",
+                  "beds": [
+                    {
+                      "type": "سرير طابقي",
+                      "count": 3
+                    },
+                    {
+                      "type": "سرير فردي",
+                      "count": 1
+                    }
+                  ],
+                  "capacity": 7,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:23:33.711502"
+                },
+                {
+                  "id": "CAMPRM000004",
+                  "name": "206",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 5
+                    }
+                  ],
+                  "capacity": 5,
+                  "features": [
+                    "حمام",
+                    "مكيف"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:24:18.403431",
+                  "updated_at": "2026-06-27T13:25:03.227384"
+                },
+                {
+                  "id": "CAMPRM000005",
+                  "name": "207",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 2
+                    }
+                  ],
+                  "capacity": 2,
+                  "features": [
+                    "حمام",
+                    "مكيف"
+                  ],
+                  "is_vip": true,
+                  "created_at": "2026-06-27T13:25:37.017457"
+                },
+                {
+                  "id": "CAMPRM000006",
+                  "name": "208",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 2
+                    }
+                  ],
+                  "capacity": 2,
+                  "features": [
+                    "حمام",
+                    "مكيف"
+                  ],
+                  "is_vip": true,
+                  "created_at": "2026-06-27T13:25:50.531363",
+                  "updated_at": "2026-06-27T13:28:42.673009"
+                },
+                {
+                  "id": "CAMPRM000007",
+                  "name": "209",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 4
+                    }
+                  ],
+                  "capacity": 4,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:26:09.082728"
+                },
+                {
+                  "id": "CAMPRM000008",
+                  "name": "210",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 4
+                    }
+                  ],
+                  "capacity": 4,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:26:22.317149",
+                  "updated_at": "2026-06-27T13:26:31.766852"
+                },
+                {
+                  "id": "CAMPRM000009",
+                  "name": "211",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 4
+                    }
+                  ],
+                  "capacity": 4,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:26:50.035768"
+                },
+                {
+                  "id": "CAMPRM000010",
+                  "name": "212",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 4
+                    }
+                  ],
+                  "capacity": 4,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:27:02.933881"
+                },
+                {
+                  "id": "CAMPRM000011",
+                  "name": "213",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 4
+                    }
+                  ],
+                  "capacity": 4,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:27:12.020980"
+                },
+                {
+                  "id": "CAMPRM000012",
+                  "name": "214",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 4
+                    }
+                  ],
+                  "capacity": 4,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:27:24.522721",
+                  "updated_at": "2026-06-27T13:28:06.760004"
+                },
+                {
+                  "id": "CAMPRM000013",
+                  "name": "215",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 4
+                    }
+                  ],
+                  "capacity": 4,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:27:36.793051"
+                },
+                {
+                  "id": "CAMPRM000014",
+                  "name": "216",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 4
+                    }
+                  ],
+                  "capacity": 4,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:27:49.079337"
+                },
+                {
+                  "id": "CAMPRM000015",
+                  "name": "217",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 4
+                    }
+                  ],
+                  "capacity": 4,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:27:59.802996"
+                },
+                {
+                  "id": "CAMPRM000016",
+                  "name": "218",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 4
+                    }
+                  ],
+                  "capacity": 4,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:28:16.966464"
+                }
+              ],
+              "created_at": "2026-06-27T13:14:41.064427",
+              "floor_plan_ext": ".jpg",
+              "updated_at": "2026-06-27T13:16:48.763013"
+            },
+            {
+              "id": "CAMPFLR000002",
+              "name": "الطابق الثالث",
+              "floor_plan_image": true,
+              "rooms": [
+                {
+                  "id": "CAMPRM000017",
+                  "name": "301",
+                  "beds": [
+                    {
+                      "type": "سرير طابقي",
+                      "count": 3
+                    },
+                    {
+                      "type": "سرير فردي",
+                      "count": 1
+                    }
+                  ],
+                  "capacity": 7,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:34:20.035015",
+                  "updated_at": "2026-06-27T13:35:13.558521"
+                },
+                {
+                  "id": "CAMPRM000018",
+                  "name": "302",
+                  "beds": [
+                    {
+                      "type": "سرير طابقي",
+                      "count": 3
+                    },
+                    {
+                      "type": "سرير فردي",
+                      "count": 1
+                    }
+                  ],
+                  "capacity": 7,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:34:43.197300",
+                  "updated_at": "2026-06-27T13:35:17.384699"
+                },
+                {
+                  "id": "CAMPRM000019",
+                  "name": "303",
+                  "beds": [
+                    {
+                      "type": "سرير طابقي",
+                      "count": 4
+                    }
+                  ],
+                  "capacity": 8,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:34:56.591026",
+                  "updated_at": "2026-06-27T13:35:21.649986"
+                },
+                {
+                  "id": "CAMPRM000020",
+                  "name": "304",
+                  "beds": [
+                    {
+                      "type": "سرير طابقي",
+                      "count": 4
+                    }
+                  ],
+                  "capacity": 8,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:35:09.729763"
+                },
+                {
+                  "id": "CAMPRM000021",
+                  "name": "305",
+                  "beds": [
+                    {
+                      "type": "سرير طابقي",
+                      "count": 3
+                    },
+                    {
+                      "type": "سرير فردي",
+                      "count": 1
+                    }
+                  ],
+                  "capacity": 7,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:35:35.395428"
+                },
+                {
+                  "id": "CAMPRM000022",
+                  "name": "306",
+                  "beds": [
+                    {
+                      "type": "سرير طابقي",
+                      "count": 3
+                    },
+                    {
+                      "type": "سرير فردي",
+                      "count": 1
+                    }
+                  ],
+                  "capacity": 7,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:35:49.776192"
+                },
+                {
+                  "id": "CAMPRM000023",
+                  "name": "307",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 1
+                    }
+                  ],
+                  "capacity": 1,
+                  "features": [
+                    "حمام",
+                    "مكيف"
+                  ],
+                  "is_vip": true,
+                  "created_at": "2026-06-27T13:36:02.087364"
+                },
+                {
+                  "id": "CAMPRM000024",
+                  "name": "308",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 1
+                    }
+                  ],
+                  "capacity": 1,
+                  "features": [
+                    "حمام",
+                    "مكيف"
+                  ],
+                  "is_vip": true,
+                  "created_at": "2026-06-27T13:36:18.764065",
+                  "updated_at": "2026-06-27T13:36:22.407526"
+                },
+                {
+                  "id": "CAMPRM000025",
+                  "name": "309",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 4
+                    }
+                  ],
+                  "capacity": 4,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:36:31.192689"
+                },
+                {
+                  "id": "CAMPRM000026",
+                  "name": "310",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 4
+                    }
+                  ],
+                  "capacity": 4,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:36:42.508595"
+                },
+                {
+                  "id": "CAMPRM000027",
+                  "name": "311",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 4
+                    }
+                  ],
+                  "capacity": 4,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:36:51.184614"
+                },
+                {
+                  "id": "CAMPRM000028",
+                  "name": "312",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 4
+                    }
+                  ],
+                  "capacity": 4,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:37:01.144317"
+                },
+                {
+                  "id": "CAMPRM000029",
+                  "name": "313",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 4
+                    }
+                  ],
+                  "capacity": 4,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:37:09.527905"
+                },
+                {
+                  "id": "CAMPRM000030",
+                  "name": "316",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 4
+                    }
+                  ],
+                  "capacity": 4,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:37:19.573526"
+                },
+                {
+                  "id": "CAMPRM000031",
+                  "name": "317",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 4
+                    }
+                  ],
+                  "capacity": 4,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:37:27.679384"
+                },
+                {
+                  "id": "CAMPRM000032",
+                  "name": "318",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 4
+                    }
+                  ],
+                  "capacity": 4,
+                  "features": [
+                    "حمام",
+                    "مروحة"
+                  ],
+                  "is_vip": false,
+                  "created_at": "2026-06-27T13:37:40.329976"
+                },
+                {
+                  "id": "CAMPRM000033",
+                  "name": "319",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 2
+                    }
+                  ],
+                  "capacity": 2,
+                  "features": [
+                    "حمام",
+                    "مكيف"
+                  ],
+                  "is_vip": true,
+                  "created_at": "2026-06-27T13:37:53.637746"
+                },
+                {
+                  "id": "CAMPRM000034",
+                  "name": "320",
+                  "beds": [
+                    {
+                      "type": "سرير فردي",
+                      "count": 2
+                    }
+                  ],
+                  "capacity": 2,
+                  "features": [
+                    "حمام",
+                    "مكيف"
+                  ],
+                  "is_vip": true,
+                  "created_at": "2026-06-27T13:38:01.437439"
+                }
+              ],
+              "created_at": "2026-06-27T13:29:58.091161",
+              "floor_plan_ext": ".jpg",
+              "updated_at": "2026-06-27T13:30:05.206612"
+            }
+          ],
+          "created_at": "2026-06-27T13:14:30.075688"
+        }
+      ],
+      "created_at": "2026-06-27T13:14:08.439116",
+      "updated_at": "2026-06-27T13:38:01.437444"
+    }
+  ]
+}

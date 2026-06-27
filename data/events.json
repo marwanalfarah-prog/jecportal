@@ -1,0 +1,2030 @@
+{
+  "events": [
+    {
+      "id": "EVT000001",
+      "jec_year": "2026",
+      "event_type": "مخيم",
+      "organizer_type": "gs",
+      "organizer_yg_participants": [],
+      "target_type": "age_groups",
+      "target_age_groups": [
+        "البراعم"
+      ],
+      "target_hull_label": "",
+      "title_source": "age_groups",
+      "title_preset_id": null,
+      "title_label": "فئة البراعم",
+      "base_title": "مخيم فئة البراعم",
+      "theme_text": "JEC City: Built to be ready",
+      "theme_is_verse": false,
+      "theme_verse_data": null,
+      "locations": [
+        {
+          "id": "1782130394237",
+          "maps_urls": [
+            "https://www.google.com/maps/place/Our+Lady+of+Peace+Center+%D9%85%D8%B1%D9%83%D8%B2+%D8%B3%D9%8A%D8%AF%D8%A9+%D8%A7%D9%84%D8%B3%D9%84%D8%A7%D9%85%E2%80%AD/@31.8697996,35.8606058,17z/data=!3m1!4b1!4m6!3m5!1s0x151ca649faade6b7:0x47073ea242f60843!8m2!3d31.8697996!4d35.8631807!16s%2Fg%2F1hf4m_y27?entry=ttu&g_ep=EgoyMDI2MDYxNi4wIKXMDSoASAFQAw%3D%3D"
+          ],
+          "name": "مركز سيدة السلام - كنيسة  الراعي الصالح - طريق المطار",
+          "camp_location_id": "CAMPLOC000001"
+        }
+      ],
+      "start_datetime": "2026-07-02T17:00",
+      "end_datetime": "2026-07-05T16:00",
+      "nights": [
+        "ليلة الخميس - الجمعة",
+        "ليلة الجمعة - السبت",
+        "ليلة السبت - الأحد"
+      ],
+      "logos": [],
+      "posters": [
+        {
+          "id": "EVTIMG000001",
+          "filename": "EVTIMG000001.jpg",
+          "is_main": true
+        }
+      ],
+      "registration": {
+        "members": [
+          {
+            "id": "EVTREG000001",
+            "person_id": "961",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T15:58:36.716311",
+            "youth_group_id": "YG010",
+            "team_id": "team_79143818",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000002",
+            "person_id": "1641",
+            "notes": "",
+            "nights_staying": [
+              "ليلة السبت - الأحد",
+              "ليلة الجمعة - السبت",
+              "ليلة الخميس - الجمعة"
+            ],
+            "added_at": "2026-06-22T15:58:52.610040",
+            "youth_group_id": "YG010",
+            "team_id": "team_8dcbaceb",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000004",
+            "person_id": "907",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T16:02:23.945648",
+            "youth_group_id": "YG010",
+            "team_id": "team_d825e54e",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000005",
+            "person_id": "1878",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T16:07:45.569335",
+            "youth_group_id": "YG013",
+            "team_id": "team_849cd6d8",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000007",
+            "person_id": "2714",
+            "notes": "",
+            "nights_staying": [
+              "ليلة السبت - الأحد",
+              "ليلة الجمعة - السبت",
+              "ليلة الخميس - الجمعة"
+            ],
+            "added_at": "2026-06-22T16:08:26.153295",
+            "youth_group_id": "YG005",
+            "team_id": "team_09835f62",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000008",
+            "person_id": "458",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T16:15:09.250999",
+            "youth_group_id": "YG009",
+            "team_id": "team_8dcbaceb",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000009",
+            "person_id": "1632",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T16:15:33.201782",
+            "youth_group_id": "YG009",
+            "team_id": "team_d825e54e",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000010",
+            "person_id": "3201",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T20:59:59.480534",
+            "youth_group_id": "YG010",
+            "team_id": "team_782ce2bb",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000011",
+            "person_id": "3202",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:06:49.205511",
+            "youth_group_id": "YG009",
+            "team_id": "team_79143818",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000012",
+            "person_id": "3203",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:32:01.130098",
+            "youth_group_id": "YG023",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_d825e54e",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000013",
+            "person_id": "3204",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:33:10.168572",
+            "youth_group_id": "YG023",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_25bb80f4",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000014",
+            "person_id": "2559",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:33:45.314562",
+            "youth_group_id": "YG023",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_09835f62",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000015",
+            "person_id": "1249",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:34:08.075848",
+            "youth_group_id": "YG023",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_8dcbaceb",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000016",
+            "person_id": "2935",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:34:43.652451",
+            "youth_group_id": "YG023",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_782ce2bb",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000018",
+            "person_id": "783",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:37:13.270141",
+            "youth_group_id": "YG012",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_782ce2bb",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000021",
+            "person_id": "1877",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:40:58.742528",
+            "youth_group_id": "YG026",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_25bb80f4",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000022",
+            "person_id": "1771",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:41:17.997902",
+            "youth_group_id": "YG026",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_782ce2bb",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000023",
+            "person_id": "1977",
+            "notes": "",
+            "nights_staying": [
+              "ليلة السبت - الأحد",
+              "ليلة الجمعة - السبت",
+              "ليلة الخميس - الجمعة"
+            ],
+            "added_at": "2026-06-22T21:41:41.797564",
+            "youth_group_id": "YG026",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_09835f62",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000024",
+            "person_id": "1972",
+            "notes": "",
+            "nights_staying": [
+              "ليلة السبت - الأحد",
+              "ليلة الجمعة - السبت",
+              "ليلة الخميس - الجمعة"
+            ],
+            "added_at": "2026-06-22T21:42:30.348180",
+            "youth_group_id": "YG026",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_e59d30b2",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000025",
+            "person_id": "2009",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:42:44.519745",
+            "youth_group_id": "YG026",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_849cd6d8",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000026",
+            "person_id": "1974",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:44:25.648250",
+            "youth_group_id": "YG026",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_d825e54e",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000027",
+            "person_id": "1746",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:44:42.840804",
+            "youth_group_id": "YG026",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_79143818",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000028",
+            "person_id": "1961",
+            "notes": "",
+            "nights_staying": [
+              "ليلة السبت - الأحد",
+              "ليلة الجمعة - السبت",
+              "ليلة الخميس - الجمعة"
+            ],
+            "added_at": "2026-06-22T21:44:57.069091",
+            "youth_group_id": "YG026",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_8dcbaceb",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000029",
+            "person_id": "1095",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:45:25.268870",
+            "youth_group_id": "YG027",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_25bb80f4",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000030",
+            "person_id": "3206",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:46:09.664495",
+            "youth_group_id": "YG027",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_782ce2bb",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000031",
+            "person_id": "1085",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:46:45.274265",
+            "youth_group_id": "YG027",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_79143818",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000032",
+            "person_id": "3207",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:47:19.102444",
+            "youth_group_id": "YG027",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_e59d30b2",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000033",
+            "person_id": "3208",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:48:01.660866",
+            "youth_group_id": "YG027",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_849cd6d8",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000035",
+            "person_id": "2082",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:51:59.257220",
+            "youth_group_id": "YG021",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_09835f62",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000036",
+            "person_id": "2083",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:52:16.966531",
+            "youth_group_id": "YG021",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_79143818",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000037",
+            "person_id": "1718",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:56:03.798413",
+            "youth_group_id": "YG019",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_79143818",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000038",
+            "person_id": "652",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:56:29.597563",
+            "youth_group_id": "YG006",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_25bb80f4",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000039",
+            "person_id": "1800",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:56:50.853123",
+            "youth_group_id": "YG006",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_d825e54e",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000040",
+            "person_id": "1799",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:57:07.978837",
+            "youth_group_id": "YG006",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_849cd6d8",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000041",
+            "person_id": "619",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:57:22.148104",
+            "youth_group_id": "YG006",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_e59d30b2",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000044",
+            "person_id": "1131",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:59:40.531216",
+            "youth_group_id": "YG005",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_8dcbaceb",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000045",
+            "person_id": "3210",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T22:00:22.992170",
+            "youth_group_id": "YG005",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_d825e54e",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000046",
+            "person_id": "2514",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T22:03:53.086301",
+            "youth_group_id": "YG019",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_25bb80f4",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000047",
+            "person_id": "516",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T22:06:45.602080",
+            "youth_group_id": "YG009",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_25bb80f4",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000048",
+            "person_id": "873",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T22:07:31.499431",
+            "youth_group_id": "YG009",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_09835f62",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000049",
+            "person_id": "1610",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T22:07:43.653880",
+            "youth_group_id": "YG009",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_09835f62",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000050",
+            "person_id": "546",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T22:07:54.891139",
+            "youth_group_id": "YG009",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_e59d30b2",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000051",
+            "person_id": "454",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T22:08:16.411788",
+            "youth_group_id": "YG009",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_e59d30b2",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000052",
+            "person_id": "3211",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T22:09:16.622095",
+            "youth_group_id": "YG009",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_849cd6d8",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000053",
+            "person_id": "578",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T22:09:47.174277",
+            "youth_group_id": "YG009",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_849cd6d8",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000054",
+            "person_id": "579",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T22:10:03.256191",
+            "youth_group_id": "YG009",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_782ce2bb",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000055",
+            "person_id": "518",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T22:10:29.494695",
+            "youth_group_id": "YG016",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_e59d30b2",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000056",
+            "person_id": "504",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T22:10:45.529349",
+            "youth_group_id": "YG016",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_8dcbaceb",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000057",
+            "person_id": "433",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T22:11:07.866739",
+            "youth_group_id": "YG016",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_25bb80f4",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000058",
+            "person_id": "1874",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T22:11:23.750019",
+            "youth_group_id": "YG016",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_849cd6d8",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000062",
+            "person_id": "568",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-23T00:07:25.289878",
+            "youth_group_id": "YG003",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_79143818",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000066",
+            "person_id": "2155",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-23T00:09:38.664643",
+            "youth_group_id": "YG003",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_e59d30b2",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000067",
+            "person_id": "2755",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-23T00:09:56.381064",
+            "youth_group_id": "YG003",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_d825e54e",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000068",
+            "person_id": "2617",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-23T10:07:25.497517",
+            "youth_group_id": "YG022",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_79143818",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000069",
+            "person_id": "2646",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-23T10:07:38.347010",
+            "youth_group_id": "YG022",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_e59d30b2",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000070",
+            "person_id": "2615",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-23T10:07:51.751435",
+            "youth_group_id": "YG022",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_25bb80f4",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000071",
+            "person_id": "2997",
+            "notes": "",
+            "nights_staying": [
+              "ليلة السبت - الأحد",
+              "ليلة الجمعة - السبت",
+              "ليلة الخميس - الجمعة"
+            ],
+            "added_at": "2026-06-23T10:08:05.463576",
+            "youth_group_id": "YG022",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_849cd6d8",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000072",
+            "person_id": "2705",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-23T10:08:16.717764",
+            "youth_group_id": "YG022",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "team_id": "team_09835f62",
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000073",
+            "person_id": "3214",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-23T19:26:21.922579",
+            "youth_group_id": "YG007",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "team_id": "team_8dcbaceb"
+          },
+          {
+            "id": "EVTREG000074",
+            "person_id": "3215",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-23T19:27:14.254966",
+            "youth_group_id": "YG007",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "team_id": "team_782ce2bb"
+          },
+          {
+            "id": "EVTREG000075",
+            "person_id": "3216",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-23T19:27:48.218458",
+            "youth_group_id": "YG007",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "team_id": "team_d825e54e"
+          },
+          {
+            "id": "EVTREG000076",
+            "person_id": "3217",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-23T20:05:43.130207",
+            "youth_group_id": "YG016",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "team_id": "team_782ce2bb"
+          },
+          {
+            "id": "EVTREG000077",
+            "person_id": "1908",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-25T12:07:41.408300",
+            "youth_group_id": "YG013",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "team_id": "team_25bb80f4"
+          },
+          {
+            "id": "EVTREG000078",
+            "person_id": "1077",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-25T15:39:27.268922",
+            "youth_group_id": "YG027",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "team_id": "team_8dcbaceb"
+          },
+          {
+            "id": "EVTREG000079",
+            "person_id": "810",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-27T11:37:39.390659",
+            "youth_group_id": "YG012",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "team_id": "team_09835f62"
+          }
+        ],
+        "supervisors": [
+          {
+            "id": "EVTREG000017",
+            "person_id": "3205",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:35:42.877609",
+            "youth_group_id": "YG009",
+            "status": "مقترح من الشبيبة",
+            "skip_masoul_step": true,
+            "team_id": null,
+            "team_role": null,
+            "attendance_status": null,
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000020",
+            "person_id": "382",
+            "notes": "",
+            "nights_staying": [],
+            "added_at": "2026-06-22T21:38:26.887620",
+            "youth_group_id": "YG012",
+            "status": "مقترح من الشبيبة",
+            "skip_masoul_step": true,
+            "attendance_status": null,
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000042",
+            "person_id": "225",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:57:57.708313",
+            "youth_group_id": "YG006",
+            "status": "مقترح من الشبيبة",
+            "skip_masoul_step": true,
+            "attendance_status": null,
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000043",
+            "person_id": "667",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T21:58:22.810974",
+            "youth_group_id": "YG006",
+            "status": "مقترح من الشبيبة",
+            "skip_masoul_step": true,
+            "attendance_status": null,
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000059",
+            "person_id": "1199",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T22:11:54.617184",
+            "youth_group_id": "YG021",
+            "status": "مقترح من الشبيبة",
+            "skip_masoul_step": true,
+            "attendance_status": null,
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000060",
+            "person_id": "1960",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T22:12:23.704023",
+            "youth_group_id": "YG023",
+            "status": "مقترح من الشبيبة",
+            "skip_masoul_step": true,
+            "attendance_status": null,
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000061",
+            "person_id": "1981",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-22T22:12:37.661364",
+            "youth_group_id": "YG023",
+            "status": "مقترح من الشبيبة",
+            "skip_masoul_step": true,
+            "attendance_status": null,
+            "apology_date": "",
+            "apology_reason": ""
+          }
+        ],
+        "gs_committee": [
+          {
+            "id": "EVTREG000080",
+            "person_id": "948",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-27T14:21:06.350602",
+            "status": "تمت الموافقة من الشخص",
+            "skip_masoul_step": false,
+            "role": "مسؤول لجنة تطوير شبيبات الوسط",
+            "role_preset_id": null,
+            "hulls": [
+              "أعضاء الأمانة العامة"
+            ],
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000081",
+            "person_id": "968",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-27T14:21:36.055305",
+            "status": "تمت الموافقة من الشخص",
+            "skip_masoul_step": false,
+            "role": "مسؤول لجنة النشاطات",
+            "role_preset_id": null,
+            "hulls": [
+              "أعضاء الأمانة العامة",
+              "لجنة النشاطات"
+            ],
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000082",
+            "person_id": "245",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-27T14:22:30.321325",
+            "status": "تمت الموافقة من الشخص",
+            "skip_masoul_step": false,
+            "role": "لجنة النشاطات",
+            "role_preset_id": null,
+            "hulls": [
+              "لجنة النشاطات"
+            ],
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000083",
+            "person_id": "3077",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-27T14:22:59.645230",
+            "status": "تمت الموافقة من الشخص",
+            "skip_masoul_step": false,
+            "role": "لجنة النشاطات",
+            "role_preset_id": null,
+            "hulls": [
+              "لجنة النشاطات"
+            ],
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000084",
+            "person_id": "338",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-27T14:23:38.324655",
+            "status": "تمت الموافقة من الشخص",
+            "skip_masoul_step": false,
+            "role": "لجنة النشاطات",
+            "role_preset_id": null,
+            "hulls": [
+              "لجنة النشاطات"
+            ],
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000085",
+            "person_id": "965",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-27T14:24:15.946408",
+            "status": "تمت الموافقة من الشخص",
+            "skip_masoul_step": true,
+            "role": "الأمين العام, منسق الشرق الأوسط",
+            "role_preset_id": null,
+            "hulls": [
+              "أعضاء الأمانة العامة"
+            ],
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000086",
+            "person_id": "1586",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-27T14:25:22.811727",
+            "status": "تمت الموافقة من الشخص",
+            "skip_masoul_step": false,
+            "role": "لجنة النشاطات، مسؤول لجنة المخيم",
+            "role_preset_id": null,
+            "hulls": [
+              "لجنة النشاطات",
+              "لجنة المخيم"
+            ],
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000087",
+            "person_id": "1391",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-27T14:25:48.477060",
+            "status": "تمت الموافقة من الشخص",
+            "skip_masoul_step": false,
+            "role": "لجنة المخيم",
+            "role_preset_id": null,
+            "hulls": [
+              "لجنة المخيم"
+            ],
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000088",
+            "person_id": "1564",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة السبت - الأحد",
+              "ليلة الجمعة - السبت"
+            ],
+            "added_at": "2026-06-27T14:27:17.504835",
+            "status": "تمت الموافقة من الشخص",
+            "skip_masoul_step": false,
+            "role": "لجنة المخيم",
+            "role_preset_id": null,
+            "hulls": [
+              "لجنة المخيم"
+            ],
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000089",
+            "person_id": "1652",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-27T14:27:35.189326",
+            "status": "تمت الموافقة من الشخص",
+            "skip_masoul_step": false,
+            "role": "لجنة المخيم",
+            "role_preset_id": null,
+            "hulls": [
+              "لجنة المخيم"
+            ],
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000090",
+            "person_id": "1281",
+            "notes": "",
+            "nights_staying": [],
+            "added_at": "2026-06-27T14:28:41.191750",
+            "status": "تمت الموافقة من الشخص",
+            "skip_masoul_step": false,
+            "role": "مسؤول لجنة تطوير شبيبات الشمال",
+            "role_preset_id": null,
+            "hulls": [
+              "أعضاء الأمانة العامة"
+            ],
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000091",
+            "person_id": "141",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-27T14:29:02.803974",
+            "status": "تمت الموافقة من الشخص",
+            "skip_masoul_step": false,
+            "role": "مسؤول لجنة تطوير شبيبات الوسط",
+            "role_preset_id": null,
+            "hulls": [
+              "أعضاء الأمانة العامة"
+            ],
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000092",
+            "person_id": "1291",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-27T14:29:34.406996",
+            "status": "تمت الموافقة من الشخص",
+            "skip_masoul_step": false,
+            "role": "مسؤول لجنة تطوير شبيبات الجنوب",
+            "role_preset_id": null,
+            "hulls": [
+              "أعضاء الأمانة العامة"
+            ],
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000093",
+            "person_id": "1347",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-27T14:30:07.624053",
+            "status": "تمت الموافقة من الشخص",
+            "skip_masoul_step": false,
+            "role": "مسؤول لجنة الإعلام",
+            "role_preset_id": null,
+            "hulls": [
+              "أعضاء الأمانة العامة",
+              "لجنة الإعلام"
+            ],
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000094",
+            "person_id": "1050",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-27T14:32:23.289091",
+            "status": "تمت الموافقة من الشخص",
+            "skip_masoul_step": false,
+            "role": "مسؤول لجنة الخدمة, مدير شبيبة ستور، مسؤول اللجنة الفنية",
+            "role_preset_id": null,
+            "hulls": [
+              "أعضاء الأمانة العامة",
+              "لجنة الخدمة",
+              "اللجنة الفنية",
+              "شبيبة ستور"
+            ],
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000095",
+            "person_id": "1",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-27T14:32:48.467141",
+            "status": "تمت الموافقة من الشخص",
+            "skip_masoul_step": false,
+            "role": "مسؤول لجنة العلاقات العامة",
+            "role_preset_id": null,
+            "hulls": [
+              "أعضاء الأمانة العامة"
+            ],
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000096",
+            "person_id": "1067",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-27T14:33:06.319338",
+            "status": "تمت الموافقة من الشخص",
+            "skip_masoul_step": false,
+            "role": "مسؤول لجنة التدريب والتطوير",
+            "role_preset_id": null,
+            "hulls": [
+              "أعضاء الأمانة العامة"
+            ],
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          },
+          {
+            "id": "EVTREG000097",
+            "person_id": "3102",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-06-27T14:33:22.356809",
+            "status": "تمت الموافقة من الشخص",
+            "skip_masoul_step": false,
+            "role": "المرشد الروحيّ العام",
+            "role_preset_id": null,
+            "hulls": [
+              "أعضاء الأمانة العامة"
+            ],
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": ""
+          }
+        ],
+        "guests": []
+      },
+      "created_at": "2026-06-22T15:13:03.588908",
+      "updated_at": "2026-06-27T14:33:37.673245",
+      "yg_quotas": {
+        "YG001": 2,
+        "YG002": 4,
+        "YG003": 5,
+        "YG004": 2,
+        "YG005": 3,
+        "YG006": 3,
+        "YG007": 3,
+        "YG008": 0,
+        "YG009": 3,
+        "YG010": 4,
+        "YG011": 0,
+        "YG012": 3,
+        "YG013": 2,
+        "YG014": 0,
+        "YG015": 0,
+        "YG016": 5,
+        "YG017": 0,
+        "YG018": 2,
+        "YG019": 5,
+        "YG020": 3,
+        "YG021": 2,
+        "YG022": 5,
+        "YG023": 2,
+        "YG024": 0,
+        "YG025": 2,
+        "YG026": 5,
+        "YG027": 3,
+        "YG028": 2,
+        "YG029": 2,
+        "YG030": 0
+      },
+      "has_teams": true,
+      "has_team_leaders": true,
+      "num_teams": 8,
+      "max_members_per_team": "",
+      "teams": [
+        {
+          "team_id": "team_25bb80f4",
+          "name": "فريق 1",
+          "created_at": "2026-06-23T11:28:47.177768"
+        },
+        {
+          "team_id": "team_782ce2bb",
+          "name": "فريق 2",
+          "created_at": "2026-06-23T11:28:47.177779"
+        },
+        {
+          "team_id": "team_849cd6d8",
+          "name": "فريق 3",
+          "created_at": "2026-06-23T11:28:47.177783"
+        },
+        {
+          "team_id": "team_79143818",
+          "name": "فريق 4",
+          "created_at": "2026-06-23T11:28:47.177785"
+        },
+        {
+          "team_id": "team_8dcbaceb",
+          "name": "فريق 5",
+          "created_at": "2026-06-23T11:28:47.177788"
+        },
+        {
+          "team_id": "team_e59d30b2",
+          "name": "فريق 6",
+          "created_at": "2026-06-23T11:28:47.178149"
+        },
+        {
+          "team_id": "team_d825e54e",
+          "name": "فريق 7",
+          "created_at": "2026-06-23T11:28:47.178176"
+        },
+        {
+          "team_id": "team_09835f62",
+          "name": "فريق 8",
+          "created_at": "2026-06-23T11:28:47.178185"
+        }
+      ],
+      "yg_apologies": [
+        {
+          "id": "EVTAPOL000001",
+          "youth_group_id": "YG018",
+          "reason": "لا يوجد أعضاء يرغبون بالمشاركة",
+          "apologized_at": "2026-06-23T10:16:07.584530"
+        },
+        {
+          "id": "EVTAPOL000002",
+          "youth_group_id": "YG025",
+          "reason": "لا يوجد أعضاء يرغبون بالمشاركة",
+          "apologized_at": "2026-06-23T10:16:20.205346"
+        },
+        {
+          "id": "EVTAPOL000003",
+          "youth_group_id": "YG002",
+          "reason": "خوف الأهالي",
+          "apologized_at": "2026-06-23T10:16:50.695886"
+        },
+        {
+          "id": "EVTAPOL000004",
+          "youth_group_id": "YG029",
+          "reason": "",
+          "apologized_at": "2026-06-23T11:13:11.475347"
+        },
+        {
+          "id": "EVTAPOL000005",
+          "youth_group_id": "YG020",
+          "reason": "",
+          "apologized_at": "2026-06-23T11:13:22.606518"
+        },
+        {
+          "id": "EVTAPOL000006",
+          "youth_group_id": "YG004",
+          "reason": "التكلفة المرتفعة على الأعضاء (عراقيّة)، ومحاولة تحصيل دعم من كاهن الرعية،و لكّنهم لم يستطيعون.",
+          "apologized_at": "2026-06-23T11:16:18.872775"
+        },
+        {
+          "id": "EVTAPOL000007",
+          "youth_group_id": "YG001",
+          "reason": "",
+          "apologized_at": "2026-06-23T20:23:51.108041"
+        }
+      ],
+      "documents": [
+        {
+          "id": "EVTDOC000001",
+          "filename": "EVTDOC000001.pdf",
+          "original_name": "مراسلة مخيم فئة البراعم 2026.pdf",
+          "is_main": true
+        }
+      ],
+      "schedule": [
+        {
+          "id": "SCHENT000001",
+          "title": "التجمّع والاستقبال",
+          "description": "",
+          "duration_minutes": 60,
+          "preset_id": null,
+          "order": 0,
+          "created_at": "2026-06-27T12:13:32.675749"
+        },
+        {
+          "id": "SCHENT000002",
+          "title": "القداس الافتتاحي",
+          "description": "",
+          "duration_minutes": 60,
+          "preset_id": null,
+          "order": 1,
+          "created_at": "2026-06-27T12:13:56.771104"
+        },
+        {
+          "id": "SCHENT000003",
+          "title": "افتتاح المخيم وتقسيم الفرق والتعارف",
+          "description": "",
+          "duration_minutes": 60,
+          "preset_id": null,
+          "order": 2,
+          "created_at": "2026-06-27T12:14:33.907945"
+        },
+        {
+          "id": "SCHENT000004",
+          "title": "العشاء",
+          "description": "",
+          "duration_minutes": 60,
+          "preset_id": null,
+          "order": 3,
+          "created_at": "2026-06-27T12:14:49.577713"
+        },
+        {
+          "id": "SCHENT000005",
+          "title": "الموضوع الأول",
+          "description": "",
+          "duration_minutes": 75,
+          "preset_id": null,
+          "order": 4,
+          "created_at": "2026-06-27T12:15:11.097033"
+        },
+        {
+          "id": "SCHENT000006",
+          "title": "السهرة الترفيهيّة",
+          "description": "",
+          "duration_minutes": 90,
+          "preset_id": null,
+          "order": 5,
+          "created_at": "2026-06-27T12:15:33.083407"
+        },
+        {
+          "id": "SCHENT000007",
+          "title": "صلاة الليل",
+          "description": "",
+          "duration_minutes": 15,
+          "preset_id": null,
+          "order": 6,
+          "created_at": "2026-06-27T12:15:49.119258"
+        },
+        {
+          "id": "SCHENT000008",
+          "title": "النوم",
+          "description": "",
+          "duration_minutes": 480,
+          "preset_id": null,
+          "order": 7,
+          "created_at": "2026-06-27T12:15:58.819233"
+        },
+        {
+          "id": "SCHENT000009",
+          "title": "الاستيقاظ",
+          "description": "",
+          "duration_minutes": 60,
+          "preset_id": null,
+          "order": 8,
+          "created_at": "2026-06-27T12:16:14.427950"
+        },
+        {
+          "id": "SCHENT000010",
+          "title": "الفطور",
+          "description": "",
+          "duration_minutes": 60,
+          "preset_id": null,
+          "order": 9,
+          "created_at": "2026-06-27T12:16:36.047605"
+        },
+        {
+          "id": "SCHENT000011",
+          "title": "صلاة الصباح",
+          "description": "",
+          "duration_minutes": 60,
+          "preset_id": null,
+          "order": 10,
+          "created_at": "2026-06-27T12:16:53.436573"
+        },
+        {
+          "id": "SCHENT000012",
+          "title": "استراحة",
+          "description": "",
+          "duration_minutes": 15,
+          "preset_id": null,
+          "order": 11,
+          "created_at": "2026-06-27T12:17:11.346268",
+          "updated_at": "2026-06-27T12:18:04.543949"
+        },
+        {
+          "id": "SCHENT000013",
+          "title": "تنشيط",
+          "description": "",
+          "duration_minutes": 15,
+          "preset_id": null,
+          "order": 12,
+          "created_at": "2026-06-27T12:17:22.646519"
+        },
+        {
+          "id": "SCHENT000014",
+          "title": "تلفزيون المدينة",
+          "description": "",
+          "duration_minutes": 10,
+          "preset_id": null,
+          "order": 13,
+          "created_at": "2026-06-27T12:17:44.434123"
+        },
+        {
+          "id": "SCHENT000015",
+          "title": "الموضوع الثاني",
+          "description": "",
+          "duration_minutes": 90,
+          "preset_id": null,
+          "order": 14,
+          "created_at": "2026-06-27T12:18:33.685412"
+        },
+        {
+          "id": "SCHENT000016",
+          "title": "استراحة",
+          "description": "",
+          "duration_minutes": 10,
+          "preset_id": null,
+          "order": 15,
+          "created_at": "2026-06-27T12:18:58.026504"
+        },
+        {
+          "id": "SCHENT000017",
+          "title": "ورشة عمل",
+          "description": "",
+          "duration_minutes": 85,
+          "preset_id": null,
+          "order": 16,
+          "created_at": "2026-06-27T12:19:10.092341"
+        },
+        {
+          "id": "SCHENT000018",
+          "title": "الغداء",
+          "description": "",
+          "duration_minutes": 120,
+          "preset_id": null,
+          "order": 17,
+          "created_at": "2026-06-27T12:19:25.986908"
+        },
+        {
+          "id": "SCHENT000019",
+          "title": "الموضوع الثالث",
+          "description": "",
+          "duration_minutes": 90,
+          "preset_id": null,
+          "order": 18,
+          "created_at": "2026-06-27T12:52:22.018522"
+        },
+        {
+          "id": "SCHENT000020",
+          "title": "ألعاب",
+          "description": "",
+          "duration_minutes": 60,
+          "preset_id": null,
+          "order": 19,
+          "created_at": "2026-06-27T12:52:37.436292"
+        },
+        {
+          "id": "SCHENT000021",
+          "title": "استراحة",
+          "description": "",
+          "duration_minutes": 15,
+          "preset_id": null,
+          "order": 20,
+          "created_at": "2026-06-27T12:52:48.496312"
+        }
+      ]
+    }
+  ]
+}

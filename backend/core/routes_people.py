@@ -792,6 +792,8 @@ def replace_profile_sub_rows(store: dict, pid, sheet, rows, *, compare_as_string
         store[S.PERSON_YOUTH_GROUP_AGE_HISTORY_SHEET] = history_df
         return
 
+    if sheet in (S.PERSON_HEALTH_CONDITION_SHEET, S.PERSON_SPECIAL_NOTE_SHEET):
+        rows = [{**row, "person_id": pid} for row in (rows or []) if isinstance(row, dict)]
     rows = normalize_profile_rows(sheet, rows)
     if sheet in _SCD_LOGICAL_SHEETS:
         df = S._scd_ensure_columns(store.get(sheet, pd.DataFrame()))

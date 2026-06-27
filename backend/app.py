@@ -17,6 +17,8 @@ from core.routes_bible_reader import register_bible_reader_routes
 from core.routes_registration import register_registration_routes
 from core.routes_requests import register_requests_routes
 from core.routes_privileges import register_privileges_routes
+from core.routes_events import register_events_routes
+from core.routes_camp_locations import register_camp_location_routes
 
 
 app = Flask(__name__)
@@ -63,6 +65,8 @@ register_bible_reader_routes(app)
 register_registration_routes(app)
 register_requests_routes(app)
 register_privileges_routes(app)
+register_events_routes(app)
+register_camp_location_routes(app)
 
 
 @app.get("/api/logo")

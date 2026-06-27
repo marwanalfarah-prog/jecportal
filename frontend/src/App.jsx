@@ -31,6 +31,7 @@ const BibleReader = lazy(() => import('./pages/BibleReader.jsx'))
 const Requests = lazy(() => import('./pages/Requests.jsx'))
 const Calendar = lazy(() => import('./pages/Calendar.jsx'))
 const PrivilegeManager = lazy(() => import('./pages/PrivilegeManager.jsx'))
+const Events = lazy(() => import('./pages/Events.jsx'))
 
 const ROUTE_PRELOADERS = {
   dashboard: () => import('./pages/Dashboard.jsx'),
@@ -49,6 +50,7 @@ const ROUTE_PRELOADERS = {
   requests: () => import('./pages/Requests.jsx'),
   calendar: () => import('./pages/Calendar.jsx'),
   privileges: () => import('./pages/PrivilegeManager.jsx'),
+  events:     () => import('./pages/Events.jsx'),
 }
 
 const preloadedRoutes = new Set()
@@ -528,6 +530,7 @@ const PAGE_TITLES = {
   churches_map:        'خريطة الكنائس',
   bible_reader:        'قارئ الكتاب المقدس',
   calendar:            'التقويم',
+  events:              'الأنشطة والمخيمات',
   privileges:          'إدارة الصلاحيات',
 }
 
@@ -547,6 +550,7 @@ const PAGE_PATHS = {
   churches_map:         '/churches-map',
   bible_reader:         '/bible-reader',
   calendar:             '/calendar',
+  events:               '/events',
   promotions:           '/promotions',
   requests:             '/requests',
   privileges:           '/privileges',
@@ -1426,6 +1430,14 @@ export default function App() {
 
             {page === 'bible_reader' && (
               <BibleReader toast={toast} externalTarget={bibleReaderTarget} />
+            )}
+
+            {isAdmin && page === 'events' && (
+              <Events
+                toast={toast}
+                onViewProfile={(pid, unreg) => goProfile(pid, null, !!unreg, 'events')}
+                onOpenBibleReference={openBibleReaderReference}
+              />
             )}
 
             {isAdmin && page === 'privileges' && (

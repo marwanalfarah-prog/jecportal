@@ -16,7 +16,7 @@ import {
   LayoutDashboard, Users, GitBranch, ShieldCheck,
   ClipboardList, Settings, Building2, MapPin,
   BookOpenText, UserPlus, Calendar as CalendarIcon,
-  User as UserIcon, TrendingUp, Shield, FolderOpen,
+  User as UserIcon, TrendingUp, Shield, FolderOpen, CalendarDays,
 } from 'lucide-react'
 
 // ── Core computation ─────────────────────────────────────────────────────────
@@ -136,6 +136,7 @@ export function getNavItems(perms) {
     { id: 'youth_groups',        label: 'ملف فرق الشبيبة',             icon: Building2 },
     { id: 'churches_map',        label: 'خريطة الكنائس',               icon: MapPin },
     { id: 'bible_reader',        label: 'قارئ الكتاب المقدس',          icon: BookOpenText },
+    { id: 'events',              label: 'الأنشطة والمخيمات',            icon: CalendarDays },
     { id: 'privileges',           label: 'إدارة الصلاحيات',             icon: Shield },
     { id: 'config',              label: 'الإعدادات',                    icon: Settings },
   ]
@@ -187,7 +188,7 @@ export function getAllowedPages(perms) {
   if (isAdmin) return [
     'dashboard', 'members', 'calendar', 'orgtree', 'general_secretariat',
     'users', 'promotions', 'questionnaires', 'youth_groups', 'churches_map',
-    'bible_reader', 'privileges', 'config', 'requests', 'add_member',
+    'bible_reader', 'events', 'privileges', 'config', 'requests', 'add_member',
   ]
 
   const memberPages = [
@@ -209,6 +210,6 @@ export function getAdminAllowedUrlPages() {
   return [
     'dashboard', 'members', 'orgtree', 'general_secretariat', 'users',
     'promotions', 'questionnaires', 'youth_groups', 'churches_map',
-    'bible_reader', 'privileges', 'config', 'profile', 'requests', 'add_member',
+    'bible_reader', 'events', 'privileges', 'config', 'profile', 'requests', 'add_member',
   ]
 }

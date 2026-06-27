@@ -361,6 +361,119 @@ export const api = {
   ygApproveRequest: (recordId, notes) => req(`/requests/yg/${recordId}/approve`, { method: 'POST', body: { notes: notes || '' } }),
   ygRejectRequest: (recordId, reason) => req(`/requests/yg/${recordId}/reject`, { method: 'POST', body: { reason: reason || '' } }),
 
+  // ── Events ───────────────────────────────────────────────────────────────────
+  getEventsConstants:    ()                     => req('/events/constants'),
+  listEvents:            ()                     => req('/events'),
+  createEvent:           (body)                 => req('/events', { method: 'POST', body }),
+  getEvent:              (id)                   => req(`/events/${encodeURIComponent(id)}`),
+  updateEvent:           (id, body)             => req(`/events/${encodeURIComponent(id)}`, { method: 'PUT', body }),
+  deleteEvent:           (id)                   => req(`/events/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  eventParticipantsExportUrl: (id)              => `${BASE}/events/${encodeURIComponent(id)}/registration/members/export.xlsx`,
+
+  listEventTitlePresets: (organizer, ygId)      => {
+    const qs = new URLSearchParams({ organizer: organizer || 'gs' })
+    if (ygId) qs.set('yg_id', ygId)
+    return req(`/events/title-presets?${qs}`)
+  },
+  createEventTitlePreset: (body)                => req('/events/title-presets', { method: 'POST', body }),
+  deleteEventTitlePreset: (id)                  => req(`/events/title-presets/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  computeEventNights:    (start, end)           => req('/events/compute-nights', { method: 'POST', body: { start_datetime: start, end_datetime: end } }),
+  getPersonRegContext:   (personId)             => req(`/events/persons/${encodeURIComponent(personId)}/reg-context`),
+
+  addEventRegistration:    (eventId, type, body) => req(`/events/${encodeURIComponent(eventId)}/registration/${type}`, { method: 'POST', body }),
+  actionMemberRegistration: (eventId, regId, action) => req(`/events/${encodeURIComponent(eventId)}/registration/members/${encodeURIComponent(regId)}/action`, { method: 'POST', body: { action } }),
+  updateEventRegistration: (eventId, type, regId, body) => req(`/events/${encodeURIComponent(eventId)}/registration/${type}/${encodeURIComponent(regId)}`, { method: 'PUT', body }),
+  deleteEventRegistration: (eventId, type, regId) => req(`/events/${encodeURIComponent(eventId)}/registration/${type}/${encodeURIComponent(regId)}`, { method: 'DELETE' }),
+
+  addEventYgApology:    (eventId, body)       => req(`/events/${encodeURIComponent(eventId)}/yg-apologies`, { method: 'POST', body }),
+  deleteEventYgApology: (eventId, apologyId)  => req(`/events/${encodeURIComponent(eventId)}/yg-apologies/${encodeURIComponent(apologyId)}`, { method: 'DELETE' }),
+
+  // Teams
+  createEventTeams:      (eventId, body)              => req(`/events/${encodeURIComponent(eventId)}/teams`, { method: 'POST', body }),
+  updateEventTeam:       (eventId, teamId, body)       => req(`/events/${encodeURIComponent(eventId)}/teams/${encodeURIComponent(teamId)}`, { method: 'PUT', body }),
+  deleteEventTeam:       (eventId, teamId)             => req(`/events/${encodeURIComponent(eventId)}/teams/${encodeURIComponent(teamId)}`, { method: 'DELETE' }),
+  autoDistributeTeams:   (eventId, mode)               => req(`/events/${encodeURIComponent(eventId)}/teams/auto-distribute`, { method: 'POST', body: { mode } }),
+  unassignEventTeams:    (eventId, scope)              => req(`/events/${encodeURIComponent(eventId)}/teams/unassign`, { method: 'POST', body: { scope } }),
+
+  uploadEventLogo: async (eventId, file) => {
+    const form = new FormData()
+    form.append('logo', file)
+    const res = await fetch(`${BASE}/events/${encodeURIComponent(eventId)}/logos`, { method: 'POST', body: form, credentials: 'include' })
+    if (!res.ok) await throwResponseError(res)
+    return readResponsePayload(res)
+  },
+  eventLogoUrl:    (eventId, imgId, bust) => `${BASE}/events/${encodeURIComponent(eventId)}/logos/${encodeURIComponent(imgId)}${bust ? `?t=${bust}` : ''}`,
+  deleteEventLogo: (eventId, imgId)       => req(`/events/${encodeURIComponent(eventId)}/logos/${encodeURIComponent(imgId)}`, { method: 'DELETE' }),
+  setMainEventLogo:(eventId, imgId)       => req(`/events/${encodeURIComponent(eventId)}/logos/${encodeURIComponent(imgId)}/set-main`, { method: 'PATCH' }),
+
+  uploadEventPoster: async (eventId, file) => {
+    const form = new FormData()
+    form.append('poster', file)
+    const res = await fetch(`${BASE}/events/${encodeURIComponent(eventId)}/posters`, { method: 'POST', body: form, credentials: 'include' })
+    if (!res.ok) await throwResponseError(res)
+    return readResponsePayload(res)
+  },
+  eventPosterUrl:    (eventId, imgId, bust) => `${BASE}/events/${encodeURIComponent(eventId)}/posters/${encodeURIComponent(imgId)}${bust ? `?t=${bust}` : ''}`,
+  deleteEventPoster: (eventId, imgId)       => req(`/events/${encodeURIComponent(eventId)}/posters/${encodeURIComponent(imgId)}`, { method: 'DELETE' }),
+  setMainEventPoster:(eventId, imgId)       => req(`/events/${encodeURIComponent(eventId)}/posters/${encodeURIComponent(imgId)}/set-main`, { method: 'PATCH' }),
+
+  uploadEventDocument: async (eventId, file) => {
+    const form = new FormData()
+    form.append('document', file)
+    const res = await fetch(`${BASE}/events/${encodeURIComponent(eventId)}/documents`, { method: 'POST', body: form, credentials: 'include' })
+    if (!res.ok) await throwResponseError(res)
+    return readResponsePayload(res)
+  },
+  eventDocumentUrl:    (eventId, docId) => `${BASE}/events/${encodeURIComponent(eventId)}/documents/${encodeURIComponent(docId)}`,
+  deleteEventDocument: (eventId, docId) => req(`/events/${encodeURIComponent(eventId)}/documents/${encodeURIComponent(docId)}`, { method: 'DELETE' }),
+  setMainEventDocument:(eventId, docId) => req(`/events/${encodeURIComponent(eventId)}/documents/${encodeURIComponent(docId)}/set-main`, { method: 'PATCH' }),
+
+  // ── Camp Locations ────────────────────────────────────────────────────────────
+  listCampLocations:    ()                               => req('/camp-locations'),
+  createCampLocation:   (body)                           => req('/camp-locations', { method: 'POST', body }),
+  updateCampLocation:   (locId, body)                    => req(`/camp-locations/${encodeURIComponent(locId)}`, { method: 'PUT', body }),
+  deleteCampLocation:   (locId)                          => req(`/camp-locations/${encodeURIComponent(locId)}`, { method: 'DELETE' }),
+
+  addCampBuilding:      (locId, body)                    => req(`/camp-locations/${encodeURIComponent(locId)}/buildings`, { method: 'POST', body }),
+  updateCampBuilding:   (locId, bldId, body)             => req(`/camp-locations/${encodeURIComponent(locId)}/buildings/${encodeURIComponent(bldId)}`, { method: 'PUT', body }),
+  deleteCampBuilding:   (locId, bldId)                   => req(`/camp-locations/${encodeURIComponent(locId)}/buildings/${encodeURIComponent(bldId)}`, { method: 'DELETE' }),
+
+  addCampFloor:         (locId, bldId, body)             => req(`/camp-locations/${encodeURIComponent(locId)}/buildings/${encodeURIComponent(bldId)}/floors`, { method: 'POST', body }),
+  updateCampFloor:      (locId, bldId, flrId, body)      => req(`/camp-locations/${encodeURIComponent(locId)}/buildings/${encodeURIComponent(bldId)}/floors/${encodeURIComponent(flrId)}`, { method: 'PUT', body }),
+  deleteCampFloor:      (locId, bldId, flrId)            => req(`/camp-locations/${encodeURIComponent(locId)}/buildings/${encodeURIComponent(bldId)}/floors/${encodeURIComponent(flrId)}`, { method: 'DELETE' }),
+
+  uploadFloorPlan: async (locId, bldId, flrId, file) => {
+    const form = new FormData()
+    form.append('image', file)
+    const res = await fetch(`${BASE}/camp-locations/${encodeURIComponent(locId)}/buildings/${encodeURIComponent(bldId)}/floors/${encodeURIComponent(flrId)}/floor-plan`, { method: 'POST', body: form, credentials: 'include' })
+    if (!res.ok) await throwResponseError(res)
+    return readResponsePayload(res)
+  },
+  floorPlanUrl:         (flrId, bust)                    => `${BASE}/camp-locations/floor-plan/${encodeURIComponent(flrId)}${bust ? `?t=${bust}` : ''}`,
+  deleteFloorPlan:      (locId, bldId, flrId)            => req(`/camp-locations/${encodeURIComponent(locId)}/buildings/${encodeURIComponent(bldId)}/floors/${encodeURIComponent(flrId)}/floor-plan`, { method: 'DELETE' }),
+
+  addCampRoom:          (locId, bldId, flrId, body)      => req(`/camp-locations/${encodeURIComponent(locId)}/buildings/${encodeURIComponent(bldId)}/floors/${encodeURIComponent(flrId)}/rooms`, { method: 'POST', body }),
+  updateCampRoom:       (locId, bldId, flrId, rmId, body)=> req(`/camp-locations/${encodeURIComponent(locId)}/buildings/${encodeURIComponent(bldId)}/floors/${encodeURIComponent(flrId)}/rooms/${encodeURIComponent(rmId)}`, { method: 'PUT', body }),
+  deleteCampRoom:       (locId, bldId, flrId, rmId)      => req(`/camp-locations/${encodeURIComponent(locId)}/buildings/${encodeURIComponent(bldId)}/floors/${encodeURIComponent(flrId)}/rooms/${encodeURIComponent(rmId)}`, { method: 'DELETE' }),
+
+  // ── Schedule Presets ─────────────────────────────────────────────────────────
+  listSchedulePresets:   ()                   => req('/schedule-presets'),
+  createSchedulePreset:  (body)               => req('/schedule-presets', { method: 'POST', body }),
+  updateSchedulePreset:  (id, body)           => req(`/schedule-presets/${encodeURIComponent(id)}`, { method: 'PUT', body }),
+  deleteSchedulePreset:  (id)                 => req(`/schedule-presets/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  // ── Event Schedule Entries ───────────────────────────────────────────────────
+  addScheduleEntry:      (eventId, body)      => req(`/events/${encodeURIComponent(eventId)}/schedule/entries`, { method: 'POST', body }),
+  updateScheduleEntry:   (eventId, id, body)  => req(`/events/${encodeURIComponent(eventId)}/schedule/entries/${encodeURIComponent(id)}`, { method: 'PUT', body }),
+  deleteScheduleEntry:   (eventId, id)        => req(`/events/${encodeURIComponent(eventId)}/schedule/entries/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  reorderScheduleEntries:(eventId, orderedIds)=> req(`/events/${encodeURIComponent(eventId)}/schedule/reorder`, { method: 'POST', body: { ordered_ids: orderedIds } }),
+
+  // ── Event Schedule Exceptions ────────────────────────────────────────────────
+  addScheduleException:  (eventId, body)      => req(`/events/${encodeURIComponent(eventId)}/schedule/exceptions`, { method: 'POST', body }),
+  updateScheduleException:(eventId, id, body) => req(`/events/${encodeURIComponent(eventId)}/schedule/exceptions/${encodeURIComponent(id)}`, { method: 'PUT', body }),
+  deleteScheduleException:(eventId, id)       => req(`/events/${encodeURIComponent(eventId)}/schedule/exceptions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   // ── Privileges ───────────────────────────────────────────────────────────────
   getPrivilegeTypes:     ()             => req('/privileges/types'),
   getPrivilegeAgeGroups: ()             => req('/privileges/age-groups'),
