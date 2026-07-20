@@ -10530,7 +10530,9 @@ def build_members_index():
 
             has_pc = any(_to_bool(r.get('phone_calls_flag')) for r in rows)
 
-            out[pk] = {'types': types, 'fam': fam_r, 'pprim': pprim, 'wa': has_wa, 'pc': has_pc}
+            nums = sorted({str(r.get('mobile_number') or '').strip() for r in rows if str(r.get('mobile_number') or '').strip()})
+
+            out[pk] = {'types': types, 'fam': fam_r, 'pprim': pprim, 'wa': has_wa, 'pc': has_pc, 'nums': nums}
 
         return out
 
@@ -10572,7 +10574,9 @@ def build_members_index():
 
             pprim = sorted({_PRIMARY_AR[bool(_to_bool(r.get('is_primary')))] for r in rows if str(r.get('email_type') or '').strip() == 'personal'})
 
-            out[pk] = {'types': types, 'fam': fam_r, 'pprim': pprim}
+            addrs = sorted({str(r.get('email') or '').strip() for r in rows if str(r.get('email') or '').strip()})
+
+            out[pk] = {'types': types, 'fam': fam_r, 'pprim': pprim, 'addrs': addrs}
 
         return out
 
@@ -10835,6 +10839,8 @@ def build_members_index():
 
         row["_mobile_types"] = me.get("types", [])
 
+        row["_mobile_numbers"] = me.get("nums", [])
+
         row["_mobile_family_relations"] = me.get("fam", [])
 
         row["_mobile_personal_primary"] = me.get("pprim", [])
@@ -10844,6 +10850,8 @@ def build_members_index():
         ee = email_enr.get(pid, {})
 
         row["_email_types"] = ee.get("types", [])
+
+        row["_emails"] = ee.get("addrs", [])
 
         row["_email_family_relations"] = ee.get("fam", [])
 

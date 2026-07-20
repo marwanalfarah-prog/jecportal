@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "docx": "^9.7.1",
     "html2pdf.js": "^0.10.3",
     "libphonenumber-js": "^1.12.40",
     "lucide-react": "^0.441.0",

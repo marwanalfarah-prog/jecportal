@@ -368,7 +368,9 @@ export const api = {
   getEvent:              (id)                   => req(`/events/${encodeURIComponent(id)}`),
   updateEvent:           (id, body)             => req(`/events/${encodeURIComponent(id)}`, { method: 'PUT', body }),
   deleteEvent:           (id)                   => req(`/events/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  eventParticipantsExportUrl: (id)              => `${BASE}/events/${encodeURIComponent(id)}/registration/members/export.xlsx`,
+  eventParticipantsExportUrl:  (id) => `${BASE}/events/${encodeURIComponent(id)}/registration/members/export.xlsx`,
+  eventSupervisorsExportUrl:   (id) => `${BASE}/events/${encodeURIComponent(id)}/registration/supervisors/export.xlsx`,
+  eventGsCommitteeExportUrl:   (id) => `${BASE}/events/${encodeURIComponent(id)}/registration/gs_committee/export.xlsx`,
 
   listEventTitlePresets: (organizer, ygId)      => {
     const qs = new URLSearchParams({ organizer: organizer || 'gs' })
@@ -473,6 +475,15 @@ export const api = {
   addScheduleException:  (eventId, body)      => req(`/events/${encodeURIComponent(eventId)}/schedule/exceptions`, { method: 'POST', body }),
   updateScheduleException:(eventId, id, body) => req(`/events/${encodeURIComponent(eventId)}/schedule/exceptions/${encodeURIComponent(id)}`, { method: 'PUT', body }),
   deleteScheduleException:(eventId, id)       => req(`/events/${encodeURIComponent(eventId)}/schedule/exceptions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  // ── Event Bedrooms ───────────────────────────────────────────────────────────
+  getEventBedroom:             (eventId)           => req(`/events/${encodeURIComponent(eventId)}/bedroom`),
+  updateBedroomConfig:         (eventId, body)     => req(`/events/${encodeURIComponent(eventId)}/bedroom-config`, { method: 'PUT', body }),
+  autoDistributeBedrooms:      (eventId, body)     => req(`/events/${encodeURIComponent(eventId)}/bedroom-assignments/auto-distribute`, { method: 'POST', body }),
+  clearBedroomAssignments:     (eventId)           => req(`/events/${encodeURIComponent(eventId)}/bedroom-assignments`, { method: 'DELETE' }),
+  createBedroomAssignment:     (eventId, body)     => req(`/events/${encodeURIComponent(eventId)}/bedroom-assignments`, { method: 'POST', body }),
+  updateBedroomAssignment:     (eventId, id, body) => req(`/events/${encodeURIComponent(eventId)}/bedroom-assignments/${encodeURIComponent(id)}`, { method: 'PUT', body }),
+  deleteBedroomAssignment:     (eventId, id)       => req(`/events/${encodeURIComponent(eventId)}/bedroom-assignments/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   // ── Privileges ───────────────────────────────────────────────────────────────
   getPrivilegeTypes:     ()             => req('/privileges/types'),

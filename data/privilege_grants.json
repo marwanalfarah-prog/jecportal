@@ -1625,5 +1625,36 @@
     "notes": "",
     "granted_at": "2026-06-20T00:00:00+00:00",
     "granted_by": "admin"
+  },
+  {
+    "id": "91cceae4-4a1f-4175-94fc-7dc82e9c4df6",
+    "privilege_type": "profile_access",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG009"
+      ],
+      "age_groups": [
+        "البراعم"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG009",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "مجلس فئة البراعم",
+      "hull_nodes": [
+        "OTND69062311",
+        "OTND69062312",
+        "OTND69062313",
+        "OTND69062314",
+        "OTND69062315"
+      ],
+      "hull_display": "مجلس فئة البراعم"
+    },
+    "notes": "",
+    "granted_at": "2026-07-11T18:35:49.956812+00:00",
+    "granted_by": "admin"
   }
 ]

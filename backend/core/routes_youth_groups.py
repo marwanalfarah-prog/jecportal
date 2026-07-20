@@ -1203,6 +1203,8 @@ def register_youth_group_routes(app):
             groups.append({
                 "group_id": gid,
                 "group_name": opt.get("label") or S.youth_group_display_label(gid),
+                "governorate": meta.get("governorate"),
+                "parish_id": meta.get("parish_id"),
                 "logo_url": logo_url,
                 "special_logo_url": special_logo_url,
                 "active_special_logo_url": active_special_logo_url,

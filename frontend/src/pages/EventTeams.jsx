@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useCallback } from 'react'
-import { Plus, Trash2, Edit2, Users, UserCheck, RotateCcw, ChevronDown, X, GripVertical } from 'lucide-react'
+import { Plus, Trash2, Edit2, Users, UserCheck, RotateCcw, ChevronDown, X, GripVertical, Download } from 'lucide-react'
 import { api } from '../api.js'
+import { downloadTeamsDocx } from '../docxExport.js'
 
 const inputStyle = {
   width: '100%', padding: '7px 11px', border: '1.5px solid #e2e6ef', borderRadius: 8,
@@ -624,7 +625,8 @@ function TeamsDashboard({ event }) {
 // ── Main EventTeams ────────────────────────────────────────────────────────────
 
 export default function EventTeams({ eventId, event, onRefresh, toast }) {
-  const [activeTab, setActiveTab] = useState('manage')
+  const [activeTab,      setActiveTab]      = useState('manage')
+  const [downloadingDocx, setDownloadingDocx] = useState(false)
 
   const SUB_TABS = [
     { id: 'manage',  label: 'إدارة الفرق',    icon: Edit2 },
@@ -632,10 +634,23 @@ export default function EventTeams({ eventId, event, onRefresh, toast }) {
     { id: 'stats',   label: 'الإحصائيات',      icon: UserCheck },
   ]
 
+  const handleDownloadTeams = async () => {
+    setDownloadingDocx(true)
+    try {
+      const teams   = event.teams || []
+      const members = (event.registration?.members || []).filter(m =>
+        (m.confirmation_status || 'confirmed') === 'confirmed' && !isAttendanceApologized(m)
+      )
+      const supers  = (event.registration?.supervisors || []).filter(s => !isAttendanceApologized(s))
+      await downloadTeamsDocx(teams, members, supers)
+    } catch (e) { toast(e?.message || 'تعذّر إنشاء الملف', 'error') }
+    finally { setDownloadingDocx(false) }
+  }
+
   return (
     <div style={{ direction: 'rtl' }}>
       {/* Sub-tab bar */}
-      <div style={{ display: 'flex', gap: 4, borderBottom: '1.5px solid #e2e6ef', marginBottom: 18, overflowX: 'auto' }}>
+      <div style={{ display: 'flex', gap: 4, borderBottom: '1.5px solid #e2e6ef', marginBottom: 18, overflowX: 'auto', alignItems: 'center' }}>
         {SUB_TABS.map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)}
             style={{
@@ -648,6 +663,22 @@ export default function EventTeams({ eventId, event, onRefresh, toast }) {
             <tab.icon size={13} /> {tab.label}
           </button>
         ))}
+        <div style={{ flex: 1 }} />
+        <button
+          onClick={handleDownloadTeams}
+          disabled={downloadingDocx || !(event.teams?.length > 0)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            padding: '6px 12px', border: '1px solid #c5d8f8', borderRadius: 8,
+            background: '#f0f4ff', color: '#1d4ed8', cursor: 'pointer',
+            fontFamily: 'var(--font-body)', fontSize: '0.78rem', fontWeight: 700,
+            opacity: !(event.teams?.length > 0) ? 0.45 : 1,
+            marginBottom: 2,
+          }}
+        >
+          <Download size={13} />
+          {downloadingDocx ? 'جارٍ...' : 'تنزيل توزيع الفرق'}
+        </button>
       </div>
 
       {activeTab === 'manage'  && <TeamsManager  eventId={eventId} event={event} onRefresh={onRefresh} toast={toast} />}

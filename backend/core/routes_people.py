@@ -2365,7 +2365,8 @@ def register_unregistered_routes(app):
                     pprim = sorted({_PRIMARY_AR_U[bool(S._to_bool(r.get('is_primary')))] for r in rows if str(r.get('mobile_number_type') or '').strip() == 'personal'})
                     has_wa = any(S._to_bool(r.get('whatsapp_flag')) for r in rows)
                     has_pc = any(S._to_bool(r.get('phone_calls_flag')) for r in rows)
-                    out[pk] = {'types': types, 'fam': fam_r, 'pprim': pprim, 'wa': has_wa, 'pc': has_pc}
+                    nums = sorted({str(r.get('mobile_number') or '').strip() for r in rows if str(r.get('mobile_number') or '').strip()})
+                    out[pk] = {'types': types, 'fam': fam_r, 'pprim': pprim, 'wa': has_wa, 'pc': has_pc, 'nums': nums}
                 return out
 
             def _build_email_enr_u(em, prim, fam):
@@ -2385,7 +2386,8 @@ def register_unregistered_routes(app):
                     types = sorted({_EMAIL_TYPE_AR_U.get(str(r.get('email_type') or '').strip(), str(r.get('email_type') or '').strip()) for r in rows if str(r.get('email_type') or '').strip()})
                     fam_r = sorted({str(r.get('family_relation') or '').strip() for r in rows if str(r.get('email_type') or '').strip() == 'family' and str(r.get('family_relation') or '').strip()})
                     pprim = sorted({_PRIMARY_AR_U[bool(S._to_bool(r.get('is_primary')))] for r in rows if str(r.get('email_type') or '').strip() == 'personal'})
-                    out[pk] = {'types': types, 'fam': fam_r, 'pprim': pprim}
+                    addrs = sorted({str(r.get('email') or '').strip() for r in rows if str(r.get('email') or '').strip()})
+                    out[pk] = {'types': types, 'fam': fam_r, 'pprim': pprim, 'addrs': addrs}
                 return out
 
             def _build_social_enr_u(df):
@@ -2538,11 +2540,13 @@ def register_unregistered_routes(app):
                 row["_street_addresses"] = ae.get("streets", [])
                 me = mob_enr.get(uid, {})
                 row["_mobile_types"] = me.get("types", [])
+                row["_mobile_numbers"] = me.get("nums", [])
                 row["_mobile_family_relations"] = me.get("fam", [])
                 row["_mobile_personal_primary"] = me.get("pprim", [])
                 row["_has_whatsapp"] = (["نعم"] if me.get("wa") else ["لا"]) if uid in mob_enr else []
                 ee = email_enr.get(uid, {})
                 row["_email_types"] = ee.get("types", [])
+                row["_emails"] = ee.get("addrs", [])
                 row["_email_family_relations"] = ee.get("fam", [])
                 row["_email_personal_primary"] = ee.get("pprim", [])
                 se = social_enr.get(uid, {})

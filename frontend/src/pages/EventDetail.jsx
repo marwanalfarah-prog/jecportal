@@ -3,12 +3,15 @@ import * as XLSX from 'xlsx-js-style'
 import {
   ArrowRight, Edit2, X, Plus, Trash2, Upload, Star,
   MapPin, Users, UserCheck, Building2, UserPlus, ChevronDown, ChevronUp,
-  Image as ImageIcon, Hash, Download, FileText,
+  Image as ImageIcon, Hash, Download, FileText, Bus, Cake,
 } from 'lucide-react'
 import { api } from '../api.js'
 import { getArabicPersonNameParts, formatArabicPersonName } from '../personName.js'
 import EventTeams from './EventTeams.jsx'
 import EventSchedule from './EventSchedule.jsx'
+import EventBedrooms from './EventBedrooms.jsx'
+import EventTransportSupport from './EventTransportSupport.jsx'
+import EventBirthdays from './EventBirthdays.jsx'
 
 // ── Search utilities (same logic as Members page) ─────────────────────────────
 
@@ -1343,12 +1346,14 @@ function MembersRegistrationTab({ eventId, entries, nights, onRefresh, toast, on
     const ygKey   = entry.youth_group_label || entry.youth_group_id || ''
     const ygQueue = pendingByYg[ygKey] || []
     const idx     = ygQueue.findIndex(m => m.id === entry.id)
-    const cascadeCount = action === 'deny' ? ygQueue.length - idx - 1 : 0
+    // deny cascades to everyone below (after) in the queue; approve to everyone above (before)
+    const cascadeCount = action === 'deny' ? ygQueue.length - idx - 1 : idx
 
     if (cascadeCount > 0) {
-      if (!window.confirm(
-        `سيتم الاعتذار من هذا الشخص وكذلك ${cascadeCount} شخص/أشخاص آخرين بعده في قائمة انتظار نفس الشبيبة.\nهل تريد المتابعة؟`
-      )) return
+      const msg = action === 'deny'
+        ? `سيتم الاعتذار من هذا الشخص وكذلك ${cascadeCount} شخص/أشخاص آخرين بعده في قائمة انتظار نفس الشبيبة.\nهل تريد المتابعة؟`
+        : `سيتم تأكيد هذا الشخص وكذلك ${cascadeCount} شخص/أشخاص آخرين قبله في قائمة انتظار نفس الشبيبة.\nهل تريد المتابعة؟`
+      if (!window.confirm(msg)) return
     }
 
     setActing(entry.id)
@@ -1361,8 +1366,9 @@ function MembersRegistrationTab({ eventId, entries, nights, onRefresh, toast, on
   }
 
   const renderCard = (entry, showActions = false, ygQueue = []) => {
-    const entryIdx    = ygQueue.findIndex(m => m.id === entry.id)
-    const cascadeCnt  = ygQueue.length - entryIdx - 1
+    const entryIdx     = ygQueue.findIndex(m => m.id === entry.id)
+    const cascadeCnt   = ygQueue.length - entryIdx - 1  // people below (deny cascade)
+    const approveCnt   = entryIdx                        // people above (approve cascade)
     const entryStatus = getSt(entry)
     const isProcessing = acting === entry.id
 
@@ -1442,7 +1448,7 @@ function MembersRegistrationTab({ eventId, entries, nights, onRefresh, toast, on
           <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
             <button onClick={() => handleAction(entry, 'approve')} disabled={isProcessing}
               style={{ flex: 1, padding: '5px 0', background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: 8, cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: '0.78rem', fontWeight: 700 }}>
-              ✓ تأكيد
+              ✓ تأكيد{approveCnt > 0 ? ` (+${approveCnt})` : ''}
             </button>
             <button onClick={() => handleAction(entry, 'deny')} disabled={isProcessing}
               style={{ flex: 1, padding: '5px 0', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 8, cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: '0.78rem', fontWeight: 700 }}>
@@ -1754,6 +1760,18 @@ function RegistrationTab({ eventId, regType, label, entries, nights, onRefresh, 
           </div>
         )}
         <div style={{ flex: 1 }} />
+        {regType === 'supervisors' && (
+          <button type="button" onClick={() => { window.location.href = api.eventSupervisorsExportUrl(eventId) }}
+            className="btn btn-ghost btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <Download size={13} /> XLSX
+          </button>
+        )}
+        {regType === 'gs_committee' && (
+          <button type="button" onClick={() => { window.location.href = api.eventGsCommitteeExportUrl(eventId) }}
+            className="btn btn-ghost btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <Download size={13} /> XLSX
+          </button>
+        )}
         <button onClick={() => setShowAdd(true)} className="btn btn-gold btn-sm" style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           <Plus size={13} /> إضافة
         </button>
@@ -1826,6 +1844,29 @@ function RegistrationTab({ eventId, regType, label, entries, nights, onRefresh, 
                         )}
                       </div>
                     )}
+
+                    {/* Team + role badge (supervisors only) */}
+                    {regType === 'supervisors' && entry.team_id && (() => {
+                      const teamName = teams?.find(t => t.team_id === entry.team_id)?.name || ''
+                      const roleLabel = entry.team_role === 'main' ? 'رئيسي' : entry.team_role === 'assistant' ? 'مساعد' : null
+                      const roleColor = entry.team_role === 'main'
+                        ? { bg: '#f5f3ff', text: '#7c3aed', border: '#ddd6fe' }
+                        : { bg: '#f0fdf4', text: '#16a34a', border: '#bbf7d0' }
+                      return (
+                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 4 }}>
+                          {teamName && (
+                            <span style={{ fontSize: '0.72rem', color: '#1d4ed8', background: '#eff6ff', border: '1px solid #bfdbfe', padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>
+                              {teamName}
+                            </span>
+                          )}
+                          {roleLabel && (
+                            <span style={{ fontSize: '0.72rem', fontWeight: 700, background: roleColor.bg, color: roleColor.text, border: `1px solid ${roleColor.border}`, padding: '2px 8px', borderRadius: 6 }}>
+                              {roleLabel}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })()}
 
                     {regType === 'gs_committee' && entry.role && (
                       <div style={{ fontSize: '0.73rem', color: '#6b7280', marginBottom: 4 }}>
@@ -2850,11 +2891,14 @@ function YgQuotasTab({ eventId, event, onRefresh, toast }) {
 // ── Main EventDetail ──────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'info',         label: 'المعلومات',      icon: Edit2,  campOnly: false, teamsOnly: false },
-  { id: 'registration', label: 'التسجيل',        icon: Users,  campOnly: false, teamsOnly: false },
-  { id: 'schedule',     label: 'جدول البرنامج',  icon: Hash,   campOnly: false, teamsOnly: false },
-  { id: 'teams',        label: 'الفرق',           icon: Users,  campOnly: true,  teamsOnly: true  },
-  { id: 'yg_quotas',   label: 'حصص الشبيبات',   icon: Hash,   campOnly: true,  teamsOnly: false },
+  { id: 'info',         label: 'المعلومات',      icon: Edit2,     campOnly: false, teamsOnly: false },
+  { id: 'registration', label: 'التسجيل',        icon: Users,     campOnly: false, teamsOnly: false },
+  { id: 'schedule',     label: 'جدول البرنامج',  icon: Hash,      campOnly: false, teamsOnly: false },
+  { id: 'teams',        label: 'الفرق',           icon: Users,     campOnly: true,  teamsOnly: true  },
+  { id: 'yg_quotas',   label: 'حصص الشبيبات',   icon: Hash,      campOnly: true,  teamsOnly: false },
+  { id: 'bedrooms',    label: 'المنامات',         icon: Building2, campOnly: true,  teamsOnly: false },
+  { id: 'transport',   label: 'دعم المواصلات',   icon: Bus,       campOnly: false, teamsOnly: false },
+  { id: 'birthdays',   label: 'أعياد الميلاد',    icon: Cake,      campOnly: false, teamsOnly: false },
 ]
 
 const REG_SUB_TABS = [
@@ -3031,6 +3075,15 @@ export default function EventDetail({ eventId, onBack, toast, onViewProfile, onO
       )}
       {activeTab === 'yg_quotas' && isCamp && (
         <YgQuotasTab eventId={eventId} event={event} onRefresh={load} toast={toast} />
+      )}
+      {activeTab === 'bedrooms' && isCamp && (
+        <EventBedrooms eventId={eventId} event={event} onRefresh={load} toast={toast} />
+      )}
+      {activeTab === 'transport' && (
+        <EventTransportSupport eventId={eventId} event={event} onRefresh={load} toast={toast} />
+      )}
+      {activeTab === 'birthdays' && (
+        <EventBirthdays event={event} />
       )}
     </div>
   )

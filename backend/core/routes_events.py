@@ -71,7 +71,52 @@ MEMBER_EXPORT_COLUMNS = [
     'الصف الحالي',
     'رقم الهاتف',
     'الشبيبة',
+    'رقم الغرفة',
+    'الفريق',
     'اسم الأم الكامل بالعربية',
+    'الحالات الصحية',
+    'ملاحظات الملف الشخصي',
+    'ملاحظات التسجيل',
+]
+
+SUPERVISOR_EXPORT_COLUMNS = [
+    'الاسم الكامل بالعربية',
+    'حالة الملف الشخصي',
+    'حالة التسجيل في النشاط',
+    'حالة الحضور',
+    'تاريخ الاعتذار عن الحضور',
+    'سبب الاعتذار عن الحضور',
+    'الجنس',
+    'تاريخ الميلاد الكامل',
+    'الفئة العمريّة',
+    'الشبيبة',
+    'رقم الغرفة',
+    'الفريق',
+    'دور المسؤول في الفريق',
+    'الصف الحالي',
+    'التعليم الجامعي',
+    'الوظيفة الحالية',
+    'رقم الهاتف',
+    'الحالات الصحية',
+    'ملاحظات الملف الشخصي',
+    'ملاحظات التسجيل',
+]
+
+GS_COMMITTEE_EXPORT_COLUMNS = [
+    'الاسم الكامل بالعربية',
+    'حالة الملف الشخصي',
+    'حالة التسجيل في النشاط',
+    'حالة الحضور',
+    'تاريخ الاعتذار عن الحضور',
+    'سبب الاعتذار عن الحضور',
+    'الجنس',
+    'تاريخ الميلاد الكامل',
+    'الدور في النشاط',
+    'الأفواج / الهياكل',
+    'رقم الغرفة',
+    'التعليم الجامعي',
+    'الوظيفة الحالية',
+    'رقم الهاتف',
     'الحالات الصحية',
     'ملاحظات الملف الشخصي',
     'ملاحظات التسجيل',
@@ -608,8 +653,9 @@ def _enrich_all_registrations(evt):
     """
     try:
         periods_df, nodes_df, edges_df, gs_group_id = _load_org_tree_dfs()
-        name_cache   = {}
-        gender_cache = {}
+        name_cache     = {}
+        gender_cache   = {}
+        birthday_cache = {}
         for reg_type in REG_TYPES:
             for entry in evt.get('registration', {}).get(reg_type, []):
                 pid = str(entry.get('person_id') or '').strip()
@@ -624,10 +670,20 @@ def _enrich_all_registrations(evt):
                     if pid not in gender_cache:
                         gender_cache[pid] = _lookup_person_gender(pid)
                     entry['gender'] = gender_cache[pid]
+
+                    if pid not in birthday_cache:
+                        birthday_cache[pid] = _lookup_person_birthday(pid)
+                    bd = birthday_cache[pid]
+                    entry['birth_day']   = bd['birth_day']
+                    entry['birth_month'] = bd['birth_month']
+                    entry['birth_year']  = bd['birth_year']
                 else:
                     entry['name']            = None
                     entry['is_unregistered'] = True
                     entry['gender']          = None
+                    entry['birth_day']       = None
+                    entry['birth_month']     = None
+                    entry['birth_year']      = None
 
                 if reg_type in ('members', 'supervisors'):
                     yg_id = str(entry.get('youth_group_id') or '').strip() or None
@@ -677,6 +733,43 @@ def _lookup_person_gender(person_id):
     except Exception:
         pass
     return None
+
+
+def _lookup_person_birthday(person_id):
+    """Return {'birth_day', 'birth_month', 'birth_year'} (ints or None) for a
+    person_id, checking the registered store then the unregistered store."""
+    empty = {'birth_day': None, 'birth_month': None, 'birth_year': None}
+    if not person_id:
+        return dict(empty)
+    pid_str = str(person_id).strip()
+
+    def _int(v):
+        try:
+            if v is None or pd.isna(v):
+                return None
+            return int(float(v))
+        except (TypeError, ValueError):
+            return None
+
+    for store in (S.store, S.unreg_store):
+        try:
+            persons = S._scd_filter_active(store.get('persons', pd.DataFrame()))
+            if persons.empty or 'person_id' not in persons.columns:
+                continue
+            row = persons[persons['person_id'].astype(str).str.strip() == pid_str]
+            if row.empty:
+                continue
+            r = row.iloc[0]
+            res = {
+                'birth_day':   _int(r.get('birth_day')),
+                'birth_month': _int(r.get('birth_month')),
+                'birth_year':  _int(r.get('birth_year')),
+            }
+            if res['birth_day'] and res['birth_month']:
+                return res
+        except Exception:
+            pass
+    return dict(empty)
 
 
 def _export_text(value):
@@ -899,12 +992,55 @@ def _format_attendance_status(entry):
     return ATTENDANCE_STATUS_LABELS.get(status, status)
 
 
+def _build_bedroom_assignment_lookup(evt):
+    """Return {reg_id: room_name} from bedroom_assignments + location rooms."""
+    room_by_id = {}
+    try:
+        from core.routes_camp_locations import _load as _lc_load
+        locs_data = _lc_load()
+        loc_ids = {
+            loc.get('camp_location_id')
+            for loc in (evt.get('locations') or [])
+            if loc.get('camp_location_id')
+        }
+        for loc in locs_data.get('locations', []):
+            if loc.get('id') not in loc_ids:
+                continue
+            for bld in loc.get('buildings', []):
+                for flr in bld.get('floors', []):
+                    for rm in flr.get('rooms', []):
+                        rid = rm.get('id')
+                        if rid:
+                            room_by_id[rid] = _export_text(rm.get('name', ''))
+    except Exception:
+        pass
+    result = {}
+    for asgn in (evt.get('bedroom_assignments') or []):
+        reg_id  = asgn.get('reg_id')
+        room_id = asgn.get('room_id')
+        if reg_id and room_id and room_id in room_by_id:
+            result[reg_id] = room_by_id[room_id]
+    return result
+
+
+def _build_team_name_lookup(evt):
+    """Return {team_id: team_name}."""
+    return {
+        t['team_id']: _export_text(t.get('name', ''))
+        for t in (evt.get('teams') or [])
+        if t.get('team_id')
+    }
+
+
 def _build_member_export_rows(evt):
     _normalize_registration_attendance(evt)
     _enrich_all_registrations(evt)
+    room_lookup = _build_bedroom_assignment_lookup(evt)
+    team_lookup = _build_team_name_lookup(evt)
     rows = []
     for entry in evt.get('registration', {}).get('members', []):
         person_id = entry.get('person_id')
+        reg_id    = entry.get('id')
         profile_status, source_store, person = _resolve_profile_source(
             person_id,
             fallback_unregistered=bool(entry.get('is_unregistered')),
@@ -921,6 +1057,8 @@ def _build_member_export_rows(evt):
             'الصف الحالي': _format_current_grade(source_store, person_id, person),
             'رقم الهاتف': _format_phone_numbers(source_store, person_id),
             'الشبيبة': _export_text(entry.get('youth_group_label') or _lookup_yg_label(entry.get('youth_group_id'))),
+            'رقم الغرفة': room_lookup.get(reg_id, ''),
+            'الفريق': team_lookup.get(entry.get('team_id') or '', ''),
             'اسم الأم الكامل بالعربية': _format_mother_ar_name(person),
             'الحالات الصحية': _format_health_conditions(source_store, person_id),
             'ملاحظات الملف الشخصي': _format_profile_notes(source_store, person_id),
@@ -935,6 +1073,145 @@ def _build_members_export_workbook(evt):
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Participants')
         worksheet = writer.sheets['Participants']
+        worksheet.freeze_panes = 'A2'
+        worksheet.auto_filter.ref = worksheet.dimensions
+        for column_cells in worksheet.columns:
+            max_length = max(len(_export_text(cell.value)) for cell in column_cells)
+            worksheet.column_dimensions[column_cells[0].column_letter].width = min(max(max_length + 2, 12), 60)
+    output.seek(0)
+    return output
+
+
+def _format_higher_education(source_store, person_id):
+    rows = _rows_for_person(source_store, S.HIGHER_EDUCATION_SHEET, person_id)
+    values = []
+    for row in rows:
+        state = _export_text(row.get(S.EDUCATION_STATE_COL) or row.get('state'))
+        end_date = _export_text(row.get('end_date'))
+        is_current = (state == 'current') or (not end_date)
+        if not is_current:
+            continue
+        institution = _export_text(row.get(S.HIGHER_EDUCATION_INSTITUTION_COL) or row.get('institution_name'))
+        major = _export_text(row.get('major'))
+        parts = [p for p in [institution, major] if p]
+        if parts:
+            values.append(' / '.join(parts))
+    return ', '.join(values)
+
+
+def _format_current_job(source_store, person_id):
+    rows = S.job_rows_for_person(source_store, person_id)
+    values = []
+    for row in rows:
+        state = _export_text(row.get(S.EMPLOYMENT_STATE_COL) or row.get('state'))
+        end_date = _export_text(row.get('end_date'))
+        is_current = (state == 'current') or (not end_date and state != 'previous')
+        if not is_current:
+            continue
+        job_title = _export_text(row.get('job_title'))
+        employer = _export_text(row.get(S.EMPLOYER_NAME_COL) or row.get('company'))
+        parts = [p for p in [job_title, employer] if p]
+        if parts:
+            values.append(' / '.join(parts))
+    return ', '.join(values)
+
+
+def _build_supervisor_export_rows(evt):
+    _normalize_registration_attendance(evt)
+    _enrich_all_registrations(evt)
+    room_lookup = _build_bedroom_assignment_lookup(evt)
+    team_lookup = _build_team_name_lookup(evt)
+    rows = []
+    for entry in evt.get('registration', {}).get('supervisors', []):
+        person_id = entry.get('person_id')
+        reg_id    = entry.get('id')
+        profile_status, source_store, person = _resolve_profile_source(
+            person_id,
+            fallback_unregistered=bool(entry.get('is_unregistered')),
+        )
+        attendance_status = _format_attendance_status(entry) if entry.get('status') == FINAL_PERSON_APPROVED_STATUS else ''
+        rows.append({
+            'الاسم الكامل بالعربية':   _format_ar_name(person, entry.get('name')),
+            'حالة الملف الشخصي':       PROFILE_STATUS_LABELS.get(profile_status, profile_status),
+            'حالة التسجيل في النشاط':  _export_text(entry.get('status')),
+            'حالة الحضور':             attendance_status,
+            'تاريخ الاعتذار عن الحضور': _export_text(entry.get('apology_date')) if entry.get('attendance_status') == 'apologized' else '',
+            'سبب الاعتذار عن الحضور':  _export_text(entry.get('apology_reason')) if entry.get('attendance_status') == 'apologized' else '',
+            'الجنس':                    _export_text(entry.get('gender') or person.get('gender')),
+            'تاريخ الميلاد الكامل':    _format_birthdate(person),
+            'الفئة العمريّة':           _export_text(entry.get('age_group')),
+            'الشبيبة':                  _export_text(entry.get('youth_group_label') or _lookup_yg_label(entry.get('youth_group_id'))),
+            'رقم الغرفة':              room_lookup.get(reg_id, ''),
+            'الفريق':                  team_lookup.get(entry.get('team_id') or '', ''),
+            'دور المسؤول في الفريق':  {'main': 'رئيسي', 'assistant': 'مساعد'}.get(entry.get('team_role') or '', ''),
+            'الصف الحالي':             _format_current_grade(source_store, person_id, person),
+            'التعليم الجامعي':         _format_higher_education(source_store, person_id),
+            'الوظيفة الحالية':         _format_current_job(source_store, person_id),
+            'رقم الهاتف':              _format_phone_numbers(source_store, person_id),
+            'الحالات الصحية':          _format_health_conditions(source_store, person_id),
+            'ملاحظات الملف الشخصي':   _format_profile_notes(source_store, person_id),
+            'ملاحظات التسجيل':         _export_text(entry.get('notes')),
+        })
+    return rows
+
+
+def _build_supervisors_export_workbook(evt):
+    output = BytesIO()
+    df = pd.DataFrame(_build_supervisor_export_rows(evt), columns=SUPERVISOR_EXPORT_COLUMNS)
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Supervisors')
+        worksheet = writer.sheets['Supervisors']
+        worksheet.freeze_panes = 'A2'
+        worksheet.auto_filter.ref = worksheet.dimensions
+        for column_cells in worksheet.columns:
+            max_length = max(len(_export_text(cell.value)) for cell in column_cells)
+            worksheet.column_dimensions[column_cells[0].column_letter].width = min(max(max_length + 2, 12), 60)
+    output.seek(0)
+    return output
+
+
+def _build_gs_committee_export_rows(evt):
+    _normalize_registration_attendance(evt)
+    _enrich_all_registrations(evt)
+    room_lookup = _build_bedroom_assignment_lookup(evt)
+    rows = []
+    for entry in evt.get('registration', {}).get('gs_committee', []):
+        person_id = entry.get('person_id')
+        reg_id    = entry.get('id')
+        profile_status, source_store, person = _resolve_profile_source(
+            person_id,
+            fallback_unregistered=bool(entry.get('is_unregistered')),
+        )
+        attendance_status = _format_attendance_status(entry) if entry.get('status') == FINAL_PERSON_APPROVED_STATUS else ''
+        hulls = entry.get('hulls') or []
+        rows.append({
+            'الاسم الكامل بالعربية':    _format_ar_name(person, entry.get('name')),
+            'حالة الملف الشخصي':        PROFILE_STATUS_LABELS.get(profile_status, profile_status),
+            'حالة التسجيل في النشاط':   _export_text(entry.get('status')),
+            'حالة الحضور':              attendance_status,
+            'تاريخ الاعتذار عن الحضور': _export_text(entry.get('apology_date')) if entry.get('attendance_status') == 'apologized' else '',
+            'سبب الاعتذار عن الحضور':   _export_text(entry.get('apology_reason')) if entry.get('attendance_status') == 'apologized' else '',
+            'الجنس':                     _export_text(entry.get('gender') or person.get('gender')),
+            'تاريخ الميلاد الكامل':     _format_birthdate(person),
+            'الدور في النشاط':          _export_text(entry.get('role')),
+            'الأفواج / الهياكل':        ' / '.join(hulls),
+            'رقم الغرفة':               room_lookup.get(reg_id, ''),
+            'التعليم الجامعي':          _format_higher_education(source_store, person_id),
+            'الوظيفة الحالية':          _format_current_job(source_store, person_id),
+            'رقم الهاتف':               _format_phone_numbers(source_store, person_id),
+            'الحالات الصحية':           _format_health_conditions(source_store, person_id),
+            'ملاحظات الملف الشخصي':    _format_profile_notes(source_store, person_id),
+            'ملاحظات التسجيل':          _export_text(entry.get('notes')),
+        })
+    return rows
+
+
+def _build_gs_committee_export_workbook(evt):
+    output = BytesIO()
+    df = pd.DataFrame(_build_gs_committee_export_rows(evt), columns=GS_COMMITTEE_EXPORT_COLUMNS)
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='GS Committee')
+        worksheet = writer.sheets['GS Committee']
         worksheet.freeze_panes = 'A2'
         worksheet.auto_filter.ref = worksheet.dimensions
         for column_cells in worksheet.columns:
@@ -1382,6 +1659,7 @@ def register_events_routes(app):
                 'posters': [],
                 'documents': [],
                 'yg_quotas': {},
+                'transport_support': {'include_participants': True, 'include_supervisors': False, 'amounts': {}},
                 'yg_apologies': [],
                 'registration': {
                     'members': [],
@@ -1440,6 +1718,56 @@ def register_events_routes(app):
             download_name=filename,
         )
 
+    @app.route('/api/events/<event_id>/registration/supervisors/export.xlsx', methods=['GET'])
+    def export_event_supervisors_registration(event_id):
+        err = _require_admin()
+        if err:
+            return err
+        with _LOCK:
+            data = _load_events()
+            events = data.get('events', [])
+            evt = next((e for e in events if e.get('id') == event_id), None)
+            if not evt:
+                return jsonify({'error': 'not found'}), 404
+            changed = _normalize_registration_attendance(evt)
+            if changed:
+                evt['updated_at'] = datetime.now().isoformat()
+                _save_events(data)
+        _enrich_with_display_names(events)
+        workbook = _build_supervisors_export_workbook(evt)
+        filename = f'{event_id}_supervisors.xlsx'
+        return send_file(
+            workbook,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename,
+        )
+
+    @app.route('/api/events/<event_id>/registration/gs_committee/export.xlsx', methods=['GET'])
+    def export_event_gs_committee_registration(event_id):
+        err = _require_admin()
+        if err:
+            return err
+        with _LOCK:
+            data = _load_events()
+            events = data.get('events', [])
+            evt = next((e for e in events if e.get('id') == event_id), None)
+            if not evt:
+                return jsonify({'error': 'not found'}), 404
+            changed = _normalize_registration_attendance(evt)
+            if changed:
+                evt['updated_at'] = datetime.now().isoformat()
+                _save_events(data)
+        _enrich_with_display_names(events)
+        workbook = _build_gs_committee_export_workbook(evt)
+        filename = f'{event_id}_gs_committee.xlsx'
+        return send_file(
+            workbook,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename,
+        )
+
     @app.route('/api/events/<event_id>', methods=['PUT'])
     def update_event(event_id):
         err = _require_admin()
@@ -1485,6 +1813,23 @@ def register_events_routes(app):
                         except (TypeError, ValueError):
                             pass
                     evt['yg_quotas'] = clean
+
+            if 'transport_support' in body:
+                raw_ts = body.get('transport_support') or {}
+                if isinstance(raw_ts, dict):
+                    clean_amounts = {}
+                    for k, v in (raw_ts.get('amounts') or {}).items():
+                        try:
+                            n = float(v)
+                            if n >= 0:
+                                clean_amounts[str(k).strip()] = n
+                        except (TypeError, ValueError):
+                            pass
+                    evt['transport_support'] = {
+                        'include_participants': bool(raw_ts.get('include_participants', True)),
+                        'include_supervisors':  bool(raw_ts.get('include_supervisors', False)),
+                        'amounts': clean_amounts,
+                    }
 
             evt['updated_at'] = datetime.now().isoformat()
             _save_events(data)
@@ -2140,16 +2485,22 @@ def register_events_routes(app):
             old_prio = entry.get('yg_priority') or 0
 
             if action == 'approve':
-                entry['confirmation_status'] = 'confirmed'
-                entry['yg_priority'] = None
-                # Shift remaining pending in same YG: decrement priorities > old_prio
+                # Cascade (opposite of deny): approve this person and every pending
+                # person ABOVE them in the same YG queue (priority <= old_prio).
                 for m in members:
-                    if (m.get('id') != reg_id
-                            and str(m.get('youth_group_id') or '').strip() == yg_key
+                    if (str(m.get('youth_group_id') or '').strip() == yg_key
+                            and m.get('confirmation_status') == 'pending'):
+                        p = m.get('yg_priority')
+                        if m.get('id') == reg_id or (isinstance(p, int) and p <= old_prio):
+                            m['confirmation_status'] = 'confirmed'
+                            m['yg_priority'] = None
+                # Compact remaining pending (priority > old_prio) down by old_prio
+                for m in members:
+                    if (str(m.get('youth_group_id') or '').strip() == yg_key
                             and m.get('confirmation_status') == 'pending'):
                         p = m.get('yg_priority')
                         if isinstance(p, int) and p > old_prio:
-                            m['yg_priority'] = p - 1
+                            m['yg_priority'] = p - old_prio
 
             else:  # deny
                 entry['confirmation_status'] = 'denied'
@@ -2528,6 +2879,504 @@ def register_events_routes(app):
             evt['schedule_exceptions'] = [e for e in orig if e.get('id') != exc_id]
             if len(evt['schedule_exceptions']) == len(orig):
                 return jsonify({'error': 'exception not found'}), 404
+            evt['updated_at'] = datetime.now().isoformat()
+            _save_events(data)
+        return jsonify({'ok': True})
+
+    # ── Bedroom helpers ───────────────────────────────────────────────────────
+
+    def _room_quality_score(room):
+        score = 0
+        if room.get('is_vip'):
+            score += 10000
+        for f in (room.get('features') or []):
+            if f == 'مكيف':
+                score += 1000
+            elif f == 'مروحة':
+                score += 500
+            else:
+                score += 50
+        score -= (room.get('capacity') or 99) * 10
+        return score
+
+    def _load_rooms_for_event(evt):
+        try:
+            from core.routes_camp_locations import _load as _lc_load
+            locs_data = _lc_load()
+        except Exception:
+            return []
+        loc_ids = {loc.get('camp_location_id') for loc in (evt.get('locations') or []) if loc.get('camp_location_id')}
+        out = []
+        for loc in locs_data.get('locations', []):
+            if loc.get('id') not in loc_ids:
+                continue
+            for bld in loc.get('buildings', []):
+                for flr in bld.get('floors', []):
+                    for rm in flr.get('rooms', []):
+                        out.append({
+                            'location_id': loc['id'],
+                            'location_name': loc.get('name', ''),
+                            'building_id': bld['id'],
+                            'building_name': bld.get('name', ''),
+                            'floor_id': flr['id'],
+                            'floor_name': flr.get('name', ''),
+                            'room': rm,
+                        })
+        return out
+
+    def _auto_distribute_bedrooms(evt, config, rooms_flat):
+        occupied    = set(config.get('occupied_rooms') or [])
+        floor_gen   = config.get('floor_gender') or {}
+        bld_gen     = config.get('building_gender') or {}
+        opts        = config.get('distribution_options') or {}
+        yg_cohesion = opts.get('yg_cohesion', 'none')
+        leader_pl   = opts.get('leader_placement', 'none')
+        compactness = opts.get('compactness', 'compact')
+        hull_prio   = config.get('hull_priority') or []
+        multi_ov    = config.get('multi_hull_overrides') or {}
+
+        hull_rank = {}
+        for item in hull_prio:
+            r = item.get('rank', 999)
+            for h in (item.get('hulls') or []):
+                hull_rank[h] = r
+
+        event_nights = set(evt.get('nights') or [])
+        reg = evt.get('registration') or {}
+
+        # Use gender from enriched registration data (already computed by caller)
+        # as the primary source; fall back to store lookup only when missing.
+        pid_gender = {}
+        for rt in ('members', 'supervisors', 'gs_committee', 'guests'):
+            for e in reg.get(rt, []):
+                pid = str(e.get('person_id') or '').strip()
+                g   = str(e.get('gender') or '').strip()
+                if pid and g:
+                    pid_gender[pid] = g
+
+        gcache, scache = {}, {}
+
+        def gget(pid):
+            if pid not in gcache:
+                gcache[pid] = pid_gender.get(pid) or _lookup_person_gender(pid) or ''
+            return gcache[pid]
+
+        def sget(pid):
+            if pid not in scache:
+                try:
+                    row = S.get_spouse_for_person(S.store, pid)
+                    scache[pid] = str((row or {}).get('spouse_person_id') or '').strip()
+                except Exception:
+                    scache[pid] = ''
+            return scache[pid]
+
+        cands = []
+
+        def add(e, rtype, pg, ps, yg=None, hull=None):
+            if _is_attendance_apologized(e):
+                return
+            ns = [n for n in (e.get('nights_staying') or []) if n in event_nights]
+            if not ns:
+                return
+            cands.append({
+                'reg_id': e['id'],
+                'pid':    str(e.get('person_id') or ''),
+                'rtype':  rtype, 'nights': ns, 'pg': pg, 'ps': ps,
+                'yg':     yg, 'hull': hull,
+            })
+
+        for e in reg.get('guests', []):
+            add(e, 'guests', 0, 0)
+        for e in reg.get('gs_committee', []):
+            if str(e.get('status') or '').strip() != FINAL_PERSON_APPROVED_STATUS:
+                continue
+            hulls = e.get('hulls') or []
+            ah    = multi_ov.get(e['id']) or (hulls[0] if hulls else None)
+            add(e, 'gs_committee', 1, hull_rank.get(ah, 999) if ah else 999, hull=ah)
+        for e in reg.get('supervisors', []):
+            if str(e.get('status') or '').strip() == FINAL_PERSON_APPROVED_STATUS:
+                add(e, 'supervisors', 2, 0, yg=e.get('youth_group_id'))
+        for e in reg.get('members', []):
+            if (e.get('confirmation_status') or 'confirmed') == 'confirmed':
+                add(e, 'members', 3, 0, yg=e.get('youth_group_id'))
+
+        random.shuffle(cands)
+        if leader_pl == 'with_members':
+            # Members must be placed before supervisors so supervisors can join their YG rooms
+            def _sort_key(c):
+                if c['rtype'] == 'members':
+                    return (2, c['ps'])
+                if c['rtype'] == 'supervisors':
+                    return (3, c['ps'])
+                return (c['pg'], c['ps'])
+            cands.sort(key=_sort_key)
+        else:
+            cands.sort(key=lambda c: (c['pg'], c['ps']))
+
+        valid = [r for r in rooms_flat if r['room'].get('id') not in occupied]
+        valid.sort(key=lambda r: _room_quality_score(r['room']), reverse=True)
+
+        # ── Per-room state ──────────────────────────────────────────────────
+        rm_occ      = {}  # {rid: {night: count}}
+        rm_gen      = {}  # {rid: 'ذكر'|'أنثى'|None}
+        rm_pids     = {}  # {rid: set of person_ids}
+        rm_has_gs   = {}  # {rid: bool}  – contains gs_committee
+        rm_has_sup  = {}  # {rid: bool}  – contains supervisors (المسؤولون only)
+        rm_has_mem  = {}  # {rid: bool}  – contains members
+        rm_has_guest= {}  # {rid: bool}  – contains a guest (room is private)
+        rm_yg       = {}  # {rid: set of yg_ids}
+        rm_info     = {}  # {rid: flat room dict}
+
+        for r in valid:
+            rid = r['room']['id']
+            rm_occ[rid]       = {}
+            rm_gen[rid]       = None
+            rm_pids[rid]      = set()
+            rm_has_gs[rid]    = False
+            rm_has_sup[rid]   = False
+            rm_has_mem[rid]   = False
+            rm_has_guest[rid] = False
+            rm_yg[rid]        = set()
+            rm_info[rid]      = r
+
+        # Seed counter from existing assignments to avoid ID collisions on reset=False
+        existing_asgns = evt.get('bedroom_assignments') or []
+        _pfx  = 'BDRM'
+        _used = {int(a['id'][len(_pfx):]) for a in existing_asgns
+                 if str(a.get('id', '')).startswith(_pfx)
+                 and str(a.get('id', ''))[len(_pfx):].isdigit()}
+        ctr = [max(_used, default=0)]
+
+        yg_home, asgns = {}, []
+
+        def mk_id():
+            ctr[0] += 1
+            return f'BDRM{ctr[0]:06d}'
+
+        def cap(rid):
+            return rm_info[rid]['room'].get('capacity') or 1
+
+        def mocc(rid, ns):
+            return max((rm_occ[rid].get(n, 0) for n in ns), default=0)
+
+        # ── Checks ─────────────────────────────────────────────────────────
+
+        def gok(pid, rid):
+            """Gender + floor/building lock check."""
+            g = gget(pid)
+            r = rm_info.get(rid)
+            if not r:
+                return False
+            gk = 'male' if g == 'ذكر' else ('female' if g == 'أنثى' else None)
+            if gk:
+                if floor_gen.get(r['floor_id']) not in (None, gk):
+                    return False
+                if bld_gen.get(r['building_id']) not in (None, gk):
+                    return False
+            rg = rm_gen.get(rid)
+            if rg and g and rg != g:
+                # Opposite gender: only allowed for spouse pairs
+                sp = sget(pid)
+                return bool(sp and sp in rm_pids.get(rid, set()))
+            return True
+
+        def fits(ns, rid):
+            """Night-based capacity check."""
+            c = cap(rid)
+            return all(rm_occ[rid].get(n, 0) < c for n in ns)
+
+        def category_ok(rid, rtype):
+            """Hard inter-category rules — never relaxed."""
+            # Guest rooms are private: nobody else enters, guests don't share
+            if rm_has_guest.get(rid):
+                return False  # room already has a guest → nobody can join
+            if rtype == 'guests' and (rm_has_gs[rid] or rm_has_sup[rid] or rm_has_mem[rid]):
+                return False  # guest needs an empty room
+            # الأمانة العامة واللجان never shares with المشاركون or المسؤولون
+            if rtype == 'gs_committee' and (rm_has_sup[rid] or rm_has_mem[rid]):
+                return False
+            if rtype in ('members', 'supervisors') and rm_has_gs[rid]:
+                return False
+            return True
+
+        def leader_ok(rid, rtype):
+            """Leader placement soft constraint."""
+            if leader_pl == 'alone':
+                if rtype == 'supervisors' and rm_has_mem[rid]:
+                    return False  # supervisor room shouldn't have members
+                if rtype == 'members' and rm_has_sup[rid] and not rm_has_mem[rid]:
+                    return False  # member room shouldn't be supervisor-only
+            return True
+
+        def yg_split_ok(rid, yg):
+            if yg_cohesion == 'split' and yg and yg in rm_yg.get(rid, set()):
+                return False
+            return True
+
+        # ── Assignment ─────────────────────────────────────────────────────
+
+        def do_asgn(c, rid):
+            pid = c['pid']
+            g   = gget(pid)
+            for n in c['nights']:
+                rm_occ[rid][n] = rm_occ[rid].get(n, 0) + 1
+            if g and not rm_gen[rid]:
+                rm_gen[rid] = g
+            rm_pids[rid].add(pid)
+            if c['yg']:
+                rm_yg[rid].add(c['yg'])
+            rt = c['rtype']
+            if rt == 'guests':
+                rm_has_guest[rid] = True
+            elif rt == 'gs_committee':
+                rm_has_gs[rid] = True
+            elif rt == 'supervisors':
+                rm_has_sup[rid] = True
+            elif rt == 'members':
+                rm_has_mem[rid] = True
+            asgns.append({
+                'id': mk_id(), 'reg_id': c['reg_id'], 'person_id': pid,
+                'reg_type': rt, 'room_id': rid,
+                'nights': c['nights'], 'active_hull': c['hull'],
+            })
+
+        def sorted_rids(ns, rtype):
+            """Sort room IDs by the compactness preference."""
+            rids = list(rm_info.keys())
+            if rtype == 'guests':
+                # Guests: prefer smallest room with best quality (private = fewest beds)
+                rids.sort(key=lambda r: (
+                    rm_info[r]['room'].get('capacity', 99),
+                    -_room_quality_score(rm_info[r]['room']),
+                ))
+            elif compactness == 'compact':
+                rids.sort(key=lambda r: (-mocc(r, ns), -_room_quality_score(rm_info[r]['room'])))
+            else:
+                rids.sort(key=lambda r: (mocc(r, ns), -_room_quality_score(rm_info[r]['room'])))
+            return rids
+
+        def pick_room(cand, force=None):
+            pid, ns, rtype, yg = cand['pid'], cand['nights'], cand['rtype'], cand['yg']
+
+            # Try the forced room first (all hard rules must pass)
+            if force and force in rm_info:
+                if (gok(pid, force) and fits(ns, force)
+                        and category_ok(force, rtype)
+                        and leader_ok(force, rtype)
+                        and yg_split_ok(force, yg)):
+                    return force
+
+            rids = sorted_rids(ns, rtype)
+
+            # Pass 1: all constraints
+            for rid in rids:
+                if (gok(pid, rid) and fits(ns, rid)
+                        and category_ok(rid, rtype)
+                        and leader_ok(rid, rtype)
+                        and yg_split_ok(rid, yg)):
+                    return rid
+
+            # Pass 2: relax leader_pl and yg_split — keep hard category + gender + capacity
+            for rid in rids:
+                if gok(pid, rid) and fits(ns, rid) and category_ok(rid, rtype):
+                    return rid
+
+            return None
+
+        # ── Main placement loop ─────────────────────────────────────────────
+
+        for cand in cands:
+            g      = gget(cand['pid'])
+            yg_key = (cand['yg'], g) if cand['yg'] else None
+
+            if yg_cohesion == 'together' and yg_key:
+                # Prefer the room the YG has been filling; update yg_home to the
+                # actual room so the group stays together even after a room fills.
+                rid = pick_room(cand, force=yg_home.get(yg_key))
+
+            elif leader_pl == 'with_members' and cand['rtype'] == 'supervisors' and cand['yg']:
+                # Find rooms that already contain this YG.
+                # Sort candidate rooms by quality/compactness so we pick the best.
+                yg_rids = [r for r, ygs in rm_yg.items()
+                           if cand['yg'] in ygs
+                           and gok(cand['pid'], r)
+                           and fits(cand['nights'], r)
+                           and category_ok(r, cand['rtype'])]
+                if yg_rids:
+                    if compactness == 'compact':
+                        yg_rids.sort(key=lambda r: (-mocc(r, cand['nights']),
+                                                     -_room_quality_score(rm_info[r]['room'])))
+                    else:
+                        yg_rids.sort(key=lambda r: (mocc(r, cand['nights']),
+                                                     -_room_quality_score(rm_info[r]['room'])))
+                    rid = yg_rids[0]
+                else:
+                    rid = pick_room(cand)
+
+            else:
+                rid = pick_room(cand)
+
+            if rid:
+                do_asgn(cand, rid)
+                # Always update yg_home so subsequent members of the same YG
+                # continue filling THIS room (not only the first one they used).
+                if yg_key:
+                    yg_home[yg_key] = rid
+
+        return asgns
+
+    # ── Bedroom routes ────────────────────────────────────────────────────────
+
+    @app.route('/api/events/<event_id>/bedroom', methods=['GET'])
+    def get_event_bedroom(event_id):
+        with _LOCK:
+            data = _load_events()
+            evt  = next((e for e in data.get('events', []) if e.get('id') == event_id), None)
+        if not evt:
+            return jsonify({'error': 'not found'}), 404
+        _normalize_registration_attendance(evt)
+        _enrich_all_registrations(evt)
+        rooms_flat = _load_rooms_for_event(evt)
+        return jsonify({
+            'config':      evt.get('bedroom_config') or {},
+            'assignments': evt.get('bedroom_assignments') or [],
+            'rooms_flat':  rooms_flat,
+            'nights':      evt.get('nights') or [],
+            'registration': evt.get('registration') or {},
+        })
+
+    @app.route('/api/events/<event_id>/bedroom-config', methods=['PUT'])
+    def update_bedroom_config(event_id):
+        err = _require_admin()
+        if err:
+            return err
+        body = request.get_json(force=True) or {}
+        with _LOCK:
+            data = _load_events()
+            evt  = next((e for e in data.get('events', []) if e.get('id') == event_id), None)
+            if not evt:
+                return jsonify({'error': 'not found'}), 404
+            cfg = evt.setdefault('bedroom_config', {})
+            for key in ('hull_priority', 'multi_hull_overrides', 'floor_gender',
+                        'building_gender', 'occupied_rooms', 'distribution_options'):
+                if key in body:
+                    cfg[key] = body[key]
+            evt['updated_at'] = datetime.now().isoformat()
+            _save_events(data)
+        return jsonify({'config': cfg})
+
+    @app.route('/api/events/<event_id>/bedroom-assignments/auto-distribute', methods=['POST'])
+    def auto_distribute_bedrooms(event_id):
+        err = _require_admin()
+        if err:
+            return err
+        body  = request.get_json(force=True) or {}
+        reset = body.get('reset', True)
+        with _LOCK:
+            data = _load_events()
+            evt  = next((e for e in data.get('events', []) if e.get('id') == event_id), None)
+            if not evt:
+                return jsonify({'error': 'not found'}), 404
+            rooms_flat = _load_rooms_for_event(evt)
+            if not rooms_flat:
+                return jsonify({'error': 'no rooms found for this event'}), 400
+            config = evt.get('bedroom_config') or {}
+            _normalize_registration_attendance(evt)
+            _enrich_all_registrations(evt)
+            new_asgns = _auto_distribute_bedrooms(evt, config, rooms_flat)
+            if reset:
+                evt['bedroom_assignments'] = new_asgns
+            else:
+                existing     = evt.get('bedroom_assignments') or []
+                new_reg_ids  = {a['reg_id'] for a in new_asgns}
+                evt['bedroom_assignments'] = [a for a in existing if a['reg_id'] not in new_reg_ids] + new_asgns
+            evt['updated_at'] = datetime.now().isoformat()
+            _save_events(data)
+        return jsonify({'assignments': evt['bedroom_assignments'], 'count': len(new_asgns)})
+
+    @app.route('/api/events/<event_id>/bedroom-assignments', methods=['DELETE'])
+    def clear_bedroom_assignments(event_id):
+        err = _require_admin()
+        if err:
+            return err
+        with _LOCK:
+            data = _load_events()
+            evt  = next((e for e in data.get('events', []) if e.get('id') == event_id), None)
+            if not evt:
+                return jsonify({'error': 'not found'}), 404
+            evt['bedroom_assignments'] = []
+            evt['updated_at'] = datetime.now().isoformat()
+            _save_events(data)
+        return jsonify({'ok': True})
+
+    @app.route('/api/events/<event_id>/bedroom-assignments', methods=['POST'])
+    def create_bedroom_assignment(event_id):
+        err = _require_admin()
+        if err:
+            return err
+        body = request.get_json(force=True) or {}
+        reg_id   = str(body.get('reg_id') or '').strip()
+        person_id = str(body.get('person_id') or '').strip()
+        reg_type  = str(body.get('reg_type') or '').strip()
+        room_id   = str(body.get('room_id') or '').strip()
+        nights    = body.get('nights') or []
+        if not all([reg_id, person_id, reg_type, room_id, nights]):
+            return jsonify({'error': 'reg_id, person_id, reg_type, room_id, nights required'}), 400
+        with _LOCK:
+            data = _load_events()
+            evt  = next((e for e in data.get('events', []) if e.get('id') == event_id), None)
+            if not evt:
+                return jsonify({'error': 'not found'}), 404
+            existing = evt.setdefault('bedroom_assignments', [])
+            _pfx  = 'BDRM'
+            _nums = {int(a['id'][len(_pfx):]) for a in existing
+                     if str(a.get('id', '')).startswith(_pfx) and str(a.get('id', ''))[len(_pfx):].isdigit()}
+            new_id = f'{_pfx}{(max(_nums, default=0) + 1):06d}'
+            asgn = {
+                'id': new_id, 'reg_id': reg_id, 'person_id': person_id,
+                'reg_type': reg_type, 'room_id': room_id, 'nights': nights,
+                'active_hull': body.get('active_hull'),
+            }
+            existing.append(asgn)
+            evt['updated_at'] = datetime.now().isoformat()
+            _save_events(data)
+        return jsonify({'assignment': asgn}), 201
+
+    @app.route('/api/events/<event_id>/bedroom-assignments/<asgn_id>', methods=['PUT'])
+    def update_bedroom_assignment(event_id, asgn_id):
+        err = _require_admin()
+        if err:
+            return err
+        body = request.get_json(force=True) or {}
+        with _LOCK:
+            data = _load_events()
+            evt  = next((e for e in data.get('events', []) if e.get('id') == event_id), None)
+            if not evt:
+                return jsonify({'error': 'not found'}), 404
+            asgn = next((a for a in (evt.get('bedroom_assignments') or []) if a.get('id') == asgn_id), None)
+            if not asgn:
+                return jsonify({'error': 'assignment not found'}), 404
+            for key in ('room_id', 'nights', 'active_hull'):
+                if key in body:
+                    asgn[key] = body[key]
+            evt['updated_at'] = datetime.now().isoformat()
+            _save_events(data)
+        return jsonify({'assignment': asgn})
+
+    @app.route('/api/events/<event_id>/bedroom-assignments/<asgn_id>', methods=['DELETE'])
+    def delete_bedroom_assignment(event_id, asgn_id):
+        err = _require_admin()
+        if err:
+            return err
+        with _LOCK:
+            data = _load_events()
+            evt  = next((e for e in data.get('events', []) if e.get('id') == event_id), None)
+            if not evt:
+                return jsonify({'error': 'not found'}), 404
+            orig = evt.get('bedroom_assignments') or []
+            evt['bedroom_assignments'] = [a for a in orig if a.get('id') != asgn_id]
+            if len(evt['bedroom_assignments']) == len(orig):
+                return jsonify({'error': 'not found'}), 404
             evt['updated_at'] = datetime.now().isoformat()
             _save_events(data)
         return jsonify({'ok': True})

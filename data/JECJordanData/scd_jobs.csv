@@ -291,7 +291,6 @@
 245,JB00350,Electric Power Engineer,IVY,,,current,2025-01-31 11:16:48,,True,admin
 1253,JB00352,Bank Employee,بنك الإتحاد,,,current,2025-03-01 12:50:05,,True,admin
 1272,JB00354,Senior Account Executive,GlobeMed Jordan,,,current,2025-03-04 12:51:54,,True,admin
-680,JB00355,Retail & Store Manager,ملح وزيت,,,current,2025-02-03 02:09:11,,True,admin
 1391,JB00356,Designer,Freelance,,,current,2025-03-11 10:52:37,,True,admin
 1405,JB00357,Secretary,مجموعة حداد للتسويق - شركة نانت للتجارة,,,current,2025-03-11 11:43:48,,True,admin
 594,JB00359,Sales Secretary,Centro Mada Amman by Rotana Hotels,,,current,2025-02-01 22:59:31,,True,admin
@@ -372,6 +371,17 @@
 1126,JB00374,Customer Service Supervisor,Advanced Company,,,current,2026-05-29 15:07:13,,True,admin
 1281,JB00351,Senior Operations Executive,International Beverages Consultancy,,,current,2026-05-29 15:27:05,,True,admin
 1347,JB00236,Pharmacist,Adatco,,,current,2026-05-29 15:27:35,,True,admin
+3238,JB00375,Technical Support Engineer,Microsoft,,,current,2026-07-07 09:53:25,,True,admin
+3239,JB00376,Sales Representative,المركز العربي للبصريات,,,current,2026-07-07 09:56:35,,True,admin
+3240,JB00377,Customer Service Officer,البنك الأردني الكويتي,,,current,2026-07-07 09:59:17,,True,admin
+3241,JB00378,Accountant,Integrated Wood Industry,,,current,2026-07-07 10:02:24,,True,admin
+3242,JB00379,Business Development,A2A,,,current,2026-07-07 10:05:35,,True,admin
+1304,JB00380,Programmer,Access to Arabia,,,current,2026-07-07 10:08:12,,True,admin
+807,JB00381,,Biolab,,,current,2026-07-07 10:10:04,,True,admin
+2375,JB00382,Community Manager,Memac Ogilvy,,,current,2026-07-07 10:15:05,,True,admin
+680,JB00355,Retail & Store Manager,ملح وزيت,,,current,2026-07-07 10:16:50,,True,admin
+680,JB00383,Data Analyst,Ro'ya Media Group,,,current,2026-07-07 10:16:50,,True,admin
+680,JB00355,Retail & Store Manager,ملح وزيت,,,current,2025-02-03 02:09:11,2026-07-07 10:16:50,False,admin
 1347,JB00236,Pharmacist,,,,current,2025-03-10 15:59:32,2026-05-29 15:27:35,False,admin
 1281,JB00351,Senior Operations Executive,IBC,,,current,2025-03-05 08:22:07,2026-05-29 15:27:05,False,admin
 3184,JB00372,,قعوار للطاقة,,,current,2026-05-28 13:46:22,2026-05-28 20:23:50,False,admin

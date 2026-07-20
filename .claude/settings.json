@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile backend/core/routes_events.py backend/core/routes_youth_groups.py)",
+      "Bash(python -m py_compile backend/core/routes_events.py)",
+      "Bash(python \"C:/Users/IT/AppData/Local/Temp/claude/c--Users-IT-Desktop-JECJordan-JECJordanPortal/4c58a58a-a4c7-4c9d-bc42-1e30d1dde9fc/scratchpad/gen_msgs.py\")",
+      "Bash(PYTHONIOENCODING=utf-8 PYTHONUTF8=1 python -c ' *)",
+      "Bash(mkdir -p /c/Users/IT/Desktop/JECJordan/camp_edadi_messages)",
+      "Bash(cp C:/Users/IT/AppData/Local/Temp/claude/c--Users-IT-Desktop-JECJordan-JECJordanPortal/4c58a58a-a4c7-4c9d-bc42-1e30d1dde9fc/scratchpad/messages/*.txt /c/Users/IT/Desktop/JECJordan/camp_edadi_messages/)",
+      "Bash(echo \"SAVED_TO: C:\\\\\\\\Users\\\\\\\\IT\\\\\\\\Desktop\\\\\\\\JECJordan\\\\\\\\camp_edadi_messages\")",
+      "Bash(python -m py_compile backend/core/state.py backend/core/routes_people.py)",
+      "Bash(python -c \"import json; d=json.load\\(open\\('data/events.json'\\)\\); print\\(type\\(d\\)\\); print\\(list\\(d.keys\\(\\)\\) if isinstance\\(d,dict\\) else len\\(d\\)\\)\")",
+      "Bash(python -c \"import json; d=json.load\\(open\\('data/events.json',encoding='utf-8'\\)\\); print\\(type\\(d\\)\\); print\\(len\\(d\\) if isinstance\\(d,list\\) else list\\(d.keys\\(\\)\\)\\)\")",
+      "Bash(python -c ' *)",
+      "Bash(PYTHONIOENCODING=utf-8 python -c ' *)",
+      "Bash(PYTHONIOENCODING=utf-8 python \"C:/Users/IT/AppData/Local/Temp/claude/c--Users-IT-Desktop-JECJordan-JECJordanPortal/3c9b3eaa-b3ad-48c6-b085-e3bb9f81bf1e/scratchpad/gen_msgs.py\")",
+      "Bash(cd \"c:/Users/IT/Desktop/JECJordan/JECJordanPortal\" && stat -c '%y  %n' data/events.json && echo \"---now---\" && date && echo \"---git---\" && git log -1 --format='%h %ci %s' -- data/events.json)",
+      "Read(//c/Users/IT/Desktop/JECJordan/JECJordanPortal/**)",
+      "Bash(PYTHONIOENCODING=utf-8 python \"C:/Users/IT/AppData/Local/Temp/claude/c--Users-IT-Desktop-JECJordan-JECJordanPortal/3c9b3eaa-b3ad-48c6-b085-e3bb9f81bf1e/scratchpad/build_artifact.py\")"
+    ]
+  }
+}
