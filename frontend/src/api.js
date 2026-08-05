@@ -388,6 +388,12 @@ export const api = {
   updateEventRegistration: (eventId, type, regId, body) => req(`/events/${encodeURIComponent(eventId)}/registration/${type}/${encodeURIComponent(regId)}`, { method: 'PUT', body }),
   deleteEventRegistration: (eventId, type, regId) => req(`/events/${encodeURIComponent(eventId)}/registration/${type}/${encodeURIComponent(regId)}`, { method: 'DELETE' }),
 
+  // Custom registration fields (per event, per registration category)
+  listEventRegistrationFields:  (eventId, type)            => req(`/events/${encodeURIComponent(eventId)}/registration/${type}/fields`),
+  addEventRegistrationField:    (eventId, type, body)      => req(`/events/${encodeURIComponent(eventId)}/registration/${type}/fields`, { method: 'POST', body }),
+  updateEventRegistrationField: (eventId, type, fieldId, body) => req(`/events/${encodeURIComponent(eventId)}/registration/${type}/fields/${encodeURIComponent(fieldId)}`, { method: 'PUT', body }),
+  deleteEventRegistrationField: (eventId, type, fieldId)   => req(`/events/${encodeURIComponent(eventId)}/registration/${type}/fields/${encodeURIComponent(fieldId)}`, { method: 'DELETE' }),
+
   addEventYgApology:    (eventId, body)       => req(`/events/${encodeURIComponent(eventId)}/yg-apologies`, { method: 'POST', body }),
   deleteEventYgApology: (eventId, apologyId)  => req(`/events/${encodeURIComponent(eventId)}/yg-apologies/${encodeURIComponent(apologyId)}`, { method: 'DELETE' }),
 

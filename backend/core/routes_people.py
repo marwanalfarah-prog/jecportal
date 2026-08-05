@@ -26,7 +26,10 @@ _ADMIN_ONLY_AGE_GROUPS = {"مرشد روحيّ"}
 _ARABIC_CHAR_CLASS = "\u0621-\u064A\u066E-\u066F\u0671-\u06D3\u06FA-\u06FF\u064B-\u065F"
 _ARABIC_TEXT_RE = re.compile(rf"^[{_ARABIC_CHAR_CLASS}]+(?:[ -][{_ARABIC_CHAR_CLASS}]+)*$")
 _ARABIC_SPACE_TEXT_RE = re.compile(rf"^[{_ARABIC_CHAR_CLASS}]+(?: [{_ARABIC_CHAR_CLASS}]+)*$")
-_ENGLISH_TEXT_RE = re.compile(r"^[A-Za-z']+(?:[ -][A-Za-z']+)*$")
+_APOSTROPHE_VARIANTS = "‘’ʼʹ′＇`´"
+_APOSTROPHE_TRANSLATION = {ord(char): "'" for char in _APOSTROPHE_VARIANTS}
+_ENGLISH_CHAR_CLASS = rf"A-Za-z'{_APOSTROPHE_VARIANTS}"
+_ENGLISH_TEXT_RE = re.compile(rf"^[{_ENGLISH_CHAR_CLASS}]+(?:[ -][{_ENGLISH_CHAR_CLASS}]+)*$")
 _EMAIL_RE = re.compile(
     r"^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
     r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
@@ -54,6 +57,9 @@ _NAME_FIELD_LABELS = {
     "mother_en_second_name": "اسم الأم الثاني بالإنجليزية",
     "mother_en_last_name": "اسم الأم الأخير بالإنجليزية",
 }
+_ENGLISH_NAME_FIELDS = frozenset(
+    key for key in _NAME_FIELD_LABELS if key.startswith("en_") or key.startswith("mother_en_")
+)
 _ADDRESS_FIELD_LABELS = {
     "country": "الدولة",
     "governorate": "المحافظة / الولاية",
@@ -114,7 +120,10 @@ def _normalize_profile_person_fields(person_fields: dict) -> dict:
             normalized[key] = _normalize_integer_value(value)
             continue
         if isinstance(value, str):
-            normalized[key] = S._normalize_text(value)
+            text = S._normalize_text(value)
+            if text and key in _ENGLISH_NAME_FIELDS:
+                text = text.translate(_APOSTROPHE_TRANSLATION)
+            normalized[key] = text
             continue
         normalized[key] = value
     return normalized

@@ -59,6 +59,13 @@ ATTENDANCE_STATUS_LABELS = {
     'apologized': 'اعتذر',
 }
 
+# Admin-defined extra registration fields. A field is declared once on a
+# registration category (members / supervisors / …) and then applies to every
+# entry in that category, including the XLSX export.
+CUSTOM_FIELD_TYPES = ('text', 'textarea', 'number', 'date', 'select', 'checkbox')
+CUSTOM_FIELD_LABEL_MAX = 60
+CUSTOM_FIELD_CHECKBOX_TRUE = 'نعم'
+
 MEMBER_EXPORT_COLUMNS = [
     'الاسم الكامل بالعربية',
     'حالة الملف الشخصي',
@@ -69,6 +76,8 @@ MEMBER_EXPORT_COLUMNS = [
     'الجنس',
     'تاريخ الميلاد الكامل',
     'الصف الحالي',
+    'التعليم الجامعي',
+    'الوظيفة الحالية',
     'رقم الهاتف',
     'الشبيبة',
     'رقم الغرفة',
@@ -369,6 +378,165 @@ def _apply_attendance_payload(reg_type, entry, body):
 
     _ensure_attendance_fields(reg_type, entry)
     return None
+
+
+# ── Custom registration fields ────────────────────────────────────────────────
+
+def _ensure_registration_fields(evt):
+    """Guarantee evt['registration_fields'] holds one list per registration type."""
+    changed = False
+    fields = evt.get('registration_fields')
+    if not isinstance(fields, dict):
+        fields = {}
+        changed = True
+    for reg_type in REG_TYPE_ORDER:
+        if not isinstance(fields.get(reg_type), list):
+            fields[reg_type] = []
+            changed = True
+    for key in [k for k in fields if k not in REG_TYPE_ORDER]:
+        fields.pop(key)
+        changed = True
+    evt['registration_fields'] = fields
+    return changed
+
+
+def _registration_fields(evt, reg_type):
+    _ensure_registration_fields(evt)
+    return evt['registration_fields'].get(reg_type, [])
+
+
+def _normalize_custom_field_options(raw):
+    options = []
+    for opt in (raw or []):
+        text = str(opt if opt is not None else '').strip()
+        if text and text not in options:
+            options.append(text)
+    return options
+
+
+def _validate_custom_field_payload(body, existing=None):
+    """Build a field definition from a request body. Returns (field, error)."""
+    base = dict(existing or {})
+    label = str(body.get('label', base.get('label', '')) or '').strip()
+    if not label:
+        return None, 'اسم الحقل مطلوب'
+    if len(label) > CUSTOM_FIELD_LABEL_MAX:
+        return None, f'اسم الحقل يجب ألا يتجاوز {CUSTOM_FIELD_LABEL_MAX} حرفاً'
+
+    ftype = str(body.get('type', base.get('type', 'text')) or 'text').strip()
+    if ftype not in CUSTOM_FIELD_TYPES:
+        return None, 'نوع الحقل غير صالح'
+
+    options = _normalize_custom_field_options(
+        body['options'] if 'options' in body else base.get('options')
+    )
+    if ftype == 'select' and not options:
+        return None, 'حقل الاختيار من قائمة يحتاج خياراً واحداً على الأقل'
+    if ftype != 'select':
+        options = []
+
+    base.update({'label': label, 'type': ftype, 'options': options})
+    return base, None
+
+
+def _normalize_custom_field_value(field, raw):
+    """Coerce a submitted value to the field's type. Returns (value, error)."""
+    ftype = field.get('type')
+    label = field.get('label') or field.get('id')
+
+    if ftype == 'checkbox':
+        if isinstance(raw, str):
+            return raw.strip().lower() in ('true', '1', 'yes', 'on', CUSTOM_FIELD_CHECKBOX_TRUE), None
+        return bool(raw), None
+
+    if ftype == 'number':
+        if raw is None or str(raw).strip() == '':
+            return '', None
+        try:
+            num = float(str(raw).strip())
+        except (TypeError, ValueError):
+            return None, f'قيمة الحقل "{label}" يجب أن تكون رقماً'
+        return int(num) if num.is_integer() else num, None
+
+    value = str(raw if raw is not None else '').strip()
+    if ftype == 'select' and value and value not in (field.get('options') or []):
+        return None, f'قيمة غير صالحة للحقل "{label}"'
+    return value, None
+
+
+def _ensure_entry_custom_fields(evt, reg_type, entry):
+    """Make sure entry['custom_fields'] exists and holds no values for deleted fields."""
+    valid_ids = {str(f.get('id')) for f in _registration_fields(evt, reg_type)}
+    values = entry.get('custom_fields')
+    if not isinstance(values, dict):
+        values = {}
+    cleaned = {k: v for k, v in values.items() if str(k) in valid_ids}
+    changed = cleaned != entry.get('custom_fields')
+    entry['custom_fields'] = cleaned
+    return changed
+
+
+def _normalize_registration_custom_fields(evt):
+    changed = _ensure_registration_fields(evt)
+    registration = evt.setdefault('registration', {})
+    for reg_type in REG_TYPE_ORDER:
+        for entry in registration.get(reg_type, []) or []:
+            if isinstance(entry, dict):
+                changed = _ensure_entry_custom_fields(evt, reg_type, entry) or changed
+    return changed
+
+
+def _apply_custom_fields_payload(evt, reg_type, entry, body):
+    """Merge body['custom_fields'] into the entry. Returns an error string or None."""
+    _ensure_entry_custom_fields(evt, reg_type, entry)
+    if 'custom_fields' not in body:
+        return None
+    incoming = body.get('custom_fields')
+    if incoming is None:
+        return None
+    if not isinstance(incoming, dict):
+        return 'custom_fields must be an object'
+
+    by_id = {str(f.get('id')): f for f in _registration_fields(evt, reg_type)}
+    for field_id, raw in incoming.items():
+        field = by_id.get(str(field_id))
+        if not field:
+            continue  # unknown / stale field id — ignore rather than fail the save
+        value, error = _normalize_custom_field_value(field, raw)
+        if error:
+            return error
+        entry['custom_fields'][str(field_id)] = value
+    return None
+
+
+def _custom_field_export_value(field, value):
+    if field.get('type') == 'checkbox':
+        return CUSTOM_FIELD_CHECKBOX_TRUE if value else ''
+    return _export_text(value)
+
+
+def _custom_export_columns(evt, reg_type, base_columns):
+    """Return (all_columns, [(header, field), …]) with headers unique across the sheet."""
+    columns = list(base_columns)
+    pairs = []
+    for field in _registration_fields(evt, reg_type):
+        base_header = str(field.get('label') or '').strip() or str(field.get('id') or '')
+        header, suffix = base_header, 2
+        while header in columns:
+            header = f'{base_header} ({suffix})'
+            suffix += 1
+        columns.append(header)
+        pairs.append((header, field))
+    return columns, pairs
+
+
+def _custom_field_row_values(entry, custom_pairs):
+    values = entry.get('custom_fields')
+    values = values if isinstance(values, dict) else {}
+    return {
+        header: _custom_field_export_value(field, values.get(str(field.get('id'))))
+        for header, field in custom_pairs
+    }
 
 
 def _enrich_with_display_names(events):
@@ -1034,9 +1202,11 @@ def _build_team_name_lookup(evt):
 
 def _build_member_export_rows(evt):
     _normalize_registration_attendance(evt)
+    _normalize_registration_custom_fields(evt)
     _enrich_all_registrations(evt)
     room_lookup = _build_bedroom_assignment_lookup(evt)
     team_lookup = _build_team_name_lookup(evt)
+    _, custom_pairs = _custom_export_columns(evt, 'members', MEMBER_EXPORT_COLUMNS)
     rows = []
     for entry in evt.get('registration', {}).get('members', []):
         person_id = entry.get('person_id')
@@ -1055,6 +1225,8 @@ def _build_member_export_rows(evt):
             'الجنس': _export_text(entry.get('gender') or person.get('gender')),
             'تاريخ الميلاد الكامل': _format_birthdate(person),
             'الصف الحالي': _format_current_grade(source_store, person_id, person),
+            'التعليم الجامعي': _format_higher_education(source_store, person_id),
+            'الوظيفة الحالية': _format_current_job(source_store, person_id),
             'رقم الهاتف': _format_phone_numbers(source_store, person_id),
             'الشبيبة': _export_text(entry.get('youth_group_label') or _lookup_yg_label(entry.get('youth_group_id'))),
             'رقم الغرفة': room_lookup.get(reg_id, ''),
@@ -1063,13 +1235,16 @@ def _build_member_export_rows(evt):
             'الحالات الصحية': _format_health_conditions(source_store, person_id),
             'ملاحظات الملف الشخصي': _format_profile_notes(source_store, person_id),
             'ملاحظات التسجيل': _export_text(entry.get('notes')),
+            **_custom_field_row_values(entry, custom_pairs),
         })
     return rows
 
 
 def _build_members_export_workbook(evt):
     output = BytesIO()
-    df = pd.DataFrame(_build_member_export_rows(evt), columns=MEMBER_EXPORT_COLUMNS)
+    rows = _build_member_export_rows(evt)
+    columns, _ = _custom_export_columns(evt, 'members', MEMBER_EXPORT_COLUMNS)
+    df = pd.DataFrame(rows, columns=columns)
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Participants')
         worksheet = writer.sheets['Participants']
@@ -1118,9 +1293,11 @@ def _format_current_job(source_store, person_id):
 
 def _build_supervisor_export_rows(evt):
     _normalize_registration_attendance(evt)
+    _normalize_registration_custom_fields(evt)
     _enrich_all_registrations(evt)
     room_lookup = _build_bedroom_assignment_lookup(evt)
     team_lookup = _build_team_name_lookup(evt)
+    _, custom_pairs = _custom_export_columns(evt, 'supervisors', SUPERVISOR_EXPORT_COLUMNS)
     rows = []
     for entry in evt.get('registration', {}).get('supervisors', []):
         person_id = entry.get('person_id')
@@ -1151,13 +1328,16 @@ def _build_supervisor_export_rows(evt):
             'الحالات الصحية':          _format_health_conditions(source_store, person_id),
             'ملاحظات الملف الشخصي':   _format_profile_notes(source_store, person_id),
             'ملاحظات التسجيل':         _export_text(entry.get('notes')),
+            **_custom_field_row_values(entry, custom_pairs),
         })
     return rows
 
 
 def _build_supervisors_export_workbook(evt):
     output = BytesIO()
-    df = pd.DataFrame(_build_supervisor_export_rows(evt), columns=SUPERVISOR_EXPORT_COLUMNS)
+    rows = _build_supervisor_export_rows(evt)
+    columns, _ = _custom_export_columns(evt, 'supervisors', SUPERVISOR_EXPORT_COLUMNS)
+    df = pd.DataFrame(rows, columns=columns)
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='Supervisors')
         worksheet = writer.sheets['Supervisors']
@@ -1172,8 +1352,10 @@ def _build_supervisors_export_workbook(evt):
 
 def _build_gs_committee_export_rows(evt):
     _normalize_registration_attendance(evt)
+    _normalize_registration_custom_fields(evt)
     _enrich_all_registrations(evt)
     room_lookup = _build_bedroom_assignment_lookup(evt)
+    _, custom_pairs = _custom_export_columns(evt, 'gs_committee', GS_COMMITTEE_EXPORT_COLUMNS)
     rows = []
     for entry in evt.get('registration', {}).get('gs_committee', []):
         person_id = entry.get('person_id')
@@ -1202,13 +1384,16 @@ def _build_gs_committee_export_rows(evt):
             'الحالات الصحية':           _format_health_conditions(source_store, person_id),
             'ملاحظات الملف الشخصي':    _format_profile_notes(source_store, person_id),
             'ملاحظات التسجيل':          _export_text(entry.get('notes')),
+            **_custom_field_row_values(entry, custom_pairs),
         })
     return rows
 
 
 def _build_gs_committee_export_workbook(evt):
     output = BytesIO()
-    df = pd.DataFrame(_build_gs_committee_export_rows(evt), columns=GS_COMMITTEE_EXPORT_COLUMNS)
+    rows = _build_gs_committee_export_rows(evt)
+    columns, _ = _custom_export_columns(evt, 'gs_committee', GS_COMMITTEE_EXPORT_COLUMNS)
+    df = pd.DataFrame(rows, columns=columns)
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='GS Committee')
         worksheet = writer.sheets['GS Committee']
@@ -1667,6 +1852,7 @@ def register_events_routes(app):
                     'gs_committee': [],
                     'guests': [],
                 },
+                'registration_fields': {reg_type: [] for reg_type in REG_TYPE_ORDER},
                 'created_at': now,
                 'updated_at': now,
             }
@@ -1686,6 +1872,7 @@ def register_events_routes(app):
             if not evt:
                 return jsonify({'error': 'not found'}), 404
             changed = _normalize_registration_attendance(evt)
+            changed = _normalize_registration_custom_fields(evt) or changed
             if changed:
                 evt['updated_at'] = datetime.now().isoformat()
                 _save_events(data)
@@ -2200,6 +2387,9 @@ def register_events_routes(app):
                 entry['reason'] = str(body.get('reason', '') or '').strip()
 
             _ensure_attendance_fields(reg_type, entry)
+            custom_error = _apply_custom_fields_payload(evt, reg_type, entry, body)
+            if custom_error:
+                return jsonify({'error': custom_error}), 400
 
             reg_list.append(entry)
             evt['updated_at'] = now
@@ -2276,6 +2466,10 @@ def register_events_routes(app):
             if attendance_error:
                 return jsonify({'error': attendance_error}), 400
 
+            custom_error = _apply_custom_fields_payload(evt, reg_type, entry, body)
+            if custom_error:
+                return jsonify({'error': custom_error}), 400
+
             evt['updated_at'] = datetime.now().isoformat()
             _save_events(data)
 
@@ -2309,6 +2503,126 @@ def register_events_routes(app):
                         p = m.get('yg_priority')
                         if isinstance(p, int) and p > del_p:
                             m['yg_priority'] = p - 1
+            evt['updated_at'] = datetime.now().isoformat()
+            _save_events(data)
+        return jsonify({'ok': True})
+
+    # ── Custom registration fields ─────────────────────────────────────────────
+
+    @app.route('/api/events/<event_id>/registration/<reg_type>/fields', methods=['GET'])
+    def list_registration_fields(event_id, reg_type):
+        err = _require_admin()
+        if err:
+            return err
+        if reg_type not in REG_TYPES:
+            return jsonify({'error': 'invalid reg_type'}), 400
+        with _LOCK:
+            data = _load_events()
+            evt = next((e for e in data.get('events', []) if e.get('id') == event_id), None)
+            if not evt:
+                return jsonify({'error': 'not found'}), 404
+            fields = list(_registration_fields(evt, reg_type))
+        return jsonify({'fields': fields})
+
+    @app.route('/api/events/<event_id>/registration/<reg_type>/fields', methods=['POST'])
+    def add_registration_field(event_id, reg_type):
+        err = _require_admin()
+        if err:
+            return err
+        if reg_type not in REG_TYPES:
+            return jsonify({'error': 'invalid reg_type'}), 400
+        body = request.get_json(force=True) or {}
+
+        field, error = _validate_custom_field_payload(body)
+        if error:
+            return jsonify({'error': error}), 400
+
+        with _LOCK:
+            data = _load_events()
+            evt = next((e for e in data.get('events', []) if e.get('id') == event_id), None)
+            if not evt:
+                return jsonify({'error': 'not found'}), 404
+
+            _ensure_registration_fields(evt)
+            reg_fields = evt['registration_fields'][reg_type]
+            if any(str(f.get('label') or '').strip() == field['label'] for f in reg_fields):
+                return jsonify({'error': 'يوجد حقل بنفس الاسم في هذه الفئة'}), 409
+
+            all_field_ids = [
+                f.get('id', '') for section in evt['registration_fields'].values() for f in section
+            ]
+            field['id'] = _gen_id('EVTFLD', all_field_ids)
+            field['created_at'] = datetime.now().isoformat()
+            reg_fields.append(field)
+            evt['updated_at'] = field['created_at']
+            _save_events(data)
+
+        return jsonify({'field': field}), 201
+
+    @app.route('/api/events/<event_id>/registration/<reg_type>/fields/<field_id>', methods=['PUT'])
+    def update_registration_field(event_id, reg_type, field_id):
+        err = _require_admin()
+        if err:
+            return err
+        if reg_type not in REG_TYPES:
+            return jsonify({'error': 'invalid reg_type'}), 400
+        body = request.get_json(force=True) or {}
+
+        with _LOCK:
+            data = _load_events()
+            evt = next((e for e in data.get('events', []) if e.get('id') == event_id), None)
+            if not evt:
+                return jsonify({'error': 'not found'}), 404
+
+            _ensure_registration_fields(evt)
+            reg_fields = evt['registration_fields'][reg_type]
+            index = next((i for i, f in enumerate(reg_fields) if f.get('id') == field_id), None)
+            if index is None:
+                return jsonify({'error': 'not found'}), 404
+
+            # The type is fixed once created — changing it would invalidate stored values.
+            updated, error = _validate_custom_field_payload(
+                {k: v for k, v in body.items() if k != 'type'}, existing=reg_fields[index]
+            )
+            if error:
+                return jsonify({'error': error}), 400
+            if any(
+                i != index and str(f.get('label') or '').strip() == updated['label']
+                for i, f in enumerate(reg_fields)
+            ):
+                return jsonify({'error': 'يوجد حقل بنفس الاسم في هذه الفئة'}), 409
+
+            reg_fields[index] = updated
+            evt['updated_at'] = datetime.now().isoformat()
+            _save_events(data)
+
+        return jsonify({'field': updated})
+
+    @app.route('/api/events/<event_id>/registration/<reg_type>/fields/<field_id>', methods=['DELETE'])
+    def delete_registration_field(event_id, reg_type, field_id):
+        err = _require_admin()
+        if err:
+            return err
+        if reg_type not in REG_TYPES:
+            return jsonify({'error': 'invalid reg_type'}), 400
+        with _LOCK:
+            data = _load_events()
+            evt = next((e for e in data.get('events', []) if e.get('id') == event_id), None)
+            if not evt:
+                return jsonify({'error': 'not found'}), 404
+
+            _ensure_registration_fields(evt)
+            reg_fields = evt['registration_fields'][reg_type]
+            remaining = [f for f in reg_fields if f.get('id') != field_id]
+            if len(remaining) == len(reg_fields):
+                return jsonify({'error': 'not found'}), 404
+            evt['registration_fields'][reg_type] = remaining
+
+            # Drop the now-orphaned values from every entry in this category.
+            for entry in evt.get('registration', {}).get(reg_type, []) or []:
+                if isinstance(entry, dict):
+                    _ensure_entry_custom_fields(evt, reg_type, entry)
+
             evt['updated_at'] = datetime.now().isoformat()
             _save_events(data)
         return jsonify({'ok': True})

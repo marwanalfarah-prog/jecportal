@@ -15,6 +15,24 @@ function shortYg(label) {
   return label.replace(/^شبيبة\s+/, '').trim() || label
 }
 
+// Leading honorific/clergy titles that should be kept as a prefix rather than
+// mistaken for the first name.
+const NAME_TITLES = new Set([
+  'الأب', 'الاب', 'القس', 'الخوري', 'الشماس', 'المطران', 'الأنبا', 'الانبا',
+  'الأرشمندريت', 'الارشمندريت', 'الراهب', 'الراهبة', 'الأخت', 'الاخت', 'الأم', 'الام',
+])
+
+// Reduce a full (4-part) name to [title +] first + last name.
+function firstLast(name) {
+  const parts = String(name ?? '').trim().split(/\s+/).filter(Boolean)
+  let title = ''
+  if (parts.length > 1 && NAME_TITLES.has(parts[0])) {
+    title = parts.shift() + ' '
+  }
+  if (parts.length <= 1) return (title + parts.join(' ')).trim()
+  return `${title}${parts[0]} ${parts[parts.length - 1]}`
+}
+
 function rtlPara(text, { bold = false, size = 20, center = false, before = 0, after = 120, pageBreak = false } = {}) {
   return new Paragraph({
     bidirectional: true,
@@ -93,7 +111,7 @@ export async function downloadTeamsDocx(teams, members, supers, fileName = 'تو
 
     // Supervisors line
     if (teamSups.length > 0) {
-      const names = teamSups.map(s => s.name).filter(Boolean).join(' و')
+      const names = teamSups.map(s => firstLast(s.name)).filter(Boolean).join(' و')
       children.push(rtlPara(`مسؤول(ين) الفرقة: ${names}`, { bold: true, size: 22, after: 200 }))
     }
 
@@ -107,7 +125,7 @@ export async function downloadTeamsDocx(teams, members, supers, fileName = 'تو
         ]),
         ...teamMembers.map((m, i) => dataRow([
           { t: i + 1,                        w: 600,  c: true  },
-          { t: m.name || '—',                w: 4200, c: false },
+          { t: firstLast(m.name) || '—',     w: 4200, c: false },
           { t: shortYg(m.youth_group_label), w: 2400, c: false },
         ])),
       ]))
@@ -160,58 +178,73 @@ export async function downloadBedroomsDocx(rooms_flat, assignments, registration
       { bold: true, size: 26, center: true, after: 200, pageBreak: ri > 0 },
     ))
 
-    if (memAsgns.length > 0 || supAsgns.length > 0) {
-      // Regular room: members and/or supervisors
-      if (supAsgns.length > 0) {
-        const names = supAsgns.map(a => people[String(a.person_id)]?.name).filter(Boolean).join(' و')
-        children.push(rtlPara(`مسؤول(ين) الغرفة: ${names}`, { bold: true, size: 22, after: 200 }))
-      }
+    // A supervisor is a "room supervisor" (named above, kept out of the tables)
+    // ONLY in a member room. In a GS/committee or guests room, a supervisor is
+    // just one of the occupants: they belong IN the table, listed under the
+    // "مسؤولي الفرق" hull alongside the GS committees' own hulls.
+    const treatSupersAsGsLike = memAsgns.length === 0 && (gsAsgns.length > 0 || gstAsgns.length > 0)
+    const roomSupers   = treatSupersAsGsLike ? [] : supAsgns
+    const gsLikeSupers = treatSupersAsGsLike ? supAsgns : []
 
-      const all = [...supAsgns, ...memAsgns]
+    // Room supervisors line (member rooms and supervisor-only rooms)
+    if (roomSupers.length > 0) {
+      const names = roomSupers.map(a => firstLast(people[String(a.person_id)]?.name)).filter(Boolean).join(' و')
+      children.push(rtlPara(`مسؤول(ين) الغرفة: ${names}`, { bold: true, size: 22, after: 200 }))
+    }
+
+    // Members: table with youth group
+    if (memAsgns.length > 0) {
       children.push(makeTable([
         hdrRow([
           { t: 'رقم',     w: 600,  c: true  },
           { t: 'الاسم',   w: 4200, c: false },
           { t: 'الشبيبة', w: 2400, c: false },
         ]),
-        ...all.map((a, i) => {
+        ...memAsgns.map((a, i) => {
           const p = people[String(a.person_id)] || {}
           return dataRow([
-            { t: i + 1,                 w: 600,  c: true  },
-            { t: p.name || '—',         w: 4200, c: false },
+            { t: i + 1,                        w: 600,  c: true  },
+            { t: firstLast(p.name) || '—',     w: 4200, c: false },
             { t: shortYg(p.youth_group_label), w: 2400, c: false },
           ])
         }),
       ]))
+    }
 
-    } else if (gsAsgns.length > 0) {
-      // GS/committee room: show hull name then table of names
-      const hulls = [...new Set(
-        gsAsgns.map(a => a.active_hull || people[String(a.person_id)]?.hulls?.[0]).filter(Boolean)
-      )]
-      if (hulls.length) {
-        children.push(rtlPara(hulls.join(' / '), { bold: true, size: 24, after: 200 }))
+    // GS/committee (+ team supervisors folded in): hull name(s) then table.
+    const gsGroup = [...gsLikeSupers, ...gsAsgns]
+    if (gsGroup.length > 0) {
+      const hulls = []
+      if (gsLikeSupers.length > 0) hulls.push('مسؤولي الفرق')
+      for (const a of gsAsgns) {
+        const h = a.active_hull || people[String(a.person_id)]?.hulls?.[0]
+        if (h) hulls.push(h)
+      }
+      const uniqHulls = [...new Set(hulls)]
+      if (uniqHulls.length) {
+        children.push(rtlPara(uniqHulls.join(' / '), { bold: true, size: 24, after: 200 }))
       }
       children.push(makeTable([
         hdrRow([
           { t: 'رقم',   w: 600,  c: true  },
           { t: 'الاسم', w: 6600, c: false },
         ]),
-        ...gsAsgns.map((a, i) => {
+        ...gsGroup.map((a, i) => {
           const p = people[String(a.person_id)] || {}
           return dataRow([
-            { t: i + 1,         w: 600,  c: true  },
-            { t: p.name || '—', w: 6600, c: false },
+            { t: i + 1,                    w: 600,  c: true  },
+            { t: firstLast(p.name) || '—', w: 6600, c: false },
           ])
         }),
       ]))
+    }
 
-    } else if (gstAsgns.length > 0) {
-      // Guests: just list names
+    // Guests: just list names
+    if (gstAsgns.length > 0) {
       for (const a of gstAsgns) {
         const p = people[String(a.person_id)]
         if (p?.name) {
-          children.push(rtlPara(p.name, { size: 22, after: 80 }))
+          children.push(rtlPara(firstLast(p.name), { size: 22, after: 80 }))
         }
       }
     }

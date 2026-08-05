@@ -666,6 +666,256 @@ function HullsSelector({ hulls, setHulls, hullInput, setHullInput, existingHulls
   )
 }
 
+// ── Custom registration fields ────────────────────────────────────────────────
+// A field is declared once on a registration category and then applies to every
+// entry in that category (and to the XLSX export).
+
+const CUSTOM_FIELD_TYPES = [
+  { value: 'text',     label: 'نص قصير' },
+  { value: 'textarea', label: 'نص طويل' },
+  { value: 'number',   label: 'رقم' },
+  { value: 'date',     label: 'تاريخ' },
+  { value: 'select',   label: 'اختيار من قائمة' },
+  { value: 'checkbox', label: 'نعم / لا' },
+]
+
+const REG_TYPE_FIELD_LABELS = {
+  members:      'المشاركين',
+  supervisors:  'المسؤولين',
+  gs_committee: 'الأمانة العامة واللجان',
+  guests:       'الضيوف',
+}
+
+function emptyCustomFieldValue(field) {
+  return field.type === 'checkbox' ? false : ''
+}
+
+function formatCustomFieldValue(field, value) {
+  if (field.type === 'checkbox') return value ? 'نعم' : ''
+  return value === null || value === undefined ? '' : String(value)
+}
+
+function CustomFieldDefModal({ eventId, regType, field, onClose, onSaved, toast }) {
+  const isEdit = !!field
+  const [label, setLabel]     = useState(field?.label || '')
+  const [type, setType]       = useState(field?.type || 'text')
+  const [options, setOptions] = useState(field?.options || [])
+  const [optionInput, setOptionInput] = useState('')
+  const [saving, setSaving]   = useState(false)
+
+  const addOption = (raw) => {
+    const text = (raw || '').trim()
+    if (!text) return
+    setOptions(prev => prev.includes(text) ? prev : [...prev, text])
+    setOptionInput('')
+  }
+
+  const handleSave = async () => {
+    if (!label.trim()) { toast('اسم الحقل مطلوب', 'error'); return }
+    if (type === 'select' && options.length === 0) {
+      toast('أضف خياراً واحداً على الأقل', 'error'); return
+    }
+    setSaving(true)
+    try {
+      const body = { label: label.trim(), options }
+      if (!isEdit) body.type = type
+      const res = isEdit
+        ? await api.updateEventRegistrationField(eventId, regType, field.id, body)
+        : await api.addEventRegistrationField(eventId, regType, body)
+      onSaved(res.field)
+      onClose()
+    } catch (e) {
+      toast(e?.message || 'تعذّر حفظ الحقل', 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, overflowY: 'auto' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: 'white', borderRadius: 14, width: '100%', maxWidth: 440, direction: 'rtl', boxShadow: '0 24px 64px rgba(0,0,0,0.22)' }}>
+        <div style={{ padding: '14px 18px', borderBottom: '1px solid #e2e6ef', fontWeight: 800, color: '#0f2744', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{isEdit ? 'تعديل حقل' : 'حقل إضافي جديد'}</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ba5bc' }}>✕</button>
+        </div>
+        <div style={{ padding: 18, display: 'grid', gap: 14 }}>
+          <div style={{ fontSize: '0.74rem', color: '#6b7280', background: '#f8fafc', border: '1px solid #e9ecf3', borderRadius: 8, padding: '7px 11px' }}>
+            سيظهر هذا الحقل لجميع {REG_TYPE_FIELD_LABELS[regType] || 'المسجّلين'} في هذا النشاط، وسيُضاف كعمود في ملف الإكسل.
+          </div>
+          <div>
+            <label style={labelStyle}>اسم الحقل</label>
+            <input value={label} onChange={e => setLabel(e.target.value)} style={inputStyle}
+              placeholder="مثال: قياس القميص، وسيلة المواصلات…" maxLength={60} autoFocus />
+          </div>
+          <div>
+            <label style={labelStyle}>نوع الحقل</label>
+            <select value={type} onChange={e => setType(e.target.value)} style={inputStyle} disabled={isEdit}>
+              {CUSTOM_FIELD_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+            {isEdit && (
+              <div style={{ fontSize: '0.7rem', color: '#9ba5bc', marginTop: 4 }}>لا يمكن تغيير نوع حقل بعد إنشائه.</div>
+            )}
+          </div>
+          {type === 'select' && (
+            <div>
+              <label style={labelStyle}>الخيارات</label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input value={optionInput} onChange={e => setOptionInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addOption(optionInput) } }}
+                  style={{ ...inputStyle, flex: 1 }} placeholder="اكتب خياراً ثم Enter" />
+                <button type="button" onClick={() => addOption(optionInput)} className="btn btn-ghost btn-sm">إضافة</button>
+              </div>
+              {options.length > 0 && (
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 8 }}>
+                  {options.map(opt => (
+                    <span key={opt} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.72rem', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: 20, padding: '2px 6px 2px 10px', fontWeight: 600 }}>
+                      {opt}
+                      <button type="button" onClick={() => setOptions(prev => prev.filter(o => o !== opt))}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#1d4ed8', display: 'flex', padding: 0 }}>
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <div style={{ padding: '12px 18px', borderTop: '1px solid #e2e6ef', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+          <button onClick={onClose} className="btn btn-ghost btn-sm">إلغاء</button>
+          <button onClick={handleSave} disabled={saving} className="btn btn-gold btn-sm">
+            {saving ? 'جارٍ الحفظ...' : 'حفظ'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CustomFieldInput({ field, value, onChange }) {
+  if (field.type === 'checkbox') {
+    return (
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.85rem', color: '#4a5568' }}>
+        <input type="checkbox" checked={!!value} onChange={e => onChange(e.target.checked)}
+          style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#0f2744' }} />
+        نعم
+      </label>
+    )
+  }
+  if (field.type === 'textarea') {
+    return <textarea value={value || ''} onChange={e => onChange(e.target.value)} rows={2}
+      style={{ ...inputStyle, resize: 'vertical' }} />
+  }
+  if (field.type === 'select') {
+    const opts = field.options || []
+    // A stored value can fall outside the list if the options were edited later.
+    const stale = value && !opts.includes(value) ? [value] : []
+    return (
+      <select value={value || ''} onChange={e => onChange(e.target.value)} style={inputStyle}>
+        <option value="">— اختر —</option>
+        {[...opts, ...stale].map(opt => <option key={opt} value={opt}>{opt}</option>)}
+      </select>
+    )
+  }
+  return <input type={field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'}
+    value={value ?? ''} onChange={e => onChange(e.target.value)} style={inputStyle} />
+}
+
+/**
+ * Renders the category's custom fields inside a registration modal and lets the
+ * admin declare a new one inline. Field definitions live on the event, so a
+ * field added here immediately applies to every other entry in the category —
+ * `onFieldsChanged` tells the parent tab to reload once the modal closes.
+ */
+function CustomFieldsSection({ eventId, regType, initialFields, values, setValues, onFieldsChanged, toast }) {
+  const [fields, setFields]   = useState(() => initialFields || [])
+  const [defModal, setDefModal] = useState(null) // null | { field } | {}
+  const [busyId, setBusyId]   = useState(null)
+
+  const setValue = (fieldId, value) => setValues(prev => ({ ...prev, [fieldId]: value }))
+
+  const handleSavedDef = (saved) => {
+    setFields(prev => prev.some(f => f.id === saved.id)
+      ? prev.map(f => (f.id === saved.id ? saved : f))
+      : [...prev, saved])
+    setValues(prev => (saved.id in prev ? prev : { ...prev, [saved.id]: emptyCustomFieldValue(saved) }))
+    onFieldsChanged?.()
+  }
+
+  const handleDeleteDef = async (field) => {
+    if (!window.confirm(`سيتم حذف الحقل "${field.label}" وقيمه من جميع ${REG_TYPE_FIELD_LABELS[regType] || 'المسجّلين'} في هذا النشاط.\nهل تريد المتابعة؟`)) return
+    setBusyId(field.id)
+    try {
+      await api.deleteEventRegistrationField(eventId, regType, field.id)
+      setFields(prev => prev.filter(f => f.id !== field.id))
+      setValues(prev => {
+        const next = { ...prev }
+        delete next[field.id]
+        return next
+      })
+      onFieldsChanged?.()
+      toast('تم حذف الحقل', 'success')
+    } catch (e) {
+      toast(e?.message || 'تعذّر حذف الحقل', 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  return (
+    <div style={{ borderTop: '1px dashed #e2e6ef', paddingTop: 14, display: 'grid', gap: 12 }}>
+      {fields.map(field => (
+        <div key={field.id} style={{ opacity: busyId === field.id ? 0.5 : 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+            <label style={{ ...labelStyle, marginBottom: 0, flex: 1 }}>{field.label}</label>
+            <button type="button" title="تعديل الحقل" onClick={() => setDefModal({ field })}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c5cdd8', padding: 2, display: 'flex' }}>
+              <Edit2 size={12} />
+            </button>
+            <button type="button" title="حذف الحقل من هذه الفئة" onClick={() => handleDeleteDef(field)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#c5cdd8', padding: 2, display: 'flex' }}>
+              <Trash2 size={12} />
+            </button>
+          </div>
+          <CustomFieldInput field={field} value={values[field.id]} onChange={v => setValue(field.id, v)} />
+        </div>
+      ))}
+
+      <button type="button" onClick={() => setDefModal({})}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, width: '100%',
+          padding: '7px 0', border: '1.5px dashed #cbd5e1', borderRadius: 8, background: '#f8fafc',
+          cursor: 'pointer', fontFamily: 'var(--font-body)', fontSize: '0.78rem', fontWeight: 700, color: '#64748b',
+        }}>
+        <Plus size={13} /> إضافة حقل لكل {REG_TYPE_FIELD_LABELS[regType] || 'المسجّلين'}
+      </button>
+
+      {defModal && (
+        <CustomFieldDefModal
+          eventId={eventId} regType={regType} field={defModal.field}
+          onClose={() => setDefModal(null)} onSaved={handleSavedDef} toast={toast}
+        />
+      )}
+    </div>
+  )
+}
+
+function CustomFieldChips({ fields, entry }) {
+  const values = entry.custom_fields || {}
+  const filled = (fields || []).filter(f => formatCustomFieldValue(f, values[f.id]) !== '')
+  if (filled.length === 0) return null
+  return (
+    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 4 }}>
+      {filled.map(f => (
+        <span key={f.id} style={{ fontSize: '0.68rem', background: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0', borderRadius: 6, padding: '2px 8px' }}>
+          <span style={{ color: '#94a3b8' }}>{f.label}: </span>{formatCustomFieldValue(f, values[f.id])}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 // ── Add Registration Entry Modal ──────────────────────────────────────────────
 
 function _buildYgOptions(p) {
@@ -684,7 +934,7 @@ function _buildYgOptions(p) {
     .filter(o => o.id)
 }
 
-function AddRegModal({ regType, nights, onClose, onAdded, toast, existingHulls = [] }) {
+function AddRegModal({ eventId, regType, nights, onClose, onAdded, toast, existingHulls = [], customFields = [], onFieldsChanged }) {
   const [step, setStep] = useState('search') // 'search' | 'create_unreg' | 'details'
   const [newUnregName, setNewUnregName]       = useState('')
   const [person, setPerson]                   = useState(null)
@@ -695,6 +945,9 @@ function AddRegModal({ regType, nights, onClose, onAdded, toast, existingHulls =
   const [reason, setReason]                   = useState('')
   const [notes, setNotes]                     = useState('')
   const [nightsStaying, setNightsStaying]     = useState([])
+  const [customValues, setCustomValues]       = useState(
+    () => Object.fromEntries(customFields.map(f => [f.id, emptyCustomFieldValue(f)]))
+  )
   const [saving, setSaving]                   = useState(false)
   const [loadingGsRole, setLoadingGsRole]     = useState(false)
   const [confirmationStatus, setConfirmSt]    = useState('confirmed')
@@ -761,6 +1014,7 @@ function AddRegModal({ regType, nights, onClose, onAdded, toast, existingHulls =
       if (isSupervisionType)    body.status = status
       if (regType === 'gs_committee') { body.role = role; body.hulls = hulls }
       if (regType === 'guests')       body.reason = reason
+      body.custom_fields = customValues
       await onAdded(body)
       onClose()
     } catch (e) {
@@ -917,6 +1171,12 @@ function AddRegModal({ regType, nights, onClose, onAdded, toast, existingHulls =
               </div>
             </div>
           )}
+
+          <CustomFieldsSection
+            eventId={eventId} regType={regType} initialFields={customFields}
+            values={customValues} setValues={setCustomValues}
+            onFieldsChanged={onFieldsChanged} toast={toast}
+          />
         </div>
         <div style={{ padding: '12px 18px', borderTop: '1px solid #e2e6ef', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
           <button onClick={onClose} className="btn btn-ghost btn-sm">إلغاء</button>
@@ -954,7 +1214,7 @@ function EditYgFields({ ygId, setYgId }) {
 
 // ── Edit Registration Modal ───────────────────────────────────────────────────
 
-function EditRegModal({ entry, regType, nights, teams, onClose, onSaved, toast, existingHulls = [] }) {
+function EditRegModal({ eventId, entry, regType, nights, teams, onClose, onSaved, toast, existingHulls = [], customFields = [], onFieldsChanged }) {
   const [status, setStatus]             = useState(entry.status || '')
   const [role, setRole]                 = useState(entry.role || '')
   const [hulls, setHulls]               = useState(Array.isArray(entry.hulls) ? entry.hulls : [])
@@ -968,6 +1228,10 @@ function EditRegModal({ entry, regType, nights, teams, onClose, onSaved, toast, 
   const [attendanceStatus, setAttendanceStatus] = useState(shouldShowAttendanceStatus(regType, entry) ? getAttendanceStatus(entry) : '')
   const [apologyDate, setApologyDate]   = useState(entry.apology_date || '')
   const [apologyReason, setApologyReason] = useState(entry.apology_reason || '')
+  const [customValues, setCustomValues] = useState(() => {
+    const stored = entry.custom_fields || {}
+    return Object.fromEntries(customFields.map(f => [f.id, stored[f.id] ?? emptyCustomFieldValue(f)]))
+  })
   const [saving, setSaving]             = useState(false)
 
   const isSupervisionType = regType === 'supervisors' || regType === 'gs_committee'
@@ -1001,6 +1265,7 @@ function EditRegModal({ entry, regType, nights, teams, onClose, onSaved, toast, 
         body.apology_date = savedAttendanceStatus === 'apologized' ? apologyDate : ''
         body.apology_reason = savedAttendanceStatus === 'apologized' ? apologyReason : ''
       }
+      body.custom_fields = customValues
       await onSaved(body)
       onClose()
     } catch (e) {
@@ -1118,6 +1383,12 @@ function EditRegModal({ entry, regType, nights, teams, onClose, onSaved, toast, 
               </div>
             </div>
           )}
+
+          <CustomFieldsSection
+            eventId={eventId} regType={regType} initialFields={customFields}
+            values={customValues} setValues={setCustomValues}
+            onFieldsChanged={onFieldsChanged} toast={toast}
+          />
         </div>
         <div style={{ padding: '12px 18px', borderTop: '1px solid #e2e6ef', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
           <button onClick={onClose} className="btn btn-ghost btn-sm">إلغاء</button>
@@ -1288,13 +1559,21 @@ function YgApologiesSection({ eventId, apologies, onRefresh, toast }) {
 
 // ── Members Registration Tab ──────────────────────────────────────────────────
 
-function MembersRegistrationTab({ eventId, entries, nights, onRefresh, toast, onViewProfile, teams, ygApologies, eventAgeGroups = [] }) {
+function MembersRegistrationTab({ eventId, entries, nights, onRefresh, toast, onViewProfile, teams, ygApologies, eventAgeGroups = [], customFields = [] }) {
   const [showAdd,      setShowAdd]      = useState(false)
   const [editEntry,    setEditEntry]    = useState(null)
   const [acting,       setActing]       = useState(null)
   const [showDenied,   setShowDenied]   = useState(false)
   const [activeFilter, setActiveFilter] = useState('all')
   const isCamp = nights?.length > 0
+
+  // Field definitions are edited inside the modals; reload once they close so
+  // the rest of the category picks the new schema up.
+  const fieldsDirty = useRef(false)
+  const closeModal = (close) => () => {
+    close()
+    if (fieldsDirty.current) { fieldsDirty.current = false; onRefresh() }
+  }
 
   const getSt = (e) => e.confirmation_status || 'confirmed'
 
@@ -1422,6 +1701,8 @@ function MembersRegistrationTab({ eventId, entries, nights, onRefresh, toast, on
                 <span style={{ fontSize: '0.72rem', color: '#4a5568', background: '#f1f5f9', padding: '2px 8px', borderRadius: 6 }}>{entry.age_group}</span>
               </div>
             )}
+
+            <CustomFieldChips fields={customFields} entry={entry} />
 
             {entry.notes && (
               <div style={{ fontSize: '0.7rem', color: '#9ba5bc', fontStyle: 'italic', marginTop: 4 }}>{entry.notes}</div>
@@ -1612,13 +1893,17 @@ function MembersRegistrationTab({ eventId, entries, nights, onRefresh, toast, on
       <YgApologiesSection eventId={eventId} apologies={ygApologies} onRefresh={onRefresh} toast={toast} />
 
       {showAdd && (
-        <AddRegModal regType="members" nights={nights} onClose={() => setShowAdd(false)} onAdded={handleAdd} toast={toast} />
+        <AddRegModal eventId={eventId} regType="members" nights={nights}
+          onClose={closeModal(() => setShowAdd(false))} onAdded={handleAdd} toast={toast}
+          customFields={customFields} onFieldsChanged={() => { fieldsDirty.current = true }}
+        />
       )}
       {editEntry && (
-        <EditRegModal entry={editEntry} regType="members" nights={nights} teams={teams}
-          onClose={() => setEditEntry(null)}
+        <EditRegModal eventId={eventId} entry={editEntry} regType="members" nights={nights} teams={teams}
+          onClose={closeModal(() => setEditEntry(null))}
           onSaved={(body) => handleSave(editEntry.id, body)}
           toast={toast}
+          customFields={customFields} onFieldsChanged={() => { fieldsDirty.current = true }}
         />
       )}
     </div>
@@ -1627,11 +1912,19 @@ function MembersRegistrationTab({ eventId, entries, nights, onRefresh, toast, on
 
 // ── Registration Tab ──────────────────────────────────────────────────────────
 
-function RegistrationTab({ eventId, regType, label, entries, nights, onRefresh, toast, onViewProfile, teams }) {
+function RegistrationTab({ eventId, regType, label, entries, nights, onRefresh, toast, onViewProfile, teams, customFields = [] }) {
   const [showAdd,      setShowAdd]      = useState(false)
   const [editEntry,    setEditEntry]    = useState(null)
   const [advancing,    setAdvancing]    = useState(null)
   const [activeFilter, setActiveFilter] = useState('all')
+
+  // Field definitions are edited inside the modals; reload once they close so
+  // the rest of the category picks the new schema up.
+  const fieldsDirty = useRef(false)
+  const closeModal = (close) => () => {
+    close()
+    if (fieldsDirty.current) { fieldsDirty.current = false; onRefresh() }
+  }
 
   const isSupervisionType = regType === 'supervisors' || regType === 'gs_committee'
   const isGuest = regType === 'guests'
@@ -1885,6 +2178,7 @@ function RegistrationTab({ eventId, regType, label, entries, nights, onRefresh, 
                         <span style={{ fontWeight: 600, color: '#4a5568' }}>السبب: </span>{entry.reason}
                       </div>
                     )}
+                    <CustomFieldChips fields={customFields} entry={entry} />
                     {entry.notes && (
                       <div style={{ fontSize: '0.7rem', color: '#9ba5bc', fontStyle: 'italic' }}>{entry.notes}</div>
                     )}
@@ -1951,14 +2245,19 @@ function RegistrationTab({ eventId, regType, label, entries, nights, onRefresh, 
       )}
 
       {showAdd && (
-        <AddRegModal regType={regType} nights={nights} onClose={() => setShowAdd(false)} onAdded={handleAdd} toast={toast} existingHulls={existingHulls} />
+        <AddRegModal eventId={eventId} regType={regType} nights={nights}
+          onClose={closeModal(() => setShowAdd(false))} onAdded={handleAdd} toast={toast}
+          existingHulls={existingHulls}
+          customFields={customFields} onFieldsChanged={() => { fieldsDirty.current = true }}
+        />
       )}
       {editEntry && (
-        <EditRegModal entry={editEntry} regType={regType} nights={nights} teams={teams}
-          onClose={() => setEditEntry(null)}
+        <EditRegModal eventId={eventId} entry={editEntry} regType={regType} nights={nights} teams={teams}
+          onClose={closeModal(() => setEditEntry(null))}
           onSaved={(body) => handleSave(editEntry.id, body)}
           toast={toast}
           existingHulls={existingHulls}
+          customFields={customFields} onFieldsChanged={() => { fieldsDirty.current = true }}
         />
       )}
     </div>
@@ -2932,6 +3231,13 @@ export default function EventDetail({ eventId, onBack, toast, onViewProfile, onO
   if (!event)  return <div style={{ padding: 40, color: '#e53e3e' }}>تعذّر تحميل النشاط.</div>
 
   const reg = event.registration || {}
+  const regFieldDefs = event.registration_fields || {}
+  const regFields = {
+    members:      regFieldDefs.members      || [],
+    supervisors:  regFieldDefs.supervisors  || [],
+    gs_committee: regFieldDefs.gs_committee || [],
+    guests:       regFieldDefs.guests       || [],
+  }
   const isCamp = event.event_type === 'مخيم'
 
   return (
@@ -3039,6 +3345,7 @@ export default function EventDetail({ eventId, onBack, toast, onViewProfile, onO
               teams={event.teams || []}
               ygApologies={event.yg_apologies || []}
               eventAgeGroups={event.target_age_groups || []}
+              customFields={regFields.members}
             />
           )}
           {activeSubTab === 'supervisors' && (
@@ -3047,6 +3354,7 @@ export default function EventDetail({ eventId, onBack, toast, onViewProfile, onO
               entries={reg.supervisors || []} nights={isCamp ? event.nights : []}
               onRefresh={load} toast={toast} onViewProfile={onViewProfile}
               teams={event.teams || []}
+              customFields={regFields.supervisors}
             />
           )}
           {activeSubTab === 'gs_committee' && (
@@ -3055,6 +3363,7 @@ export default function EventDetail({ eventId, onBack, toast, onViewProfile, onO
               entries={reg.gs_committee || []} nights={isCamp ? event.nights : []}
               onRefresh={load} toast={toast} onViewProfile={onViewProfile}
               teams={event.teams || []}
+              customFields={regFields.gs_committee}
             />
           )}
           {activeSubTab === 'guests' && (
@@ -3063,6 +3372,7 @@ export default function EventDetail({ eventId, onBack, toast, onViewProfile, onO
               entries={reg.guests || []} nights={isCamp ? event.nights : []}
               onRefresh={load} toast={toast} onViewProfile={onViewProfile}
               teams={event.teams || []}
+              customFields={regFields.guests}
             />
           )}
         </div>

@@ -16,7 +16,22 @@
       "Bash(PYTHONIOENCODING=utf-8 python \"C:/Users/IT/AppData/Local/Temp/claude/c--Users-IT-Desktop-JECJordan-JECJordanPortal/3c9b3eaa-b3ad-48c6-b085-e3bb9f81bf1e/scratchpad/gen_msgs.py\")",
       "Bash(cd \"c:/Users/IT/Desktop/JECJordan/JECJordanPortal\" && stat -c '%y  %n' data/events.json && echo \"---now---\" && date && echo \"---git---\" && git log -1 --format='%h %ci %s' -- data/events.json)",
       "Read(//c/Users/IT/Desktop/JECJordan/JECJordanPortal/**)",
-      "Bash(PYTHONIOENCODING=utf-8 python \"C:/Users/IT/AppData/Local/Temp/claude/c--Users-IT-Desktop-JECJordan-JECJordanPortal/3c9b3eaa-b3ad-48c6-b085-e3bb9f81bf1e/scratchpad/build_artifact.py\")"
+      "Bash(PYTHONIOENCODING=utf-8 python \"C:/Users/IT/AppData/Local/Temp/claude/c--Users-IT-Desktop-JECJordan-JECJordanPortal/3c9b3eaa-b3ad-48c6-b085-e3bb9f81bf1e/scratchpad/build_artifact.py\")",
+      "Bash(python -c \"import openpyxl; print\\('openpyxl available'\\)\")",
+      "Bash(python dump.py)",
+      "Bash(python dump2.py)",
+      "Bash(python dump3.py)",
+      "Bash(python \"C:\\\\Users\\\\IT\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-IT-Desktop-JECJordan-JECJordanPortal\\\\2f055939-e24a-4220-ab3d-5f9520d8e7f3\\\\scratchpad\\\\probe.py\")",
+      "Bash(python tools/generate_camp_roster.py --event EVT000002 --resolutions __TRACKED_VAR__/res.json --out __TRACKED_VAR__/roster_test.xlsx --no-open)",
+      "Bash(python tools/generate_camp_roster.py --event EVT000002 --resolutions __TRACKED_VAR__/none_exist.json --out __TRACKED_VAR__/should_not_write.xlsx --no-open)",
+      "Bash(echo \"exit=$?\")",
+      "Read(//c/Program Files/LibreOffice/program/**)",
+      "Read(//c/Program Files \\\\\\(x86\\\\\\)/LibreOffice/program/**)",
+      "Bash('/c/Program Files/LibreOffice/program/soffice.exe' --headless --convert-to pdf --outdir C:/Users/IT/AppData/Local/Temp/claude/c--Users-IT-Desktop-JECJordan-JECJordanPortal/2f055939-e24a-4220-ab3d-5f9520d8e7f3/scratchpad C:/Users/IT/AppData/Local/Temp/claude/c--Users-IT-Desktop-JECJordan-JECJordanPortal/2f055939-e24a-4220-ab3d-5f9520d8e7f3/scratchpad/roster_test.xlsx)",
+      "Bash(python -c \"import fitz; print\\('pymupdf', fitz.__doc__[:20]\\)\")",
+      "Bash(python tools/generate_camp_roster.py --event EVT000002 --resolutions C:/Users/IT/AppData/Local/Temp/claude/c--Users-IT-Desktop-JECJordan-JECJordanPortal/2f055939-e24a-4220-ab3d-5f9520d8e7f3/scratchpad/res.json --out C:/Users/IT/AppData/Local/Temp/claude/c--Users-IT-Desktop-JECJordan-JECJordanPortal/2f055939-e24a-4220-ab3d-5f9520d8e7f3/scratchpad/roster_test.xlsx --no-open)",
+      "Bash(cp 'Elementary Camp Participants 2026.xlsx' C:/Users/IT/AppData/Local/Temp/claude/c--Users-IT-Desktop-JECJordan-JECJordanPortal/2f055939-e24a-4220-ab3d-5f9520d8e7f3/scratchpad/orig.xlsx)",
+      "Bash('/c/Program Files/LibreOffice/program/soffice.exe' --headless --convert-to pdf --outdir C:/Users/IT/AppData/Local/Temp/claude/c--Users-IT-Desktop-JECJordan-JECJordanPortal/2f055939-e24a-4220-ab3d-5f9520d8e7f3/scratchpad C:/Users/IT/AppData/Local/Temp/claude/c--Users-IT-Desktop-JECJordan-JECJordanPortal/2f055939-e24a-4220-ab3d-5f9520d8e7f3/scratchpad/orig.xlsx)"
     ]
   }
 }

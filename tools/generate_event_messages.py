@@ -70,6 +70,15 @@ def _next_grade(cur):
     return ''
 
 
+def _birthdate(raw):
+    """The export gives YYYY-MM-DD — show it day-first."""
+    raw = (raw or '').strip()
+    parts = raw.split('-')
+    if len(parts) == 3 and all(parts):
+        return '-'.join(reversed(parts))
+    return raw
+
+
 def _phones(raw):
     """The export renders '079... (label), 078... (label)' — keep just the numbers."""
     import re
@@ -92,7 +101,7 @@ def _def_noun(event_type):
     return n if n.startswith('ال') else 'ال' + n
 
 
-def _format_message(evt, group):
+def _format_message(evt, group, show_supervisors=True):
     event_type = evt.get('event_type')
     category   = evt.get('title_label') or ''
     noun       = _event_noun(event_type)
@@ -109,25 +118,30 @@ def _format_message(evt, group):
     for i, m in enumerate(group['members'], 1):
         L.append('%d. %s' % (i, m['name']))
         L.append('الجنس: %s' % _blank(m['gender']))
+        L.append('تاريخ الميلاد: %s' % _blank(m['birthdate']))
         L.append('رقم الهاتف: %s' % _blank(m['phone']))
-        L.append('الصف الحالي: %s - الصف القادم: %s'
-                 % (_blank(m['cur_grade']), _blank(m['next_grade'])))
+        if m['cur_grade']:
+            L.append('الصف الحالي: %s - الصف القادم: %s'
+                     % (m['cur_grade'], _blank(m['next_grade'])))
         L.append('الحالات الصحية: %s' % _blank(m['health']))
         L.append('ملاحظات: %s' % _blank(m['notes']))
+        for label, value in m['extras']:
+            L.append('%s: %s' % (label, value))
         L.append('')
-    if group['supervisors']:
-        L.append('المسؤولون المشاركون')
-        for i, s in enumerate(group['supervisors'], 1):
-            L.append('%d. %s' % (i, s['name']))
-            L.append('الجنس: %s' % _blank(s['gender']))
-            L.append('رقم الهاتف: %s' % _blank(s['phone']))
-            L.append('الحالات الصحية: %s' % _blank(s['health']))
-            L.append('ملاحظات: %s' % _blank(s['notes']))
-            L.append('الحضور: %s' % _blank(s['attendance']))
+    if show_supervisors:
+        if group['supervisors']:
+            L.append('المسؤولون المشاركون')
+            for i, s in enumerate(group['supervisors'], 1):
+                L.append('%d. %s' % (i, s['name']))
+                L.append('الجنس: %s' % _blank(s['gender']))
+                L.append('رقم الهاتف: %s' % _blank(s['phone']))
+                L.append('الحالات الصحية: %s' % _blank(s['health']))
+                L.append('ملاحظات: %s' % _blank(s['notes']))
+                L.append('الحضور: %s' % _blank(s['attendance']))
+                L.append('')
+        else:
+            L.append('لا يوجد مسؤول مرافق.')
             L.append('')
-    else:
-        L.append('لا يوجد مسؤول مرافق.')
-        L.append('')
     L.append('دعم المواصلات:')
     L.append('سنرسل لكم تفاصيل دعم المواصلات في مراسلة لاحقة خلال اليومين القادمين.')
     return '\n'.join(L).rstrip()
@@ -139,6 +153,8 @@ def _build_event(evt):
     all_nights = evt.get('nights') or []
     mem_rows  = RE._build_member_export_rows(evt)
     sup_rows  = RE._build_supervisor_export_rows(evt)
+    # custom (per-event) registration fields — (column header, field definition)
+    _, mem_custom = RE._custom_export_columns(evt, 'members', RE.MEMBER_EXPORT_COLUMNS)
 
     reg = evt.get('registration', {})
     # export rows drop youth_group_id — realign with registration order to recover it
@@ -166,11 +182,18 @@ def _build_event(evt):
             members.append({
                 'name': r.get('الاسم الكامل بالعربية'),
                 'gender': r.get('الجنس'),
+                'birthdate': _birthdate(r.get('تاريخ الميلاد الكامل')),
                 'phone': _phones(r.get('رقم الهاتف')),
                 'cur_grade': cur,
                 'next_grade': _next_grade(cur),
                 'health': r.get('الحالات الصحية') or '',
                 'notes': r.get('ملاحظات الملف الشخصي') or '',
+                # only the extra fields this member actually filled in
+                'extras': [
+                    (str(fld.get('label') or header).strip(), str(r.get(header)).strip())
+                    for header, fld in mem_custom
+                    if str(r.get(header) or '').strip()
+                ],
             })
         supervisors = []
         for r in (x for x in sup_rows if x['_yg'] == yid):
@@ -194,6 +217,9 @@ def _build_event(evt):
         }
         groups.append(g)
 
+    # no supervisor anywhere in the event → say nothing about supervisors at all
+    show_supervisors = any(g['supervisors'] for g in groups)
+
     out_groups = []
     total = 0
     for g in groups:
@@ -204,7 +230,7 @@ def _build_event(evt):
             'given': g['given'],
             'incamp': len(g['members']),
             'supers': len(g['supervisors']),
-            'msg': _format_message(evt, g),
+            'msg': _format_message(evt, g, show_supervisors=show_supervisors),
         })
     return {
         'id': evt.get('id'),
