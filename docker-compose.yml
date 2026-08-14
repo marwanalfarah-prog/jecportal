@@ -1,0 +1,15 @@
+services:
+  portal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${JEC_PORT:-5000}:5000"
+    environment:
+      PORT: "5000"
+      WEB_CONCURRENCY: "1"
+      GUNICORN_THREADS: "4"
+      GUNICORN_TIMEOUT: "120"
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

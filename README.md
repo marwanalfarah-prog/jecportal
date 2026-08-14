@@ -40,6 +40,34 @@ Browse to http://localhost:5173 — login with `admin` / `admin123`.
 
 ---
 
+## Running with Docker
+
+```bash
+docker compose up --build
+```
+
+Browse to http://localhost:5000 and login with `admin` / `admin123`.
+
+The Compose service bind-mounts `./data` to `/app/data`, so CSV, JSON, upload,
+and generated session-secret changes persist on the host. To use a different
+host port in PowerShell:
+
+```powershell
+$env:JEC_PORT = "8080"
+docker compose up --build
+```
+
+Or on macOS/Linux:
+
+```bash
+JEC_PORT=8080 docker compose up --build
+```
+
+The container defaults to one Gunicorn worker because the backend keeps the
+CSV-backed store in process memory.
+
+---
+
 ## Running the v2 stack
 
 ### Backend (port 5001)
