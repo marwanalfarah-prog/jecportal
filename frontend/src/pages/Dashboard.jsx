@@ -26,36 +26,156 @@ function StatCard({ label, value, icon: Icon }) {
   )
 }
 
-function HtmlBarChart({ data, colors, barHeight = 24, gap = 8, fontSize = 13, labelWidth = 160, animate = false }) {
+const REGION_STYLES = {
+  'الشمال': { color: '#3d7ab8', tint: 'rgba(61,122,184,0.07)' },
+  'الوسط':  { color: '#b8862f', tint: 'rgba(184,134,47,0.07)' },
+  'الجنوب': { color: '#a8447e', tint: 'rgba(168,68,126,0.07)' },
+}
+const UNGROUPED_STYLE = { color: '#6b778f', tint: 'rgba(107,119,143,0.07)' }
+const UNGROUPED_REGION_LABEL = 'بدون منطقة'
+
+const ar = (n) => n.toLocaleString('ar-EG')
+
+/** Arabic singular / dual / plural agreement for a counted noun. */
+function arabicCount(n, one, two, few, many) {
+  if (n === 1) return one
+  if (n === 2) return two
+  const remainder = n % 100
+  if (remainder >= 3 && remainder <= 10) return `${ar(n)} ${few}`
+  return `${ar(n)} ${many}`
+}
+
+const membersCount     = (n) => arabicCount(n, 'عضو واحد', 'عضوان', 'أعضاء', 'عضواً')
+const groupsCount      = (n) => arabicCount(n, 'فرقة واحدة', 'فرقتان', 'فرق', 'فرقة')
+const governoratesCount = (n) => arabicCount(n, 'محافظة واحدة', 'محافظتان', 'محافظات', 'محافظة')
+
+/** Split rows into consecutive buckets by key, preserving the order the API sent. */
+function groupRows(rows, keyOf) {
+  const buckets = []
+  const seen = new Map()
+  rows.forEach(row => {
+    const key = (keyOf(row) || '').trim()
+    if (!seen.has(key)) {
+      seen.set(key, buckets.length)
+      buckets.push({ key, rows: [] })
+    }
+    buckets[seen.get(key)].rows.push(row)
+  })
+  return buckets
+}
+
+const sumValues = (rows) => rows.reduce((total, row) => total + (row.value || 0), 0)
+
+function GroupedBar({ item, color, max, index, barHeight, gap, fontSize, labelWidth, animate }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', marginBottom: gap }}>
+      <div title={item.label} style={{
+        width: labelWidth, minWidth: labelWidth, fontSize, color: 'var(--gray-600)',
+        textAlign: 'right', paddingLeft: 8, whiteSpace: 'nowrap',
+        overflow: 'hidden', textOverflow: 'ellipsis',
+      }}>
+        {item.label}
+      </div>
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+        <div style={{
+          height: barHeight,
+          width: animate ? `${(item.value / max) * 100}%` : '0%',
+          background: color,
+          borderRadius: '0 4px 4px 0',
+          minWidth: item.value > 0 ? 2 : 0,
+          transition: 'width 900ms ease-out',
+          transitionDelay: `${index * 30}ms`,
+        }} />
+        <span style={{ fontSize: fontSize - 1, color: 'var(--gray-500)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+          {ar(item.value)}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Bars boxed by region (and optionally by governorate inside it), each box
+ * headed by its name and its own totals. All bars share one scale so lengths
+ * stay comparable across boxes.
+ */
+function RegionGroupedBarChart({
+  data, subGroup = false, barHeight = 22, gap = 6, fontSize = 12, labelWidth = 150, animate = false,
+}) {
   if (!data?.length) return null
-  const max = Math.max(...data.map(d => d.value))
+  const max = Math.max(...data.map(d => d.value), 0) || 1
+  const regions = groupRows(data, row => row.region)
+  let barIndex = -1
+
   return (
     <div style={{ width: '100%', fontFamily: 'Tajawal', direction: 'rtl' }}>
-      {data.map((item, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', marginBottom: gap }}>
-          <div style={{
-            width: labelWidth, minWidth: labelWidth, fontSize, color: '#374151',
-            textAlign: 'right', paddingLeft: 8, whiteSpace: 'nowrap',
-            overflow: 'hidden', textOverflow: 'ellipsis',
+      {regions.map(region => {
+        const style = REGION_STYLES[region.key] || UNGROUPED_STYLE
+        const governorates = subGroup
+          ? groupRows(region.rows, row => row.governorate)
+          : [{ key: null, rows: region.rows }]
+        const regionSummary = subGroup
+          ? `${membersCount(sumValues(region.rows))} · ${groupsCount(region.rows.length)}`
+          : `${membersCount(sumValues(region.rows))} · ${governoratesCount(region.rows.length)}`
+
+        return (
+          <section key={region.key || UNGROUPED_REGION_LABEL} style={{
+            borderRight: `3px solid ${style.color}`,
+            background: style.tint,
+            borderRadius: '4px 10px 10px 4px',
+            padding: '10px 12px 8px',
+            marginBottom: 10,
           }}>
-            {item.label}
-          </div>
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div style={{
-              height: barHeight,
-              width: animate ? `${(item.value / max) * 100}%` : '0%',
-              background: colors[i % colors.length],
-              borderRadius: '0 4px 4px 0',
-              minWidth: 2,
-              transition: 'width 900ms ease-out',
-              transitionDelay: `${i * 35}ms`,
-            }} />
-            <span style={{ fontSize: fontSize - 1, color: '#6b7280', whiteSpace: 'nowrap' }}>
-              {item.value.toLocaleString('ar-EG')}
-            </span>
-          </div>
-        </div>
-      ))}
+            <header style={{
+              display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+              gap: 8, marginBottom: 8,
+            }}>
+              <span style={{ fontFamily: 'Cairo', fontSize: 13, fontWeight: 700, color: style.color }}>
+                {region.key || UNGROUPED_REGION_LABEL}
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--gray-500)', whiteSpace: 'nowrap' }}>
+                {regionSummary}
+              </span>
+            </header>
+
+            {governorates.map((governorate, gi) => (
+              <div key={governorate.key || `g${gi}`} style={{ marginBottom: gi === governorates.length - 1 ? 0 : 10 }}>
+                {subGroup && governorate.key && (
+                  <div style={{
+                    display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+                    gap: 8, padding: '0 0 4px', marginBottom: 6,
+                    borderBottom: '1px dashed var(--gray-200)',
+                  }}>
+                    <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--gray-600)' }}>
+                      {governorate.key}
+                    </span>
+                    <span style={{ fontSize: 11, color: 'var(--gray-400)', whiteSpace: 'nowrap' }}>
+                      {membersCount(sumValues(governorate.rows))} · {groupsCount(governorate.rows.length)}
+                    </span>
+                  </div>
+                )}
+                {governorate.rows.map(row => {
+                  barIndex += 1
+                  return (
+                    <GroupedBar
+                      key={row.group_id || row.label}
+                      item={row}
+                      color={style.color}
+                      max={max}
+                      index={barIndex}
+                      barHeight={barHeight}
+                      gap={gap}
+                      fontSize={fontSize}
+                      labelWidth={labelWidth}
+                      animate={animate}
+                    />
+                  )
+                })}
+              </div>
+            ))}
+          </section>
+        )
+      })}
     </div>
   )
 }
@@ -298,9 +418,14 @@ export default function Dashboard({ onOpenBibleReference }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
         <div className="card">
-          <div className="card-header"><span className="card-title">الأعضاء حسب المحافظة</span></div>
-          <div className="card-body">
-            <HtmlBarChart data={govData} colors={COLORS} labelWidth={160} animate={animateCharts} />
+          <div className="card-header">
+            <span className="card-title">الأعضاء حسب المحافظة</span>
+            <span style={{ fontSize: 12, color: 'var(--gray-400)', fontFamily: 'Tajawal' }}>
+              مرتّبة حسب المنطقة
+            </span>
+          </div>
+          <div className="card-body" style={{ maxHeight: 480, overflowY: 'auto' }}>
+            <RegionGroupedBarChart data={govData} labelWidth={110} fontSize={13} barHeight={24} animate={animateCharts} />
           </div>
         </div>
 
@@ -327,13 +452,13 @@ export default function Dashboard({ onOpenBibleReference }) {
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 20 }}>
         <div className="card">
           <div className="card-header">
-            <span className="card-title">أعلى فرق الشبيبة (أعضاءً)</span>
-            <span style={{ fontSize: 12, color: '#9ba5bc', fontFamily: 'Tajawal' }}>
-              {ygData.length} فرقة
+            <span className="card-title">الأعضاء حسب فرقة الشبيبة</span>
+            <span style={{ fontSize: 12, color: 'var(--gray-400)', fontFamily: 'Tajawal' }}>
+              {groupsCount(ygData.length)}
             </span>
           </div>
-          <div className="card-body" style={{ maxHeight: 480, overflowY: 'auto', paddingLeft: 4 }}>
-            <HtmlBarChart data={ygData} colors={Array(ygData.length).fill('#c9963c')} labelWidth={230} fontSize={12} barHeight={22} gap={6} animate={animateCharts} />
+          <div className="card-body" style={{ maxHeight: 560, overflowY: 'auto', paddingLeft: 4 }}>
+            <RegionGroupedBarChart data={ygData} subGroup labelWidth={215} fontSize={12} barHeight={22} gap={6} animate={animateCharts} />
           </div>
         </div>
 

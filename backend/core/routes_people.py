@@ -1503,6 +1503,75 @@ def _active_registered_membership_df() -> pd.DataFrame:
     return pyg[~archived_mask].copy()
 
 
+_REGION_SORT_ORDER = {"الشمال": 0, "الوسط": 1, "الجنوب": 2}
+
+_ARABIC_ALEF_TRANSLATION = str.maketrans("أإآٱ", "اااا")
+
+
+def _arabic_name_sort_key(value) -> str:
+    """Alphabetical key for an Arabic place name (drops 'ال', unifies alef forms)."""
+    text = str(value or "").strip()
+    if text.startswith("ال"):
+        text = text[2:]
+    return text.translate(_ARABIC_ALEF_TRANSLATION)
+
+
+def _region_rank(region: str | None) -> int:
+    """Sort rank of a region; anything unknown sorts after the known regions."""
+    return _REGION_SORT_ORDER.get(str(region or "").strip(), len(_REGION_SORT_ORDER))
+
+
+def _parish_location_map() -> dict:
+    """Map parish_id -> {"region": ..., "governorate": ...} from the parishes sheet."""
+    parishes = S._scd_filter_active(S.store.get(S.PARISH_SHEET, pd.DataFrame()).copy())
+    if parishes.empty or S.PARISH_ID_COL not in parishes.columns:
+        return {}
+    mapping = {}
+    for row in parishes.replace({np.nan: None}).to_dict(orient="records"):
+        parish_id = str(row.get(S.PARISH_ID_COL) or "").strip()
+        if not parish_id or parish_id in mapping:
+            continue
+        mapping[parish_id] = {
+            "region": str(row.get("region") or "").strip(),
+            "governorate": str(row.get("governorate") or "").strip(),
+        }
+    return mapping
+
+
+def _governorate_region_map() -> dict:
+    """Map governorate name -> region, taken from the parishes sheet."""
+    mapping = {}
+    for location in _parish_location_map().values():
+        gov_name = location["governorate"]
+        region_name = location["region"]
+        if gov_name and region_name:
+            mapping.setdefault(gov_name, region_name)
+    return mapping
+
+
+def _youth_group_location_map() -> dict:
+    """Map youth_group_id -> {"region", "governorate", "short_name"} via its parish."""
+    groups, _ = S._normalize_youth_group_column_names(S._scd_sheet_active_df(S.YOUTH_GROUP_SHEET))
+    if groups.empty or S.YOUTH_GROUP_ID_COL not in groups.columns:
+        return {}
+    for column in (S.YOUTH_GROUP_PARISH_ID_COL, S.YOUTH_GROUP_SHORT_NAME_COL):
+        if column not in groups.columns:
+            groups[column] = None
+    parishes = _parish_location_map()
+    mapping = {}
+    for row in groups.replace({np.nan: None}).to_dict(orient="records"):
+        gid = str(row.get(S.YOUTH_GROUP_ID_COL) or "").strip()
+        if not gid or gid in mapping:
+            continue
+        parish = parishes.get(str(row.get(S.YOUTH_GROUP_PARISH_ID_COL) or "").strip(), {})
+        mapping[gid] = {
+            "region": parish.get("region", ""),
+            "governorate": parish.get("governorate", ""),
+            "short_name": str(row.get(S.YOUTH_GROUP_SHORT_NAME_COL) or "").strip(),
+        }
+    return mapping
+
+
 def register_registered_routes(app):
     @app.get("/api/stats")
     def stats():
@@ -1533,7 +1602,15 @@ def register_registered_routes(app):
             return err
         data = _active_registered_persons_df()["governorate"].value_counts().reset_index()
         data.columns = ["label", "value"]
-        return jsonify(S.df_to_json(data))
+        regions = _governorate_region_map()
+        rows = S.df_to_json(data)
+        for row in rows:
+            row["region"] = regions.get(str(row.get("label") or "").strip(), "")
+        rows.sort(key=lambda row: (
+            _region_rank(row["region"]),
+            _arabic_name_sort_key(row.get("label")),
+        ))
+        return jsonify(rows)
 
     @app.get("/api/chart/gender")
     def chart_gender():
@@ -1549,22 +1626,35 @@ def register_registered_routes(app):
         err = _require_admin()
         if err:
             return err
+        locations = _youth_group_location_map()
+        counts = {}
         pyg = _active_registered_membership_df()
-        if pyg.empty or S.YOUTH_GROUP_ID_COL not in pyg.columns:
-            return jsonify([])
-        data = (
-            pyg[["person_id", S.YOUTH_GROUP_ID_COL]]
-            .dropna(subset=[S.YOUTH_GROUP_ID_COL])
-            .drop_duplicates()
-            .groupby(S.YOUTH_GROUP_ID_COL)["person_id"].count()
-            .sort_values(ascending=False)
-            .head(15)
-            .reset_index()
-        )
-        data.columns = ["group_id", "value"]
-        data["label"] = data["group_id"].apply(lambda gid: S.youth_group_display_label(gid))
-        data = data[["label", "value", "group_id"]]
-        return jsonify(S.df_to_json(data))
+        if not pyg.empty and S.YOUTH_GROUP_ID_COL in pyg.columns:
+            counted = (
+                pyg[["person_id", S.YOUTH_GROUP_ID_COL]]
+                .dropna(subset=[S.YOUTH_GROUP_ID_COL])
+                .drop_duplicates()
+                .groupby(S.YOUTH_GROUP_ID_COL)["person_id"].count()
+            )
+            counts = {str(gid).strip(): int(value) for gid, value in counted.items()}
+
+        rows = []
+        for gid in sorted(set(locations) | set(counts)):
+            location = locations.get(gid, {})
+            rows.append({
+                "group_id": gid,
+                "label": S.youth_group_display_label(gid),
+                "value": counts.get(gid, 0),
+                "region": location.get("region", ""),
+                "governorate": location.get("governorate", ""),
+            })
+
+        rows.sort(key=lambda row: (
+            _region_rank(row["region"]),
+            _arabic_name_sort_key(row["governorate"]),
+            _arabic_name_sort_key(locations.get(row["group_id"], {}).get("short_name") or row["label"]),
+        ))
+        return jsonify(rows)
 
     @app.get("/api/chart/age_group")
     def chart_ag():
