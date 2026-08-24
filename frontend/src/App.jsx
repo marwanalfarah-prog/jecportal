@@ -573,7 +573,7 @@ function parseRoute(pathname) {
 
 function pageToPath(page, pid = null, unreg = false) {
   if (page === 'profile') {
-    if (!pid) return '/profile'
+    if (pid === null || pid === undefined || pid === '') return '/profile'
     return unreg ? `/profile/unreg/${pid}` : `/profile/${pid}`
   }
   return PAGE_PATHS[page] || '/'

@@ -86,7 +86,7 @@ export function computePermissions(authUser, viewAsUser = null, memberAccess = n
  *   2. Own profile
  */
 export function canViewProfile(perms, effectiveUser, pid, unreg = false) {
-  if (!pid) return false
+  if (pid === null || pid === undefined || pid === '') return false
   const { isAdmin, isMember, profileAccessIds, profileAccessUnregIds } = perms
   if (isAdmin) return true
   if (!isMember) return false
