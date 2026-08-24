@@ -1,18 +1,6 @@
 {
   "notifications": [
     {
-      "id": "364ee057-a64",
-      "type": "registration_pending_admin",
-      "for_person_id": null,
-      "read": true,
-      "created_at": "2026-05-29 22:24:41",
-      "person_id": 3195,
-      "person_name": "يوسف رامي عيسى حداد",
-      "username": "test",
-      "message": "طلب تسجيل جديد: يوسف رامي عيسى حداد (@test) بانتظار موافقتك",
-      "respondent_person_id": null
-    },
-    {
       "id": "2e73c6e0-cf9",
       "type": "registration_admin_approved",
       "for_person_id": 3195,
@@ -95,18 +83,6 @@
       "record_id": "PRYG003321",
       "role": "المرشد الروحي",
       "message": "طلب انضمام جديد: يوسف رامي عيسى حداد إلى شبيبة قلب مريم الطاهر - الفحيص بانتظار موافقتك (المرشد الروحي)",
-      "respondent_person_id": null
-    },
-    {
-      "id": "288d457b-330",
-      "type": "registration_pending_admin",
-      "for_person_id": null,
-      "read": true,
-      "created_at": "2026-06-20 11:54:41",
-      "person_id": 3200,
-      "person_name": "زيد شادي سالم بدر",
-      "username": "marwanalfarah07",
-      "message": "طلب تسجيل جديد: زيد شادي سالم بدر (@marwanalfarah07) بانتظار موافقتك",
       "respondent_person_id": null
     },
     {

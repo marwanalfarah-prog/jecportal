@@ -10412,7 +10412,8 @@
             "birth_month": 1,
             "birth_year": 2011,
             "youth_group_label": "شبيبة القديس بولس الرسول - عجلون",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000002",
@@ -10438,7 +10439,8 @@
             "birth_month": 6,
             "birth_year": 2009,
             "youth_group_label": "شبيبة القديس بولس الرسول - عجلون",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000003",
@@ -10464,7 +10466,8 @@
             "birth_month": 1,
             "birth_year": 2009,
             "youth_group_label": "شبيبة القديس بولس الرسول - عجلون",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000004",
@@ -10490,7 +10493,8 @@
             "birth_month": 1,
             "birth_year": 2011,
             "youth_group_label": "شبيبة القديس بولس الرسول - عجلون",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000005",
@@ -10516,7 +10520,8 @@
             "birth_month": 6,
             "birth_year": 2008,
             "youth_group_label": "شبيبة القديس بولس الرسول - عجلون",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000006",
@@ -10542,7 +10547,8 @@
             "birth_month": 3,
             "birth_year": 2011,
             "youth_group_label": "شبيبة مار إلياس - الوهادنة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000007",
@@ -10568,7 +10574,8 @@
             "birth_month": 4,
             "birth_year": 2008,
             "youth_group_label": "شبيبة مار إلياس - الوهادنة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000008",
@@ -10594,7 +10601,8 @@
             "birth_month": 2,
             "birth_year": 2011,
             "youth_group_label": "شبيبة مار إلياس - الوهادنة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000010",
@@ -10620,7 +10628,8 @@
             "birth_month": 2,
             "birth_year": 2008,
             "youth_group_label": "شبيبة مار إلياس - الوهادنة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000011",
@@ -10646,7 +10655,8 @@
             "birth_month": 4,
             "birth_year": 2011,
             "youth_group_label": "شبيبة مار إلياس - الوهادنة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000012",
@@ -10672,7 +10682,8 @@
             "birth_month": 9,
             "birth_year": 2011,
             "youth_group_label": "شبيبة مار إلياس - الوهادنة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000021",
@@ -10698,7 +10709,8 @@
             "birth_month": 4,
             "birth_year": 2008,
             "youth_group_label": "شبيبة دون أوريونه - الزرقاء الجديدة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000022",
@@ -10724,7 +10736,8 @@
             "birth_month": 1,
             "birth_year": 2008,
             "youth_group_label": "شبيبة دون أوريونه - الزرقاء الجديدة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000023",
@@ -10750,7 +10763,8 @@
             "birth_month": 3,
             "birth_year": 2008,
             "youth_group_label": "شبيبة دون أوريونه - الزرقاء الجديدة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000024",
@@ -10776,7 +10790,8 @@
             "birth_month": 6,
             "birth_year": 2010,
             "youth_group_label": "شبيبة دون أوريونه - الزرقاء الجديدة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000025",
@@ -10802,7 +10817,8 @@
             "birth_month": 8,
             "birth_year": 2010,
             "youth_group_label": "شبيبة دون أوريونه - الزرقاء الجديدة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000026",
@@ -10828,7 +10844,8 @@
             "birth_month": 10,
             "birth_year": 2008,
             "youth_group_label": "شبيبة دون أوريونه - الزرقاء الجديدة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000028",
@@ -10854,7 +10871,8 @@
             "birth_month": 1,
             "birth_year": 2008,
             "youth_group_label": "شبيبة دون أوريونه - الزرقاء الجديدة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000029",
@@ -10880,7 +10898,8 @@
             "birth_month": 11,
             "birth_year": 2008,
             "youth_group_label": "شبيبة دون أوريونه - الزرقاء الجديدة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000033",
@@ -10906,7 +10925,8 @@
             "birth_month": 3,
             "birth_year": 2008,
             "youth_group_label": "شبيبة نجمة البحر - العقبة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000034",
@@ -10932,7 +10952,8 @@
             "birth_month": 6,
             "birth_year": 2008,
             "youth_group_label": "شبيبة نجمة البحر - العقبة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000035",
@@ -10958,7 +10979,8 @@
             "birth_month": 9,
             "birth_year": 2008,
             "youth_group_label": "شبيبة نجمة البحر - العقبة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000036",
@@ -10984,7 +11006,8 @@
             "birth_month": 4,
             "birth_year": 2011,
             "youth_group_label": "شبيبة نجمة البحر - العقبة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000037",
@@ -11010,7 +11033,8 @@
             "birth_month": 12,
             "birth_year": 2011,
             "youth_group_label": "شبيبة نجمة البحر - العقبة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000038",
@@ -11036,7 +11060,8 @@
             "birth_month": 9,
             "birth_year": 2010,
             "youth_group_label": "شبيبة نجمة البحر - العقبة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000039",
@@ -11062,7 +11087,8 @@
             "birth_month": 11,
             "birth_year": 2008,
             "youth_group_label": "شبيبة مار يوسف - جبل عمان",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000040",
@@ -11088,7 +11114,8 @@
             "birth_month": 5,
             "birth_year": 2011,
             "youth_group_label": "شبيبة قلب يسوع الأقدس - تلاع العلي",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000041",
@@ -11114,7 +11141,8 @@
             "birth_month": 1,
             "birth_year": 2011,
             "youth_group_label": "شبيبة قلب يسوع الأقدس - تلاع العلي",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000042",
@@ -11140,7 +11168,8 @@
             "birth_month": 1,
             "birth_year": 2011,
             "youth_group_label": "شبيبة قلب يسوع الأقدس - تلاع العلي",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000043",
@@ -11166,7 +11195,8 @@
             "birth_month": 6,
             "birth_year": 2011,
             "youth_group_label": "شبيبة قلب يسوع الأقدس - تلاع العلي",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000046",
@@ -11192,7 +11222,8 @@
             "birth_month": 6,
             "birth_year": 2010,
             "youth_group_label": "شبيبة الكلدان",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000047",
@@ -11218,7 +11249,8 @@
             "birth_month": 10,
             "birth_year": 2008,
             "youth_group_label": "شبيبة الكلدان",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000049",
@@ -11244,7 +11276,8 @@
             "birth_month": 12,
             "birth_year": 2010,
             "youth_group_label": "شبيبة القديس بولس الرسول - الجبيهة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000051",
@@ -11270,7 +11303,8 @@
             "birth_month": 9,
             "birth_year": 2008,
             "youth_group_label": "شبيبة القديس بولس الرسول - الجبيهة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000052",
@@ -11296,7 +11330,8 @@
             "birth_month": 8,
             "birth_year": 2008,
             "youth_group_label": "شبيبة القديس بولس الرسول - الجبيهة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000053",
@@ -11322,7 +11357,8 @@
             "birth_month": 10,
             "birth_year": 2008,
             "youth_group_label": "شبيبة القديس بولس الرسول - الجبيهة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000054",
@@ -11348,7 +11384,8 @@
             "birth_month": 1,
             "birth_year": 2008,
             "youth_group_label": "شبيبة القديس بولس الرسول - الجبيهة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000055",
@@ -11374,7 +11411,8 @@
             "birth_month": 4,
             "birth_year": 2011,
             "youth_group_label": "شبيبة القديس بولس الرسول - الجبيهة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000056",
@@ -11400,7 +11438,8 @@
             "birth_month": 11,
             "birth_year": 2011,
             "youth_group_label": "شبيبة القديس بولس الرسول - الجبيهة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000057",
@@ -11426,7 +11465,8 @@
             "birth_month": 12,
             "birth_year": 2011,
             "youth_group_label": "شبيبة قلب مريم الطاهر - الفحيص",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000058",
@@ -11452,7 +11492,8 @@
             "birth_month": 12,
             "birth_year": 2009,
             "youth_group_label": "شبيبة قلب مريم الطاهر - الفحيص",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000060",
@@ -11478,7 +11519,8 @@
             "birth_month": 12,
             "birth_year": 2011,
             "youth_group_label": "شبيبة قلب مريم الطاهر - الفحيص",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000061",
@@ -11504,7 +11546,8 @@
             "birth_month": 11,
             "birth_year": 2011,
             "youth_group_label": "شبيبة قلب مريم الطاهر - الفحيص",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000062",
@@ -11530,7 +11573,8 @@
             "birth_month": 2,
             "birth_year": 2011,
             "youth_group_label": "شبيبة قلب مريم الطاهر - الفحيص",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000065",
@@ -11556,7 +11600,8 @@
             "birth_month": 8,
             "birth_year": 2008,
             "youth_group_label": "شبيبة الرسل - الزرقاء الشمالي",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000066",
@@ -11582,7 +11627,8 @@
             "birth_month": 5,
             "birth_year": 2010,
             "youth_group_label": "شبيبة الرسل - الزرقاء الشمالي",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000067",
@@ -11608,7 +11654,8 @@
             "birth_month": 8,
             "birth_year": 2011,
             "youth_group_label": "شبيبة الرسل - الزرقاء الشمالي",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000068",
@@ -11634,7 +11681,8 @@
             "birth_month": 2,
             "birth_year": 2010,
             "youth_group_label": "شبيبة الرسل - الزرقاء الشمالي",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000069",
@@ -11660,7 +11708,8 @@
             "birth_month": 4,
             "birth_year": 2010,
             "youth_group_label": "شبيبة الرسل - الزرقاء الشمالي",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000070",
@@ -11686,7 +11735,8 @@
             "birth_month": 6,
             "birth_year": 2008,
             "youth_group_label": "شبيبة الرسل - الزرقاء الشمالي",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000071",
@@ -11712,7 +11762,8 @@
             "birth_month": 1,
             "birth_year": 2008,
             "youth_group_label": "شبيبة الرسل - الزرقاء الشمالي",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000072",
@@ -11738,7 +11789,8 @@
             "birth_month": 7,
             "birth_year": 2008,
             "youth_group_label": "شبيبة الرسل - الزرقاء الشمالي",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000073",
@@ -11764,7 +11816,8 @@
             "birth_month": 4,
             "birth_year": 2010,
             "youth_group_label": "شبيبة الرسل - الزرقاء الشمالي",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000074",
@@ -11790,7 +11843,8 @@
             "birth_month": 2,
             "birth_year": 2010,
             "youth_group_label": "شبيبة الرسل - الزرقاء الشمالي",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000078",
@@ -11816,7 +11870,8 @@
             "birth_month": 5,
             "birth_year": 2010,
             "youth_group_label": "شبيبة القديس يوسف - المفرق",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000079",
@@ -11842,7 +11897,8 @@
             "birth_month": 10,
             "birth_year": 2010,
             "youth_group_label": "شبيبة القديس يوسف - المفرق",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000080",
@@ -11868,7 +11924,8 @@
             "birth_month": 11,
             "birth_year": 2010,
             "youth_group_label": "شبيبة القديس يوسف - المفرق",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000082",
@@ -11894,7 +11951,8 @@
             "birth_month": 9,
             "birth_year": 2011,
             "youth_group_label": "شبيبة القديس جورج الشهيد - إربد",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000083",
@@ -11920,7 +11978,8 @@
             "birth_month": 11,
             "birth_year": 2011,
             "youth_group_label": "شبيبة القديس جورج الشهيد - إربد",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000084",
@@ -11946,7 +12005,8 @@
             "birth_month": 7,
             "birth_year": 2008,
             "youth_group_label": "شبيبة القديس جورج الشهيد - إربد",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000085",
@@ -11972,7 +12032,8 @@
             "birth_month": 8,
             "birth_year": 2010,
             "youth_group_label": "شبيبة مار يوسف - أدر",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000086",
@@ -11998,7 +12059,8 @@
             "birth_month": 12,
             "birth_year": 2011,
             "youth_group_label": "شبيبة مار يوسف - أدر",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000087",
@@ -12024,7 +12086,8 @@
             "birth_month": 8,
             "birth_year": 2010,
             "youth_group_label": "شبيبة مار يوسف - أدر",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000089",
@@ -12050,7 +12113,8 @@
             "birth_month": 6,
             "birth_year": 2008,
             "youth_group_label": "شبيبة القديس جورج الشهيد - إربد",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000090",
@@ -12076,7 +12140,8 @@
             "birth_month": 11,
             "birth_year": 2011,
             "youth_group_label": "شبيبة مار ميخائيل - السماكية",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000092",
@@ -12102,7 +12167,8 @@
             "birth_month": 6,
             "birth_year": 2011,
             "youth_group_label": "شبيبة سيدة الكرمل - الهاشمي الشمالي",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000093",
@@ -12128,7 +12194,8 @@
             "birth_month": 5,
             "birth_year": 2011,
             "youth_group_label": "شبيبة القديس يوسف - المفرق",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000095",
@@ -12154,7 +12221,8 @@
             "birth_month": 10,
             "birth_year": 2008,
             "youth_group_label": "شبيبة القديسة تريزا الطفل يسوع - صافوط",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000096",
@@ -12180,7 +12248,8 @@
             "birth_month": 6,
             "birth_year": 2008,
             "youth_group_label": "شبيبة القديسة تريزا الطفل يسوع - صافوط",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000097",
@@ -12206,7 +12275,8 @@
             "birth_month": 10,
             "birth_year": 2011,
             "youth_group_label": "شبيبة شهداء الأردن - مرج الحمام",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000098",
@@ -12232,7 +12302,8 @@
             "birth_month": 2,
             "birth_year": 2011,
             "youth_group_label": "شبيبة شهداء الأردن - مرج الحمام",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000104",
@@ -12258,7 +12329,8 @@
             "birth_month": 11,
             "birth_year": 2011,
             "youth_group_label": "شبيبة الحبل بلا دنس - الحصن",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000105",
@@ -12284,7 +12356,8 @@
             "birth_month": 8,
             "birth_year": 2011,
             "youth_group_label": "شبيبة الحبل بلا دنس - الحصن",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000106",
@@ -12310,7 +12383,8 @@
             "birth_month": 8,
             "birth_year": 2011,
             "youth_group_label": "شبيبة الحبل بلا دنس - الحصن",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000107",
@@ -12336,7 +12410,8 @@
             "birth_month": 9,
             "birth_year": 2011,
             "youth_group_label": "شبيبة الحبل بلا دنس - الحصن",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000108",
@@ -12362,7 +12437,8 @@
             "birth_month": 11,
             "birth_year": 2010,
             "youth_group_label": "شبيبة القديسة تريزا الطفل يسوع - صافوط",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000110",
@@ -12388,7 +12464,8 @@
             "birth_month": 12,
             "birth_year": 2011,
             "youth_group_label": "شبيبة مار إلياس - الوهادنة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000111",
@@ -12414,7 +12491,8 @@
             "birth_month": 7,
             "birth_year": 2008,
             "youth_group_label": "شبيبة مار إلياس - الوهادنة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000112",
@@ -12440,7 +12518,8 @@
             "birth_month": 10,
             "birth_year": 2010,
             "youth_group_label": "شبيبة مار إلياس - الوهادنة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000120",
@@ -12466,7 +12545,8 @@
             "birth_month": 5,
             "birth_year": 2008,
             "youth_group_label": "شبيبة دون أوريونه - الزرقاء الجديدة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000121",
@@ -12492,7 +12572,8 @@
             "birth_month": 7,
             "birth_year": 2008,
             "youth_group_label": "شبيبة دون أوريونه - الزرقاء الجديدة",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000123",
@@ -12518,7 +12599,8 @@
             "birth_month": 1,
             "birth_year": 2010,
             "youth_group_label": "شبيبة الرسل - الزرقاء الشمالي",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000124",
@@ -12544,7 +12626,8 @@
             "birth_month": 3,
             "birth_year": 2011,
             "youth_group_label": "شبيبة الرسل - الزرقاء الشمالي",
-            "age_group": "الثانوي"
+            "age_group": "الثانوي",
+            "custom_fields": {}
           }
         ],
         "supervisors": [
@@ -12575,7 +12658,8 @@
             "age_group": "العاملة",
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "أبيان رزق الله مناع النمري",
-            "yg_masoul_aam_name": null
+            "yg_masoul_aam_name": null,
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000017",
@@ -12604,7 +12688,8 @@
             "age_group": "الجامعيّة",
             "is_in_gs_tree": false,
             "gs_tree_superior_name": null,
-            "yg_masoul_aam_name": "مروان طارق شفيق الفرح"
+            "yg_masoul_aam_name": "مروان طارق شفيق الفرح",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000018",
@@ -12634,7 +12719,8 @@
             "age_group": "الجامعيّة",
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "دانا باسل موسى طنوس",
-            "yg_masoul_aam_name": null
+            "yg_masoul_aam_name": null,
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000019",
@@ -12664,7 +12750,8 @@
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "سامي اسامة سامي العودة",
             "yg_masoul_aam_name": null,
-            "team_role": null
+            "team_role": null,
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000020",
@@ -12693,7 +12780,8 @@
             "age_group": "الجامعيّة",
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "مروان طارق شفيق الفرح",
-            "yg_masoul_aam_name": null
+            "yg_masoul_aam_name": null,
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000063",
@@ -12723,7 +12811,8 @@
             "age_group": "الجامعيّة",
             "is_in_gs_tree": false,
             "gs_tree_superior_name": null,
-            "yg_masoul_aam_name": "ساره سليم إبراهيم الجمل"
+            "yg_masoul_aam_name": "ساره سليم إبراهيم الجمل",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000088",
@@ -12753,7 +12842,8 @@
             "age_group": "العاملة",
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "مروان طارق شفيق الفرح",
-            "yg_masoul_aam_name": null
+            "yg_masoul_aam_name": null,
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000114",
@@ -12782,7 +12872,8 @@
             "age_group": "الجامعيّة",
             "is_in_gs_tree": false,
             "gs_tree_superior_name": null,
-            "yg_masoul_aam_name": "رجائي بدر ايوب البدور"
+            "yg_masoul_aam_name": "رجائي بدر ايوب البدور",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000115",
@@ -12812,7 +12903,8 @@
             "is_in_gs_tree": false,
             "gs_tree_superior_name": null,
             "yg_masoul_aam_name": "عمار فارس عايد السمردلي",
-            "team_role": null
+            "team_role": null,
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000116",
@@ -12842,7 +12934,8 @@
             "is_in_gs_tree": false,
             "gs_tree_superior_name": null,
             "yg_masoul_aam_name": "مروان طارق شفيق الفرح",
-            "team_role": null
+            "team_role": null,
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000117",
@@ -12872,7 +12965,8 @@
             "age_group": "العاملة",
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "موسى عوده يوسف زيادات",
-            "yg_masoul_aam_name": null
+            "yg_masoul_aam_name": null,
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000122",
@@ -12901,7 +12995,8 @@
             "age_group": "العاملة",
             "is_in_gs_tree": false,
             "gs_tree_superior_name": null,
-            "yg_masoul_aam_name": "يعقوب أمين فوزي الصراف"
+            "yg_masoul_aam_name": "يعقوب أمين فوزي الصراف",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000128",
@@ -12930,7 +13025,8 @@
             "age_group": "الجامعيّة",
             "is_in_gs_tree": false,
             "gs_tree_superior_name": null,
-            "yg_masoul_aam_name": "وسيم عصمت توفيق عويس"
+            "yg_masoul_aam_name": "وسيم عصمت توفيق عويس",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000129",
@@ -12959,7 +13055,8 @@
             "age_group": "العاملة",
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "أبيان رزق الله مناع النمري",
-            "yg_masoul_aam_name": null
+            "yg_masoul_aam_name": null,
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000130",
@@ -12988,7 +13085,8 @@
             "age_group": "العاملة",
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "مروان طارق شفيق الفرح",
-            "yg_masoul_aam_name": null
+            "yg_masoul_aam_name": null,
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000131",
@@ -13017,7 +13115,8 @@
             "age_group": "الجامعيّة",
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "مروان طارق شفيق الفرح",
-            "yg_masoul_aam_name": null
+            "yg_masoul_aam_name": null,
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000149",
@@ -13046,7 +13145,8 @@
             "age_group": "الجامعيّة",
             "is_in_gs_tree": false,
             "gs_tree_superior_name": null,
-            "yg_masoul_aam_name": "يارا اياد سلمان العوابده"
+            "yg_masoul_aam_name": "يارا اياد سلمان العوابده",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000152",
@@ -13065,7 +13165,8 @@
             "apology_date": "",
             "apology_reason": "",
             "team_id": "team_9c2d6d10",
-            "team_role": null
+            "team_role": null,
+            "custom_fields": {}
           }
         ],
         "gs_committee": [
@@ -13098,7 +13199,8 @@
             "is_in_gs_tree": false,
             "gs_tree_superior_name": null,
             "yg_masoul_aam_name": "عمار فارس عايد السمردلي",
-            "gs_role": null
+            "gs_role": null,
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000119",
@@ -13129,7 +13231,8 @@
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "مروان طارق شفيق الفرح",
             "yg_masoul_aam_name": null,
-            "gs_role": "لجنة تطوير شبيبات الوسط"
+            "gs_role": "لجنة تطوير شبيبات الوسط",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000133",
@@ -13161,7 +13264,8 @@
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "كاترين وائل سامي البجالي",
             "yg_masoul_aam_name": null,
-            "gs_role": "لجنة النشاطات"
+            "gs_role": "لجنة النشاطات",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000134",
@@ -13192,7 +13296,8 @@
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "سامي اسامة سامي العودة",
             "yg_masoul_aam_name": null,
-            "gs_role": "لجنة تطوير شبيبات الوسط"
+            "gs_role": "لجنة تطوير شبيبات الوسط",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000135",
@@ -13223,7 +13328,8 @@
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "أسامة هاني جريس طوباسي",
             "yg_masoul_aam_name": null,
-            "gs_role": "لجنة الإعلام"
+            "gs_role": "لجنة الإعلام",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000136",
@@ -13254,7 +13360,8 @@
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "أبيان رزق الله مناع النمري",
             "yg_masoul_aam_name": null,
-            "gs_role": "لجنة تطوير شبيبات الشمال"
+            "gs_role": "لجنة تطوير شبيبات الشمال",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000137",
@@ -13285,7 +13392,8 @@
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "غسان بيتر بولص عصفور",
             "yg_masoul_aam_name": null,
-            "gs_role": "الأمين العام, منسق الشرق الأوسط"
+            "gs_role": "الأمين العام, منسق الشرق الأوسط",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000138",
@@ -13316,7 +13424,8 @@
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "غسان بيتر بولص عصفور",
             "yg_masoul_aam_name": null,
-            "gs_role": "مسؤول لجنة العلاقات العامة"
+            "gs_role": "مسؤول لجنة العلاقات العامة",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000139",
@@ -13350,7 +13459,8 @@
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "غسان بيتر بولص عصفور",
             "yg_masoul_aam_name": null,
-            "gs_role": "مسؤول لجنة الخدمة, مدير شبيبة ستور"
+            "gs_role": "مسؤول لجنة الخدمة, مدير شبيبة ستور",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000140",
@@ -13381,7 +13491,8 @@
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "غسان بيتر بولص عصفور",
             "yg_masoul_aam_name": null,
-            "gs_role": "مسؤول لجنة تطوير شبيبات الوسط"
+            "gs_role": "مسؤول لجنة تطوير شبيبات الوسط",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000141",
@@ -13412,7 +13523,8 @@
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "غسان بيتر بولص عصفور",
             "yg_masoul_aam_name": null,
-            "gs_role": "مسؤول لجنة التدريب والتطوير"
+            "gs_role": "مسؤول لجنة التدريب والتطوير",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000142",
@@ -13443,7 +13555,8 @@
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "غسان بيتر بولص عصفور",
             "yg_masoul_aam_name": null,
-            "gs_role": "مسؤول لجنة تطوير شبيبات الجنوب"
+            "gs_role": "مسؤول لجنة تطوير شبيبات الجنوب",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000143",
@@ -13474,7 +13587,8 @@
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "غسان بيتر بولص عصفور",
             "yg_masoul_aam_name": null,
-            "gs_role": "مسؤول لجنة تطوير شبيبات الوسط"
+            "gs_role": "مسؤول لجنة تطوير شبيبات الوسط",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000144",
@@ -13501,7 +13615,8 @@
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "غسان بيتر بولص عصفور",
             "yg_masoul_aam_name": null,
-            "gs_role": "مسؤول لجنة تطوير شبيبات الشمال"
+            "gs_role": "مسؤول لجنة تطوير شبيبات الشمال",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000145",
@@ -13532,7 +13647,8 @@
             "is_in_gs_tree": true,
             "gs_tree_superior_name": null,
             "yg_masoul_aam_name": null,
-            "gs_role": "المرشد الروحيّ العام"
+            "gs_role": "المرشد الروحيّ العام",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000146",
@@ -13564,7 +13680,8 @@
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "غسان بيتر بولص عصفور",
             "yg_masoul_aam_name": null,
-            "gs_role": "مسؤول لجنة النشاطات"
+            "gs_role": "مسؤول لجنة النشاطات",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000147",
@@ -13595,7 +13712,8 @@
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "كاترين وائل سامي البجالي",
             "yg_masoul_aam_name": null,
-            "gs_role": "لجنة النشاطات"
+            "gs_role": "لجنة النشاطات",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000148",
@@ -13626,7 +13744,8 @@
             "is_in_gs_tree": true,
             "gs_tree_superior_name": "كاترين وائل سامي البجالي",
             "yg_masoul_aam_name": null,
-            "gs_role": "لجنة النشاطات"
+            "gs_role": "لجنة النشاطات",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000150",
@@ -13648,7 +13767,8 @@
             ],
             "attendance_status": "registered",
             "apology_date": "",
-            "apology_reason": ""
+            "apology_reason": "",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000151",
@@ -13669,7 +13789,8 @@
             ],
             "attendance_status": "registered",
             "apology_date": "",
-            "apology_reason": ""
+            "apology_reason": "",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000153",
@@ -13691,7 +13812,8 @@
             ],
             "attendance_status": "registered",
             "apology_date": "",
-            "apology_reason": ""
+            "apology_reason": "",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000154",
@@ -13712,7 +13834,8 @@
             ],
             "attendance_status": "registered",
             "apology_date": "",
-            "apology_reason": ""
+            "apology_reason": "",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000155",
@@ -13733,7 +13856,8 @@
             ],
             "attendance_status": "registered",
             "apology_date": "",
-            "apology_reason": ""
+            "apology_reason": "",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000156",
@@ -13754,7 +13878,8 @@
             ],
             "attendance_status": "registered",
             "apology_date": "",
-            "apology_reason": ""
+            "apology_reason": "",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000157",
@@ -13775,7 +13900,8 @@
             ],
             "attendance_status": "registered",
             "apology_date": "",
-            "apology_reason": ""
+            "apology_reason": "",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000158",
@@ -13796,7 +13922,8 @@
             ],
             "attendance_status": "registered",
             "apology_date": "",
-            "apology_reason": ""
+            "apology_reason": "",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000159",
@@ -13817,7 +13944,8 @@
             ],
             "attendance_status": "registered",
             "apology_date": "",
-            "apology_reason": ""
+            "apology_reason": "",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000160",
@@ -13839,7 +13967,8 @@
             ],
             "attendance_status": "registered",
             "apology_date": "",
-            "apology_reason": ""
+            "apology_reason": "",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000161",
@@ -13860,7 +13989,8 @@
             ],
             "attendance_status": "registered",
             "apology_date": "",
-            "apology_reason": ""
+            "apology_reason": "",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000162",
@@ -13881,7 +14011,8 @@
             ],
             "attendance_status": "registered",
             "apology_date": "",
-            "apology_reason": ""
+            "apology_reason": "",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000163",
@@ -13902,7 +14033,8 @@
             ],
             "attendance_status": "registered",
             "apology_date": "",
-            "apology_reason": ""
+            "apology_reason": "",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000164",
@@ -13923,7 +14055,8 @@
             ],
             "attendance_status": "registered",
             "apology_date": "",
-            "apology_reason": ""
+            "apology_reason": "",
+            "custom_fields": {}
           },
           {
             "id": "EVTREG000165",
@@ -13944,13 +14077,14 @@
             ],
             "attendance_status": "registered",
             "apology_date": "",
-            "apology_reason": ""
+            "apology_reason": "",
+            "custom_fields": {}
           }
         ],
         "guests": []
       },
       "created_at": "2026-07-11T09:28:08.317281",
-      "updated_at": "2026-07-21T20:34:52.613403",
+      "updated_at": "2026-08-14T18:34:19.540048",
       "has_teams": true,
       "has_team_leaders": true,
       "num_teams": 10,
@@ -15796,7 +15930,13 @@
           ],
           "active_hull": null
         }
-      ]
+      ],
+      "registration_fields": {
+        "members": [],
+        "supervisors": [],
+        "gs_committee": [],
+        "guests": []
+      }
     },
     {
       "id": "EVT000004",
@@ -18510,6 +18650,486 @@
       },
       "created_at": "2026-07-27T08:48:25.768841",
       "updated_at": "2026-08-02T21:07:57.299657"
+    },
+    {
+      "id": "EVT000006",
+      "jec_year": "2026",
+      "event_type": "مخيم",
+      "organizer_type": "gs",
+      "organizer_yg_participants": [],
+      "target_type": "age_groups",
+      "target_age_groups": [
+        "الجامعيّة"
+      ],
+      "target_hull_label": "",
+      "title_source": "age_groups",
+      "title_preset_id": null,
+      "title_label": "فئة الجامعيّة",
+      "base_title": "مخيم فئة الجامعيّة",
+      "theme_text": null,
+      "theme_is_verse": false,
+      "theme_verse_data": null,
+      "locations": [],
+      "start_datetime": "2026-09-03T17:00",
+      "end_datetime": "2026-09-06T04:00",
+      "nights": [
+        "ليلة الخميس - الجمعة",
+        "ليلة الجمعة - السبت",
+        "ليلة السبت - الأحد"
+      ],
+      "logos": [],
+      "posters": [],
+      "documents": [],
+      "yg_quotas": {
+        "YG009": 4,
+        "YG012": 3,
+        "YG025": 2,
+        "YG007": 3,
+        "YG018": 2,
+        "YG002": 6,
+        "YG001": 2,
+        "YG003": 5,
+        "YG008": 2,
+        "YG016": 6,
+        "YG005": 3,
+        "YG004": 2,
+        "YG006": 3,
+        "YG024": 2,
+        "YG030": 2,
+        "YG023": 2,
+        "YG021": 2,
+        "YG022": 6,
+        "YG020": 2,
+        "YG015": 4,
+        "YG014": 2,
+        "YG017": 2,
+        "YG019": 2,
+        "YG029": 2,
+        "YG028": 2,
+        "YG011": 2,
+        "YG010": 5,
+        "YG013": 2,
+        "YG026": 4,
+        "YG027": 3
+      },
+      "transport_support": {
+        "include_participants": true,
+        "include_supervisors": false,
+        "amounts": {}
+      },
+      "yg_apologies": [],
+      "registration": {
+        "members": [
+          {
+            "id": "EVTREG000001",
+            "person_id": "11",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-08-18T11:39:58.733175",
+            "youth_group_id": "YG029",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {}
+          },
+          {
+            "id": "EVTREG000003",
+            "person_id": "349",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-08-18T11:41:56.035127",
+            "youth_group_id": "YG024",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {}
+          },
+          {
+            "id": "EVTREG000004",
+            "person_id": "3015",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-08-18T11:42:06.790203",
+            "youth_group_id": "YG024",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {}
+          },
+          {
+            "id": "EVTREG000005",
+            "person_id": "201",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-08-18T14:12:39.022220",
+            "youth_group_id": "YG021",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {}
+          },
+          {
+            "id": "EVTREG000006",
+            "person_id": "208",
+            "notes": "المغادرة في احد الأيام لوجود امتحان جامعي",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-08-19T18:36:58.347007",
+            "youth_group_id": "YG010",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {},
+            "team_id": null
+          },
+          {
+            "id": "EVTREG000007",
+            "person_id": "2756",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-08-19T18:37:24.008966",
+            "youth_group_id": "YG027",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {}
+          },
+          {
+            "id": "EVTREG000008",
+            "person_id": "3063",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-08-19T18:37:43.730970",
+            "youth_group_id": "YG027",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {}
+          },
+          {
+            "id": "EVTREG000009",
+            "person_id": "786",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-08-19T18:37:52.530302",
+            "youth_group_id": "YG027",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {}
+          },
+          {
+            "id": "EVTREG000010",
+            "person_id": "2757",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-08-19T18:38:02.812355",
+            "youth_group_id": "YG027",
+            "confirmation_status": "pending",
+            "yg_priority": 1,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {}
+          },
+          {
+            "id": "EVTREG000011",
+            "person_id": "739",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-08-19T18:38:16.272266",
+            "youth_group_id": "YG027",
+            "confirmation_status": "pending",
+            "yg_priority": 2,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {}
+          },
+          {
+            "id": "EVTREG000012",
+            "person_id": "2199",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-08-19T18:38:24.482570",
+            "youth_group_id": "YG027",
+            "confirmation_status": "pending",
+            "yg_priority": 3,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {}
+          },
+          {
+            "id": "EVTREG000013",
+            "person_id": "1503",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-08-21T09:25:12.580520",
+            "youth_group_id": "YG019",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {}
+          },
+          {
+            "id": "EVTREG000014",
+            "person_id": "3327",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-08-21T09:26:19.157572",
+            "youth_group_id": "YG019",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {}
+          },
+          {
+            "id": "EVTREG000015",
+            "person_id": "3306",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-08-24T05:34:18.053349",
+            "youth_group_id": "YG006",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {}
+          },
+          {
+            "id": "EVTREG000016",
+            "person_id": "706",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-08-24T05:34:31.564696",
+            "youth_group_id": "YG006",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {}
+          },
+          {
+            "id": "EVTREG000017",
+            "person_id": "3022",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-08-24T05:34:56.542010",
+            "youth_group_id": "YG015",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {}
+          },
+          {
+            "id": "EVTREG000018",
+            "person_id": "823",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-08-24T05:35:06.478580",
+            "youth_group_id": "YG015",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {}
+          },
+          {
+            "id": "EVTREG000019",
+            "person_id": "2012",
+            "notes": "القدوم إلى المخيم يوم الخميس الساعة 12:30 ليلًا",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-08-24T05:35:37.622038",
+            "youth_group_id": "YG015",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {}
+          },
+          {
+            "id": "EVTREG000020",
+            "person_id": "224",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-08-24T05:35:47.946699",
+            "youth_group_id": "YG015",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {}
+          },
+          {
+            "id": "EVTREG000021",
+            "person_id": "569",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-08-24T05:36:00.746585",
+            "youth_group_id": "YG015",
+            "confirmation_status": "pending",
+            "yg_priority": 1,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {}
+          },
+          {
+            "id": "EVTREG000022",
+            "person_id": "3307",
+            "notes": "",
+            "nights_staying": [
+              "ليلة الخميس - الجمعة",
+              "ليلة الجمعة - السبت",
+              "ليلة السبت - الأحد"
+            ],
+            "added_at": "2026-08-24T05:36:13.406714",
+            "youth_group_id": "YG015",
+            "confirmation_status": "pending",
+            "yg_priority": 2,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {}
+          },
+          {
+            "id": "EVTREG000023",
+            "person_id": "1294",
+            "notes": "",
+            "nights_staying": [
+              "ليلة السبت - الأحد",
+              "ليلة الجمعة - السبت",
+              "ليلة الخميس - الجمعة"
+            ],
+            "added_at": "2026-08-24T05:38:51.529421",
+            "youth_group_id": "YG005",
+            "confirmation_status": "confirmed",
+            "yg_priority": null,
+            "attendance_status": "registered",
+            "apology_date": "",
+            "apology_reason": "",
+            "custom_fields": {}
+          }
+        ],
+        "supervisors": [],
+        "gs_committee": [],
+        "guests": []
+      },
+      "registration_fields": {
+        "members": [],
+        "supervisors": [],
+        "gs_committee": [],
+        "guests": []
+      },
+      "created_at": "2026-08-18T11:35:39.884236",
+      "updated_at": "2026-08-24T05:38:51.529421"
     }
   ]
 }

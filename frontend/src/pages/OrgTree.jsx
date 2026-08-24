@@ -1493,12 +1493,12 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    if (node.personId && !node.unregistered) {
+    if (node.personId != null && !node.unregistered) {
       try {
         await api.uploadPhoto(node.personId, file)
         onUpdate({ photo: api.photoUrl(node.personId, Date.now()) })
       } catch { /* ignore */ }
-    } else if (node.unregistered && node.personId) {
+    } else if (node.unregistered && node.personId != null) {
       try {
         await api.uploadUnregisteredPhoto(node.personId, file)
         onUpdate({ photo: api.unregisteredPhotoUrl(node.personId, Date.now()) })
@@ -1576,14 +1576,14 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
               ? <div style={{ display:'flex', alignItems:'center', gap:5, background:'#fef3cd', borderRadius:6, padding:'4px 8px', fontSize:'0.73rem', color:'#b45309', width:'fit-content' }}>
                   <AlertCircle size={12}/> غير مسجّل
                 </div>
-              : node.personId && <div style={{ fontSize:'0.73rem', color:'var(--gray-400)' }}>#{node.personId}</div>
+              : node.personId != null && <div style={{ fontSize:'0.73rem', color:'var(--gray-400)' }}>#{node.personId}</div>
             }
           </div>
         </div>
         <style>{`.photo-hover-ov:hover{opacity:1!important}`}</style>
 
         {/* View Profile button — registered */}
-        {node.personId && !node.unregistered && (
+        {node.personId != null && !node.unregistered && (
           <button onClick={() => { onViewProfile(node.personId); onClose() }} style={{
             width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:7,
             padding:'9px', marginBottom:14, borderRadius:'var(--radius-md)',
@@ -1595,7 +1595,7 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
         )}
 
         {/* View Profile button — unregistered */}
-        {node.unregistered && node.personId && (
+        {node.unregistered && node.personId != null && (
           <button onClick={() => { onViewUnregisteredProfile && onViewUnregisteredProfile(node.personId); onClose() }} style={{
             width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:7,
             padding:'9px', marginBottom:14, borderRadius:'var(--radius-md)',
@@ -1683,7 +1683,7 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
         {/* Person search */}
         <div style={{ marginBottom: 12 }}>
           <label style={{ fontSize:'0.78rem', fontWeight:700, color:'var(--gray-500)', display:'block', marginBottom:4 }}>
-            {node.personId ? 'تغيير الشخص المرتبط' : 'ربط بشخص مسجّل أو غير مسجّل'}
+            {node.personId != null ? 'تغيير الشخص المرتبط' : 'ربط بشخص مسجّل أو غير مسجّل'}
           </label>
           <div style={{ position: 'relative' }}>
             <input value={nameQ} onChange={e => search(e.target.value)} placeholder="ابحث بالاسم…"
@@ -1748,7 +1748,7 @@ function NodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, sel
                 personType: existingTitle ? 'مكرّس' : 'علماني',
               })
             } else {
-              onUpdate({ unregistered: !node.personId, baseName: newBase })
+              onUpdate({ unregistered: node.personId == null, baseName: newBase })
             }
           }} placeholder="أدخل الاسم يدوياً…"
             style={{ width:'100%', padding:'7px 10px', border:'1.5px solid var(--gray-200)', borderRadius:'var(--radius-md)', fontFamily:'var(--font-body)', fontSize:'0.85rem', direction:'rtl', textAlign:'right', color:'var(--gray-700)', boxSizing:'border-box' }}
@@ -2611,7 +2611,7 @@ export default function OrgTree({ toast, onRegisterPerson, onViewProfile, onView
     // Pre-link: nodes whose baseName/name matches an existing unregistered person
     // but haven't been linked yet (unregisteredId is missing).
     const nodesNeedingLink = currentNodes.filter(
-      n => n.unregistered && !n.personId && !n.unregisteredId && (n.name || n.baseName)
+      n => n.unregistered && n.personId == null && !n.unregisteredId && (n.name || n.baseName)
     )
     if (!nodesNeedingLink.length) return currentNodes
 

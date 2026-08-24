@@ -8664,7 +8664,7 @@ def _ensure_persons_schema():
 
             row.get(SCHOOL_STATUS_COL),
 
-            has_current_school=str(row.get("person_id") or "").strip() in current_school_person_ids,
+            has_current_school=_person_id_key(row.get("person_id")) in current_school_person_ids,
 
         ),
 
@@ -8694,7 +8694,7 @@ def _ensure_persons_schema():
 
         persons[col] = persons.apply(
 
-            lambda row: False if str(row.get("person_id") or "").strip() in person_ids else _to_bool(row.get(col)),
+            lambda row: False if _person_id_key(row.get("person_id")) in person_ids else _to_bool(row.get(col)),
 
             axis=1,
 
@@ -8706,7 +8706,7 @@ def _ensure_persons_schema():
 
             persons.loc[missing_mask, col] = persons[missing_mask].apply(
 
-                lambda row: str(row.get("person_id") or "").strip() not in person_ids,
+                lambda row: _person_id_key(row.get("person_id")) not in person_ids,
 
                 axis=1,
 
@@ -8879,7 +8879,7 @@ def remove_spouse_relationship(target_store: dict, pid, changed_by: str):
 
     if not current_spouse_rows.empty:
 
-        spouse_pid = str(current_spouse_rows.iloc[0].get("spouse_person_id") or "").strip() or None
+        spouse_pid = _person_id_key(current_spouse_rows.iloc[0].get("spouse_person_id")) or None
 
     # Expire entries for pid
     mask_a = (df["person_id"].astype(str) == pid_str) & _scd_active_mask(df)
@@ -8993,7 +8993,7 @@ def get_spouse_candidates(target_store: dict, opposite_gender: str) -> list[dict
 
     for _, row in subset.iterrows():
 
-        pid = str(row.get("person_id") or "").strip()
+        pid = _person_id_key(row.get("person_id"))
 
         name_parts = [
             str(row.get(col) or "").strip()
@@ -9109,6 +9109,30 @@ def _next_person_id() -> int:
 
 
 
+
+
+def _person_id_key(v) -> str:
+    """Stringify a person_id-like value for set-membership / equality checks.
+
+    Unlike the common `str(v or "")` idiom, this preserves 0 — a valid person_id
+    in this database (the first-registered person has id 0), which `or ""` would
+    silently collapse to an empty string and drop from any lookup.
+    """
+
+    if v is None:
+        return ""
+
+    if isinstance(v, float) and v != v:  # NaN
+
+        return ""
+
+    if isinstance(v, str):
+
+        s = v.strip()
+
+        return "" if s.lower() in ("nan", "none", "nat") else s
+
+    return str(v).strip()
 
 
 def _normalize_person_id(v):

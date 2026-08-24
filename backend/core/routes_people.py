@@ -528,7 +528,7 @@ def _build_spouse_payload(store: dict, pid) -> dict | None:
     spouse_row = S.get_spouse_for_person(store, pid)
     if not spouse_row:
         return None
-    spouse_pid = str(spouse_row.get("spouse_person_id") or "").strip()
+    spouse_pid = S._person_id_key(spouse_row.get("spouse_person_id"))
     if not spouse_pid:
         return None
     persons_df = S._scd_filter_active(store.get("persons", pd.DataFrame()))
@@ -2032,7 +2032,7 @@ def register_registered_routes(app):
             old_marital_status = S._normalize_text(current_row.get(S.MARITAL_STATUS_COL)) if person_mask.any() else None
 
             spouse_row = S.get_spouse_for_person(S.store, pid)
-            spouse_pid = str(spouse_row.get("spouse_person_id") or "").strip() if spouse_row else None
+            spouse_pid = S._person_id_key(spouse_row.get("spouse_person_id")) or None if spouse_row else None
 
             if spouse_pid:
                 if new_marital_status == S.MARITAL_STATUS_SINGLE:
@@ -2106,7 +2106,7 @@ def register_registered_routes(app):
             # Remove any existing link for pid first (so set_spouse_relationship starts clean)
             existing = S.get_spouse_for_person(S.store, pid)
             if existing:
-                old_sp = str(existing.get("spouse_person_id") or "").strip()
+                old_sp = S._person_id_key(existing.get("spouse_person_id"))
                 if old_sp:
                     S._expire_spouse_link(S.store, pid, old_sp, changed_by)
             S.set_spouse_relationship(S.store, pid, spouse_pid, my_marital, changed_by)

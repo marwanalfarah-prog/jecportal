@@ -85,7 +85,7 @@ def _get_yg_assignments_for_approver(person_id: str) -> list[dict]:
     for _, row in awaiting.iterrows():
         yg_id = str(row.get(S.YOUTH_GROUP_ID_COL) or "")
         age_group = str(row.get("age_group") or "")
-        pid = str(row.get("person_id") or "")
+        pid = S._person_id_key(row.get("person_id"))
         if pid and can_user_approve_yg_membership(person_id, yg_id, age_group):
             candidate_pids.add(pid)
 

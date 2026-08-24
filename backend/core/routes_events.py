@@ -2315,10 +2315,14 @@ def register_events_routes(app):
             return jsonify({'error': 'invalid reg_type'}), 400
         body = request.get_json(force=True) or {}
 
-        # Accept either person_id (registered) or unregistered_id (legacy), both map to person_id
-        person_id = str(body.get('person_id', '') or '').strip() or None
+        # Accept either person_id (registered) or unregistered_id (legacy), both map to person_id.
+        # NOTE: person_id can legitimately be 0, so don't use `x or default` here — that treats
+        # 0 as falsy and drops it.
+        raw_pid = body.get('person_id')
+        person_id = str(raw_pid).strip() if raw_pid not in (None, '') else None
         if not person_id:
-            person_id = str(body.get('unregistered_id', '') or '').strip() or None
+            raw_unreg_id = body.get('unregistered_id')
+            person_id = str(raw_unreg_id).strip() if raw_unreg_id not in (None, '') else None
         if not person_id:
             return jsonify({'error': 'person_id required'}), 400
 
@@ -3279,7 +3283,7 @@ def register_events_routes(app):
             if pid not in scache:
                 try:
                     row = S.get_spouse_for_person(S.store, pid)
-                    scache[pid] = str((row or {}).get('spouse_person_id') or '').strip()
+                    scache[pid] = S._person_id_key((row or {}).get('spouse_person_id'))
                 except Exception:
                     scache[pid] = ''
             return scache[pid]

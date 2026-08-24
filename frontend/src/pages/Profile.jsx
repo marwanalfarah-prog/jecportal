@@ -5316,15 +5316,15 @@ function isUnregisteredOrgNode(node) {
 }
 
 function orgNodeStableId(node) {
-  if (isUnregisteredOrgNode(node) && node?.unregisteredId) return `unreg:${node.unregisteredId}`
-  if (node?.personId) return `reg:${node.personId}`
+  if (isUnregisteredOrgNode(node) && node?.unregisteredId != null) return `unreg:${node.unregisteredId}`
+  if (node?.personId != null) return `reg:${node.personId}`
   return `node:${node?.id}`
 }
 
 function orgNodeConnectionKey(node) {
   const role = node?.role || ''
-  if (isUnregisteredOrgNode(node) && node?.unregisteredId) return `unreg:${node.unregisteredId}:${role}`
-  if (node?.personId) return `pid:${node.personId}:${role}`
+  if (isUnregisteredOrgNode(node) && node?.unregisteredId != null) return `unreg:${node.unregisteredId}:${role}`
+  if (node?.personId != null) return `pid:${node.personId}:${role}`
   return `nid:${node?.id}`
 }
 
@@ -5547,11 +5547,11 @@ function buildOrgHistory(personIdOrMatcher, allPeriodTrees) {
 function SmartConnRow({ node, connStart, connEnd, needsAnnotation, onViewProfile }) {
   const initials = firstNameInitial(node.baseName || node.name)
   // Both registered (personId) and unregistered (unregisteredId) are navigable
-  const canClick = !!(node.personId || node.unregisteredId)
+  const canClick = node.personId != null || node.unregisteredId != null
   const handleClick = () => {
     if (!canClick || !onViewProfile) return
-    if (isUnregisteredOrgNode(node) && node.unregisteredId) onViewProfile(node.unregisteredId, true)
-    else if (node.personId) onViewProfile(node.personId, false)
+    if (isUnregisteredOrgNode(node) && node.unregisteredId != null) onViewProfile(node.unregisteredId, true)
+    else if (node.personId != null) onViewProfile(node.personId, false)
   }
 
   return (
@@ -7652,7 +7652,7 @@ export default function Profile({ personId, isUnregistered, onBack, toast, orgCo
         .filter(Boolean)
 
       await downloadProfilePdf({
-        fileName: `profile-${String(personId || 'person').replace(/[^a-zA-Z0-9_-]/g, '_')}-${safeStamp}.pdf`,
+        fileName: `profile-${String(personId != null ? personId : 'person').replace(/[^a-zA-Z0-9_-]/g, '_')}-${safeStamp}.pdf`,
         downloadedAtLabel: timestampLabel,
         filledAtEntries: dedupedFilledAtEntries,
         filledAtLabel,

@@ -1354,9 +1354,9 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
     }
     return options
   }, [personTitles, laqab])
-  const unregisteredNodeId = node.unregisteredId || (node.unregistered ? node.personId : null)
-  const isUnregisteredNode = Boolean(node.unregistered || unregisteredNodeId)
-  const hasLinkedIdentity = Boolean(node.personId || unregisteredNodeId)
+  const unregisteredNodeId = node.unregisteredId != null ? node.unregisteredId : (node.unregistered ? node.personId : null)
+  const isUnregisteredNode = Boolean(node.unregistered || unregisteredNodeId != null)
+  const hasLinkedIdentity = node.personId != null || unregisteredNodeId != null
 
   useEffect(() => { setPhotoErr(false) }, [node.photo])
 
@@ -1432,7 +1432,7 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    if (node.personId && !node.unregistered) {
+    if (node.personId != null && !node.unregistered) {
       try { await api.uploadPhoto(node.personId, file); onUpdate({ photo: api.photoUrl(node.personId, Date.now()) }) } catch {}
     } else if (isUnregisteredNode && unregisteredNodeId) {
       try { await api.uploadUnregisteredPhoto(unregisteredNodeId, file); onUpdate({ photo: api.unregisteredPhotoUrl(unregisteredNodeId, Date.now()) }) } catch {}
@@ -1486,7 +1486,7 @@ function GSNodeEditor({ node, allNodes, allEdges, allPersons, allUnregistered, o
         </div>
         <style>{`.photo-hover-ov:hover{opacity:1!important}`}</style>
 
-        {node.personId && !isUnregisteredNode && (
+        {node.personId != null && !isUnregisteredNode && (
           <button onClick={() => { onViewProfile(node.personId); onClose() }} style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'9px', marginBottom:14, borderRadius:'var(--radius-md)', background:'#eef4ff', border:'1.5px solid #b3ccff', color:'#1a3a5c', fontFamily:'var(--font-body)', fontSize:'0.85rem', fontWeight:700, cursor:'pointer' }}>
             <ExternalLink size={14}/> عرض الملف الشخصي
           </button>
@@ -2157,7 +2157,7 @@ export default function GeneralSecretariatTree({ toast, onRegisterPerson, onView
   // ── Sync unregistered nodes → create/link records on save ─────────────────
   const syncUnregisteredNodes = useCallback(async (currentNodes) => {
     const nodesNeedingLink = currentNodes.filter(
-      n => n.unregistered && !n.personId && !n.unregisteredId && (n.name || n.baseName)
+      n => n.unregistered && n.personId == null && !n.unregisteredId && (n.name || n.baseName)
     )
     if (!nodesNeedingLink.length) return currentNodes
 
