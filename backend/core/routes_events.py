@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from io import BytesIO
 
 import pandas as pd
+from openpyxl.styles import Alignment
 from flask import jsonify, request, send_file, send_from_directory
 from werkzeug.utils import secure_filename
 
@@ -512,7 +513,7 @@ def _apply_custom_fields_payload(evt, reg_type, entry, body):
 def _custom_field_export_value(field, value):
     if field.get('type') == 'checkbox':
         return CUSTOM_FIELD_CHECKBOX_TRUE if value else ''
-    return _export_text(value)
+    return _export_text(value, preserve_newlines=(field.get('type') == 'textarea'))
 
 
 def _custom_export_columns(evt, reg_type, base_columns):
@@ -940,7 +941,7 @@ def _lookup_person_birthday(person_id):
     return dict(empty)
 
 
-def _export_text(value):
+def _export_text(value, preserve_newlines=False):
     if value is None or value is pd.NA:
         return ''
     try:
@@ -951,6 +952,8 @@ def _export_text(value):
     text = str(value).strip()
     if text.lower() in ('nan', 'none', 'null'):
         return ''
+    if preserve_newlines:
+        return '\n'.join(' '.join(line.split()) for line in text.splitlines())
     return ' '.join(text.split())
 
 
@@ -1221,7 +1224,7 @@ def _build_member_export_rows(evt):
             'حالة التسجيل': _format_member_registration_status(entry),
             'حالة الحضور': _format_attendance_status(entry),
             'تاريخ الاعتذار عن الحضور': _export_text(entry.get('apology_date')),
-            'سبب الاعتذار عن الحضور': _export_text(entry.get('apology_reason')),
+            'سبب الاعتذار عن الحضور': _export_text(entry.get('apology_reason'), preserve_newlines=True),
             'الجنس': _export_text(entry.get('gender') or person.get('gender')),
             'تاريخ الميلاد الكامل': _format_birthdate(person),
             'الصف الحالي': _format_current_grade(source_store, person_id, person),
@@ -1234,10 +1237,24 @@ def _build_member_export_rows(evt):
             'اسم الأم الكامل بالعربية': _format_mother_ar_name(person),
             'الحالات الصحية': _format_health_conditions(source_store, person_id),
             'ملاحظات الملف الشخصي': _format_profile_notes(source_store, person_id),
-            'ملاحظات التسجيل': _export_text(entry.get('notes')),
+            'ملاحظات التسجيل': _export_text(entry.get('notes'), preserve_newlines=True),
             **_custom_field_row_values(entry, custom_pairs),
         })
     return rows
+
+
+def _apply_multiline_wrap(worksheet):
+    """Enable wrap_text on any cell whose value has an embedded newline, and
+    grow that row's height so every line stays visible instead of clipped."""
+    row_lines = {}
+    for row in worksheet.iter_rows():
+        for cell in row:
+            if isinstance(cell.value, str) and '\n' in cell.value:
+                cell.alignment = Alignment(wrap_text=True, vertical='top')
+                row_lines[cell.row] = max(row_lines.get(cell.row, 1), cell.value.count('\n') + 1)
+    for row_idx, lines in row_lines.items():
+        worksheet.row_dimensions[row_idx].height = max(
+            worksheet.row_dimensions[row_idx].height or 15, 15 * lines)
 
 
 def _build_members_export_workbook(evt):
@@ -1250,6 +1267,7 @@ def _build_members_export_workbook(evt):
         worksheet = writer.sheets['Participants']
         worksheet.freeze_panes = 'A2'
         worksheet.auto_filter.ref = worksheet.dimensions
+        _apply_multiline_wrap(worksheet)
         for column_cells in worksheet.columns:
             max_length = max(len(_export_text(cell.value)) for cell in column_cells)
             worksheet.column_dimensions[column_cells[0].column_letter].width = min(max(max_length + 2, 12), 60)
@@ -1313,7 +1331,7 @@ def _build_supervisor_export_rows(evt):
             'حالة التسجيل في النشاط':  _export_text(entry.get('status')),
             'حالة الحضور':             attendance_status,
             'تاريخ الاعتذار عن الحضور': _export_text(entry.get('apology_date')) if entry.get('attendance_status') == 'apologized' else '',
-            'سبب الاعتذار عن الحضور':  _export_text(entry.get('apology_reason')) if entry.get('attendance_status') == 'apologized' else '',
+            'سبب الاعتذار عن الحضور':  _export_text(entry.get('apology_reason'), preserve_newlines=True) if entry.get('attendance_status') == 'apologized' else '',
             'الجنس':                    _export_text(entry.get('gender') or person.get('gender')),
             'تاريخ الميلاد الكامل':    _format_birthdate(person),
             'الفئة العمريّة':           _export_text(entry.get('age_group')),
@@ -1327,7 +1345,7 @@ def _build_supervisor_export_rows(evt):
             'رقم الهاتف':              _format_phone_numbers(source_store, person_id),
             'الحالات الصحية':          _format_health_conditions(source_store, person_id),
             'ملاحظات الملف الشخصي':   _format_profile_notes(source_store, person_id),
-            'ملاحظات التسجيل':         _export_text(entry.get('notes')),
+            'ملاحظات التسجيل':         _export_text(entry.get('notes'), preserve_newlines=True),
             **_custom_field_row_values(entry, custom_pairs),
         })
     return rows
@@ -1343,6 +1361,7 @@ def _build_supervisors_export_workbook(evt):
         worksheet = writer.sheets['Supervisors']
         worksheet.freeze_panes = 'A2'
         worksheet.auto_filter.ref = worksheet.dimensions
+        _apply_multiline_wrap(worksheet)
         for column_cells in worksheet.columns:
             max_length = max(len(_export_text(cell.value)) for cell in column_cells)
             worksheet.column_dimensions[column_cells[0].column_letter].width = min(max(max_length + 2, 12), 60)
@@ -1372,7 +1391,7 @@ def _build_gs_committee_export_rows(evt):
             'حالة التسجيل في النشاط':   _export_text(entry.get('status')),
             'حالة الحضور':              attendance_status,
             'تاريخ الاعتذار عن الحضور': _export_text(entry.get('apology_date')) if entry.get('attendance_status') == 'apologized' else '',
-            'سبب الاعتذار عن الحضور':   _export_text(entry.get('apology_reason')) if entry.get('attendance_status') == 'apologized' else '',
+            'سبب الاعتذار عن الحضور':   _export_text(entry.get('apology_reason'), preserve_newlines=True) if entry.get('attendance_status') == 'apologized' else '',
             'الجنس':                     _export_text(entry.get('gender') or person.get('gender')),
             'تاريخ الميلاد الكامل':     _format_birthdate(person),
             'الدور في النشاط':          _export_text(entry.get('role')),
@@ -1383,7 +1402,7 @@ def _build_gs_committee_export_rows(evt):
             'رقم الهاتف':               _format_phone_numbers(source_store, person_id),
             'الحالات الصحية':           _format_health_conditions(source_store, person_id),
             'ملاحظات الملف الشخصي':    _format_profile_notes(source_store, person_id),
-            'ملاحظات التسجيل':          _export_text(entry.get('notes')),
+            'ملاحظات التسجيل':          _export_text(entry.get('notes'), preserve_newlines=True),
             **_custom_field_row_values(entry, custom_pairs),
         })
     return rows
@@ -1399,6 +1418,7 @@ def _build_gs_committee_export_workbook(evt):
         worksheet = writer.sheets['GS Committee']
         worksheet.freeze_panes = 'A2'
         worksheet.auto_filter.ref = worksheet.dimensions
+        _apply_multiline_wrap(worksheet)
         for column_cells in worksheet.columns:
             max_length = max(len(_export_text(cell.value)) for cell in column_cells)
             worksheet.column_dimensions[column_cells[0].column_letter].width = min(max(max_length + 2, 12), 60)

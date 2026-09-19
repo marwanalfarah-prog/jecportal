@@ -1656,5 +1656,61 @@
     "notes": "",
     "granted_at": "2026-07-11T18:35:49.956812+00:00",
     "granted_by": "admin"
+  },
+  {
+    "id": "be092df0-9ea5-448b-8ef0-eb067082e8c9",
+    "privilege_type": "profile_access",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG015"
+      ],
+      "age_groups": [
+        "الجامعيّة",
+        "العاملة"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG015",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "مجلس فئتيّ الجامعيّة والعاملة",
+      "hull_nodes": [
+        "OTND00000159"
+      ],
+      "hull_display": "مجلس فئتيّ الجامعيّة والعاملة"
+    },
+    "notes": "",
+    "granted_at": "2026-08-29T10:54:36.118747+00:00",
+    "granted_by": "admin"
+  },
+  {
+    "id": "005af5fb-5a66-4427-bedc-e6bf9015834a",
+    "privilege_type": "promotion_access",
+    "scope": {
+      "type": "age_group",
+      "youth_group_ids": [
+        "YG015"
+      ],
+      "age_groups": [
+        "الجامعيّة",
+        "العاملة"
+      ]
+    },
+    "grantee": {
+      "type": "org_tree_position",
+      "youth_group_id": "YG015",
+      "selection_mode": "hull",
+      "positions": [],
+      "hull": "مجلس فئتيّ الجامعيّة والعاملة",
+      "hull_nodes": [
+        "OTND00000159"
+      ],
+      "hull_display": "مجلس فئتيّ الجامعيّة والعاملة"
+    },
+    "notes": "",
+    "granted_at": "2026-08-29T10:57:38.219977+00:00",
+    "granted_by": "admin"
   }
 ]

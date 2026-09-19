@@ -1,3 +1,4 @@
 ﻿email_record_id,linked_job_ids,scd_active_from,scd_active_to,scd_currently_active_flag,scd_changed_by_user
 EM000051,JB00022,2025-01-31 11:13:46,,True,admin
-EM000002,JB00360,2025-02-17 13:17:50,,True,admin
+EM000002,JB00387,2026-08-28 12:56:39,,True,948
+EM000002,JB00360,2025-02-17 13:17:50,2026-08-28 12:56:39,False,948

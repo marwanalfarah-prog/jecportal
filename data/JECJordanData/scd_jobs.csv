@@ -364,8 +364,6 @@
 211,JB00370,,Smart Buy,,,previous,2025-01-31 11:16:02,,True,admin
 2537,JB00302,Sales Representative,مجموعة نقل,,,current,2025-06-19 15:42:54,,True,admin
 3077,JB00343,Patents Administrator,Saba & Co. Intellectual Property,,,current,2026-01-26 16:51:49,,True,admin
-948,JB00360,Artificial Intelligence Associate,كابيتال بنك,2025-07-01,,current,2025-02-17 13:17:50,,True,admin
-948,JB00361,Data Science Intern,مدفوعاتكم,2024-06-30,2025-02-28,previous,2025-02-17 13:17:50,,True,admin
 3184,JB00372,Energy Engineer,قعوار للطاقة,,,current,2026-05-28 20:23:50,,True,admin
 3188,JB00373,Operations Manager,البنك العربي,,,current,2026-05-29 13:40:34,,True,admin
 1126,JB00374,Customer Service Supervisor,Advanced Company,,,current,2026-05-29 15:07:13,,True,admin
@@ -384,6 +382,12 @@
 3179,JB00384,Back Office Support,Web Help,,,current,2026-07-21 09:14:03,,True,admin
 100,JB00385,,شركة الخلية الذكية,,,current,2026-07-28 09:04:03,,True,admin
 100,JB00386,Service Provider,مركز الخدمات الحكومية - عجلون,,,current,2026-07-28 09:04:03,,True,admin
+948,JB00360,Artificial Intelligence Associate,كابيتال بنك,2025-07-01,2026-06-30,previous,2026-08-28 12:56:20,,True,948
+948,JB00361,Data Science Intern,مدفوعاتكم,2024-06-30,2025-02-28,previous,2026-08-28 12:56:20,,True,948
+948,JB00387,Artificial Intelligence Senior Associate,كابيتال بنك,2026-07-01,,current,2026-08-28 12:56:20,,True,948
+3349,JB00388,Daily Wage Worker,,,,current,2026-08-30 19:47:19,,True,admin
+948,JB00360,Artificial Intelligence Associate,كابيتال بنك,2025-07-01,,current,2025-02-17 13:17:50,2026-08-28 12:56:20,False,948
+948,JB00361,Data Science Intern,مدفوعاتكم,2024-06-30,2025-02-28,previous,2025-02-17 13:17:50,2026-08-28 12:56:20,False,948
 680,JB00355,Retail & Store Manager,ملح وزيت,,,current,2025-02-03 02:09:11,2026-07-07 10:16:50,False,admin
 1347,JB00236,Pharmacist,,,,current,2025-03-10 15:59:32,2026-05-29 15:27:35,False,admin
 1281,JB00351,Senior Operations Executive,IBC,,,current,2025-03-05 08:22:07,2026-05-29 15:27:05,False,admin

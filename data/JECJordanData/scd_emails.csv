@@ -87,9 +87,6 @@
 211,EM000093,rashiljasser@gmail.com,personal,2025-01-31 11:16:02,,True,admin
 1399,EM000027,awsshawareb1@gmail.com,personal,2025-03-11 11:15:24,,True,admin
 3156,EM000006,aramsahawneh95@gmail.com,personal,2024-03-23 22:26:10,,True,admin
-948,EM000001,marwanalfarah03@gmail.com,personal,2025-02-17 13:17:50,,True,admin
-948,EM000002,marwanal@capitalbank.jo,work,2025-02-17 13:17:50,,True,admin
-948,EM000003,marwanalfarah@gmail.com,personal,2025-02-17 13:17:50,,True,admin
 1187,EM000099,asadyazan2@gmail.com,personal,2026-05-27 19:47:34,,True,admin
 942,EM000100,raidaqandah@gmail.com,family,2026-05-27 19:54:02,,True,admin
 1481,EM000101,mokhlesalrabadi@yahoo.com,family,2026-05-27 19:56:02,,True,admin
@@ -178,6 +175,9 @@
 3251,EM000186,meerabader87@gmail.com,personal,2026-07-11 10:07:02,,True,admin
 3310,EM000187,bissanhijazin67@gmail.com,personal,2026-07-14 08:21:32,,True,admin
 3313,EM000188,mayarhijazin32@gmail.com,personal,2026-07-14 08:24:25,,True,admin
+948,EM000001,marwanalfarah03@gmail.com,personal,2026-08-28 12:56:39,,True,948
+948,EM000002,marwanal@capitalbank.jo,work,2026-08-28 12:56:39,,True,948
+948,EM000003,marwanalfarah@gmail.com,personal,2026-08-28 12:56:39,,True,948
 3106,EM000004,abouna_firas@yahoo.com,personal,2026-03-08 21:22:49,,True,admin
 3165,EM000094,mathebrm@gmail.com,personal,2026-05-02 09:19:02,,True,admin
 3168,EM000095,tarekabuhanna@yahoo.com,personal,2026-05-02 09:41:31,,True,admin
@@ -186,6 +186,9 @@
 3190,EM000112,fadihabash11@gmail.com,personal,2026-05-29 14:48:04,,True,admin
 3185,EM000178,fr.ibrahimnaffa@hotmail.com,personal,2026-05-29 16:56:23,,True,admin
 3194,EM000179,aridah11@gmail.com,personal,2026-05-30 14:15:27,,True,admin
+948,EM000001,marwanalfarah03@gmail.com,personal,2025-02-17 13:17:50,2026-08-28 12:56:39,False,948
+948,EM000002,marwanal@capitalbank.jo,work,2025-02-17 13:17:50,2026-08-28 12:56:39,False,948
+948,EM000003,marwanalfarah@gmail.com,personal,2025-02-17 13:17:50,2026-08-28 12:56:39,False,948
 918,EM000077,jeryesshwiehat196@yahoo.com,personal,2025-02-16 15:32:27,2026-05-29 16:38:55,False,admin
 1481,EM000101,mokhlesalrabadi@yahoo.com,personal,2026-05-27 19:55:41,2026-05-27 19:56:02,False,admin
 942,EM000100,raidaqandah@gmail.com,personal,2026-05-27 19:52:40,2026-05-27 19:54:02,False,admin
